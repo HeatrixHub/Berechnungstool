@@ -54,6 +54,12 @@ def _configure_theme(root: tk.Misc) -> None:
 def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> None:
     header = ttk.Frame(root, padding=(0, 8, 12, 0))
     header.place(relx=1.0, rely=0.0, x=-4, y=8, anchor="ne")
+    # Sobald weitere Widgets über ``pack`` oder ``grid`` in ``root`` platziert
+    # werden, können sie den Header verdecken. Deshalb heben wir ihn an und
+    # stellen außerdem sicher, dass dies erneut geschieht, sobald der Tk-Event
+    # Loop Zeit hatte, alle Layout-Operationen abzuarbeiten.
+    header.lift()
+    root.after_idle(header.lift)
     controls_frame = ttk.Frame(header)
     controls_frame.pack(side="right")
     theme_toggle = _create_theme_button(controls_frame, plugins)
