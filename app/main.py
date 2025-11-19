@@ -52,8 +52,8 @@ def _configure_theme(root: tk.Misc) -> None:
 
 
 def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> None:
-    header = ttk.Frame(root, padding=(16, 10, 16, 6))
-    header.pack(fill="x")
+    header = ttk.Frame(root, padding=(0, 8, 12, 0))
+    header.place(relx=1.0, rely=0.0, x=-4, y=8, anchor="ne")
     controls_frame = ttk.Frame(header)
     controls_frame.pack(side="right")
     theme_toggle = _create_theme_button(controls_frame, plugins)
@@ -63,7 +63,6 @@ def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> None:
     for widget in (theme_toggle, plugin_manager_button):
         if widget is not None:
             widget.pack(side="right", padx=(8, 0))
-    ttk.Separator(root, orient="horizontal").pack(fill="x", padx=8)
 
 
 def _build_footer(root: tk.Misc) -> None:
