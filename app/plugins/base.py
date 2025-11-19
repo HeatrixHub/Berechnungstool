@@ -11,13 +11,20 @@ try:
 except Exception as exc:  # pragma: no cover - tkinter ist optional bei Tests
     raise RuntimeError("tkinter wird für die Host-Anwendung benötigt") from exc
 
+from app.core.projects import ProjectManager
+from app.core.resources import IsolationLibrary
+from app.core.reporting import ReportManager
+
 
 @dataclass(slots=True)
 class AppContext:
-    """Container für gemeinsam genutzte Tk-Widgets."""
+    """Container für gemeinsam genutzte Tk-Widgets und Manager."""
 
     root: tk.Tk
     notebook: ttk.Notebook
+    project_manager: ProjectManager
+    isolation_library: IsolationLibrary
+    report_manager: ReportManager
 
 
 class Plugin(ABC):
