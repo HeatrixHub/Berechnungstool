@@ -1,105 +1,127 @@
-"""Plugin-Integration für das Isolierungstool."""
+"""Plugin-Integration für das Isolierungstool in der neuen Architektur."""
+from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
 
-try:
-    import sv_ttk
-except Exception:  # pragma: no cover - Theme-Bibliothek optional
-    sv_ttk = None  # type: ignore[assignment]
-
+from app.core.resources import IsolationRecord
 from app.plugins.base import AppContext, Plugin
-from .tabs.tab1_berechnung_ui import BerechnungTab
-from .tabs.tab2_projekte_ui import ProjekteTab
-from .tabs.tab3_bericht_ui import BerichtTab
-from .tabs.tab4_isolierungen_ui import IsolierungenTab
 
 
 class IsolierungPlugin(Plugin):
-    """Stellt die bisherigen Tabs des Isolierungstools als Plugin bereit."""
+    """Stellt eine berechnungszentrierte Oberfläche bereit."""
 
     name = "Isolierung"
-    version = "v1.0"
+    version = "v2.0"
 
     def __init__(self) -> None:
         super().__init__()
-        self.berechnung_tab: BerechnungTab | None = None
-        self.projekte_tab: ProjekteTab | None = None
-        self.bericht_tab: BerichtTab | None = None
-        self.isolierungen_tab: IsolierungenTab | None = None
+        self._result_var = tk.StringVar(value="Keine Berechnung durchgeführt")
+        self._context: AppContext | None = None
 
     def attach(self, context: AppContext) -> None:
-        container = ttk.Frame(context.notebook)
-        container.columnconfigure(0, weight=1)
-        container.rowconfigure(1, weight=1)
+        self._context = context
+        container = ttk.Frame(context.notebook, padding=(16, 12))
         context.notebook.add(container, text=self.name)
 
-        header = ttk.Frame(container, padding=(10, 8))
-        header.grid(row=0, column=0, sticky="ew")
         ttk.Label(
-            header,
-            text="Heatrix Isolierungsberechnung",
-            font=("Segoe UI", 16, "bold"),
-        ).pack(side="left", padx=5)
-        ttk.Label(
-            header,
-            text=self.version or "",
-            font=("Segoe UI", 9),
-        ).pack(side="right")
+            container, text="Isolierungsberechnung", font=("Segoe UI", 16, "bold")
+        ).grid(row=0, column=0, sticky="w")
 
-        notebook = ttk.Notebook(container)
-        notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        form = ttk.Frame(container)
+        form.grid(row=1, column=0, sticky="nsew", pady=(16, 8))
+        container.columnconfigure(0, weight=1)
 
-        try:
-            self.berechnung_tab = BerechnungTab(notebook)
-            self.projekte_tab = ProjekteTab(
-                notebook, berechnung_tab=self.berechnung_tab
-            )
-            self.bericht_tab = BerichtTab(notebook)
-            self.isolierungen_tab = IsolierungenTab(notebook)
-        except Exception:
-            import traceback
+        labels = [
+            "Fläche [m²]",
+            "Temperaturdifferenz [K]",
+            "Leitfähigkeit λ [W/mK]",
+            "Dicke [mm]",
+        ]
+        self._entries: list[ttk.Entry] = []
+        default_values = ["10", "35", "0.035", "80"]
+        for row, (label, default) in enumerate(zip(labels, default_values)):
+            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=4)
+            entry = ttk.Entry(form)
+            entry.insert(0, default)
+            entry.grid(row=row, column=1, sticky="ew", pady=4, padx=(8, 0))
+            self._entries.append(entry)
+        form.columnconfigure(1, weight=1)
 
-            print("Fehler beim Erstellen der Isolierungstabs:")
-            traceback.print_exc()
+        ttk.Button(
+            container, text="Berechnung starten", command=self._calculate
+        ).grid(row=2, column=0, sticky="w")
 
-        notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        ttk.Label(container, textvariable=self._result_var, font=("Segoe UI", 12)).grid(
+            row=3, column=0, sticky="w", pady=(12, 0)
+        )
 
-        footer = ttk.Frame(container, padding=(10, 5))
-        footer.grid(row=2, column=0, sticky="ew")
-        ttk.Label(
-            footer,
-            text="© 2025 Heatrix GmbH",
-            font=("Segoe UI", 9),
+        buttons = ttk.Frame(container, padding=(0, 16, 0, 0))
+        buttons.grid(row=4, column=0, sticky="w")
+        ttk.Button(
+            buttons, text="Im Projekt speichern", command=self._store_in_project
+        ).pack(side="left")
+        ttk.Button(
+            buttons,
+            text="In Isolierungsdatenbank übernehmen",
+            command=self._store_in_library,
+        ).pack(side="left", padx=8)
+        ttk.Button(
+            buttons, text="Zum Bericht hinzufügen", command=self._add_to_report
         ).pack(side="left")
 
-    def on_tab_changed(self, event: tk.Event) -> None:
-        notebook = event.widget
-        selected_tab = notebook.nametowidget(notebook.select())
+    def _calculate(self) -> None:
+        try:
+            area = float(self._entries[0].get())
+            delta_t = float(self._entries[1].get())
+            conductivity = float(self._entries[2].get())
+            thickness_mm = float(self._entries[3].get())
+        except ValueError:
+            self._result_var.set("Ungültige Eingabe – bitte Zahlen verwenden.")
+            return
+        thickness_m = thickness_mm / 1000.0
+        heat_loss = conductivity / thickness_m * area * delta_t
+        self._result_var.set(
+            f"Wärmeverlust: {heat_loss:,.0f} W (Dicke {thickness_mm:.1f} mm)"
+        )
 
-        if (
-            self.projekte_tab is not None
-            and selected_tab == self.projekte_tab.scrollable.master
-        ):
-            self.projekte_tab.refresh_projects()
-            print("[Auto-Update] Tab 2 (Projekte) aktualisiert.")
-        elif (
-            self.bericht_tab is not None
-            and selected_tab == self.bericht_tab.scrollable.master
-        ):
-            self.bericht_tab.refresh_project_list()
-            print("[Auto-Update] Tab 3 (Bericht) aktualisiert.")
+    def _store_in_project(self) -> None:
+        if not self._context:
+            return
+        project_state = {
+            "area": self._entries[0].get(),
+            "delta_t": self._entries[1].get(),
+            "conductivity": self._entries[2].get(),
+            "thickness_mm": self._entries[3].get(),
+            "result": self._result_var.get(),
+        }
+        self._context.project_manager.update_plugin_state(self.name, project_state)
+
+    def _store_in_library(self) -> None:
+        if not self._context:
+            return
+        try:
+            thickness = float(self._entries[3].get())
+        except ValueError:
+            self._result_var.set("Bitte gültige Werte eingeben, bevor gespeichert wird.")
+            return
+        record = IsolationRecord(
+            name=f"Isolierung {self._entries[0].get()} m²",
+            material="Projektmaterial",
+            thickness_mm=thickness,
+            metadata={"delta_t": self._entries[1].get()},
+        )
+        self._context.isolation_library.upsert(record)
+
+    def _add_to_report(self) -> None:
+        if not self._context:
+            return
+        self._context.report_manager.submit_contribution(
+            plugin_name=self.name,
+            section_id="isolierung-ergebnis",
+            title="Isolierungsberechnung",
+            content=self._result_var.get() or "Keine Daten",
+        )
 
     def on_theme_changed(self, theme: str) -> None:  # pragma: no cover - GUI Callback
-        if theme not in {"light", "dark"} or not sv_ttk:
-            return
-        if self.berechnung_tab is not None:
-            self.berechnung_tab.update_theme_colors()
-        if self.projekte_tab is not None and hasattr(
-            self.projekte_tab, "update_theme_colors"
-        ):
-            self.projekte_tab.update_theme_colors()
-        if self.bericht_tab is not None and hasattr(
-            self.bericht_tab, "update_theme_colors"
-        ):
-            self.bericht_tab.update_theme_colors()
+        del theme
