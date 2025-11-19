@@ -51,28 +51,24 @@ def _configure_theme(root: tk.Misc) -> None:
         pass
 
 
-def _build_header(
-    root: tk.Misc,
-    theme_toggle: tk.Widget | None,
-    plugin_manager_button: tk.Widget | None,
-) -> None:
-    header = ttk.Frame(root, padding=(12, 10))
+def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> None:
+    header = ttk.Frame(root, padding=(16, 10, 16, 6))
     header.pack(fill="x")
-    ttk.Label(
-        header,
-        text="Heatrix Berechnungstools",
-        font=("Segoe UI", 18, "bold"),
-    ).pack(side="left")
     controls_frame = ttk.Frame(header)
     controls_frame.pack(side="right")
-    if plugin_manager_button is not None:
-        plugin_manager_button.pack(side="right", padx=(0, 6))
-    if theme_toggle is not None:
-        theme_toggle.pack(side="right")
+    theme_toggle = _create_theme_button(controls_frame, plugins)
+    plugin_manager_button = _create_plugin_manager_button(
+        controls_frame, dialog_parent=root
+    )
+    for widget in (theme_toggle, plugin_manager_button):
+        if widget is not None:
+            widget.pack(side="right", padx=(8, 0))
+    ttk.Separator(root, orient="horizontal").pack(fill="x", padx=8)
 
 
 def _build_footer(root: tk.Misc) -> None:
-    footer = ttk.Frame(root, padding=(12, 6))
+    ttk.Separator(root, orient="horizontal").pack(fill="x", padx=8)
+    footer = ttk.Frame(root, padding=(16, 6, 16, 12))
     footer.pack(fill="x", side="bottom")
     ttk.Label(
         footer,
@@ -81,7 +77,7 @@ def _build_footer(root: tk.Misc) -> None:
     ).pack(side="left")
 
 
-def _create_theme_button(root: tk.Misc, plugins: Iterable[Plugin]) -> tk.Widget | None:
+def _create_theme_button(parent: tk.Misc, plugins: Iterable[Plugin]) -> tk.Widget | None:
     if not sv_ttk:
         return None
 
@@ -89,20 +85,30 @@ def _create_theme_button(root: tk.Misc, plugins: Iterable[Plugin]) -> tk.Widget 
         current = sv_ttk.get_theme()
         if current == "dark":
             sv_ttk.use_light_theme()
-            button.config(text="🌙 Dunkelmodus")
+            button.config(text="🌙")
             new_theme = "light"
         else:
             sv_ttk.use_dark_theme()
-            button.config(text="☀ Hellmodus")
+            button.config(text="☀")
             new_theme = "dark"
         for plugin in plugins:
             plugin.on_theme_changed(new_theme)
 
-    button = ttk.Button(root, text="☀ Hellmodus", command=toggle_theme)
+    button = ttk.Button(
+        parent, text="☀", width=3, style="Toolbutton", command=toggle_theme
+    )
+    try:
+        current_theme = sv_ttk.get_theme()
+    except Exception:
+        current_theme = "dark"
+    if current_theme == "light":
+        button.config(text="🌙")
     return button
 
 
-def _create_plugin_manager_button(root: tk.Misc) -> tk.Widget:
+def _create_plugin_manager_button(
+    parent: tk.Misc, dialog_parent: tk.Misc
+) -> tk.Widget:
     def _show_dialog() -> None:
         def _on_save() -> None:
             messagebox.showinfo(
@@ -111,10 +117,12 @@ def _create_plugin_manager_button(root: tk.Misc) -> tk.Widget:
                 "damit die Plugin-Auswahl übernommen wird.",
             )
 
-        dialog = PluginManagerDialog(root, on_save=_on_save)
+        dialog = PluginManagerDialog(dialog_parent, on_save=_on_save)
         dialog.grab_set()
 
-    return ttk.Button(root, text="Plugins verwalten", command=_show_dialog)
+    return ttk.Button(
+        parent, text="⚙", width=3, style="Toolbutton", command=_show_dialog
+    )
 
 
 def _build_warning_panel(root: tk.Misc, errors: Sequence[str]) -> None:
@@ -143,13 +151,16 @@ def main() -> None:
     registry.ensure_default_registry()
     plugins, load_errors = _load_plugins()
 
-    theme_button = _create_theme_button(root, plugins)
-    plugin_manager_button = _create_plugin_manager_button(root)
-    _build_header(root, theme_button, plugin_manager_button)
+    _build_header(root, plugins)
     _build_warning_panel(root, load_errors)
 
-    notebook = ttk.Notebook(root)
-    notebook.pack(fill="both", expand=True, padx=10, pady=10)
+    content = ttk.Frame(root, padding=(16, 12, 16, 16))
+    content.pack(fill="both", expand=True)
+    content.columnconfigure(0, weight=1)
+    content.rowconfigure(0, weight=1)
+
+    notebook = ttk.Notebook(content)
+    notebook.grid(row=0, column=0, sticky="nsew")
 
     context = AppContext(root=root, notebook=notebook)
     for plugin in plugins:
