@@ -10,7 +10,6 @@ except Exception:  # pragma: no cover - Theme-Bibliothek optional
 
 from app.plugins.base import AppContext, Plugin
 from .tabs.tab1_berechnung_ui import BerechnungTab
-from .tabs.tab2_projekte_ui import ProjekteTab
 from .tabs.tab3_bericht_ui import BerichtTab
 from .tabs.tab4_isolierungen_ui import IsolierungenTab
 
@@ -24,7 +23,6 @@ class IsolierungPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__()
         self.berechnung_tab: BerechnungTab | None = None
-        self.projekte_tab: ProjekteTab | None = None
         self.bericht_tab: BerichtTab | None = None
         self.isolierungen_tab: IsolierungenTab | None = None
 
@@ -52,9 +50,6 @@ class IsolierungPlugin(Plugin):
 
         try:
             self.berechnung_tab = BerechnungTab(notebook)
-            self.projekte_tab = ProjekteTab(
-                notebook, berechnung_tab=self.berechnung_tab
-            )
             self.bericht_tab = BerichtTab(notebook)
             self.isolierungen_tab = IsolierungenTab(notebook)
         except Exception:
@@ -78,12 +73,6 @@ class IsolierungPlugin(Plugin):
         selected_tab = notebook.nametowidget(notebook.select())
 
         if (
-            self.projekte_tab is not None
-            and selected_tab == self.projekte_tab.scrollable.master
-        ):
-            self.projekte_tab.refresh_projects()
-            print("[Auto-Update] Tab 2 (Projekte) aktualisiert.")
-        elif (
             self.bericht_tab is not None
             and selected_tab == self.bericht_tab.scrollable.master
         ):
@@ -95,11 +84,17 @@ class IsolierungPlugin(Plugin):
             return
         if self.berechnung_tab is not None:
             self.berechnung_tab.update_theme_colors()
-        if self.projekte_tab is not None and hasattr(
-            self.projekte_tab, "update_theme_colors"
-        ):
-            self.projekte_tab.update_theme_colors()
         if self.bericht_tab is not None and hasattr(
             self.bericht_tab, "update_theme_colors"
         ):
             self.bericht_tab.update_theme_colors()
+
+    def export_state(self) -> dict:
+        if self.berechnung_tab is None:
+            return {}
+        return self.berechnung_tab.export_state()
+
+    def import_state(self, state: dict) -> None:
+        if self.berechnung_tab is None:
+            return
+        self.berechnung_tab.load_project_into_ui(state)

@@ -20,10 +20,10 @@ from tkinter import messagebox
 from app.plugins.base import AppContext, Plugin
 from app.plugins.manager import PluginManagerDialog
 from app.plugins import registry
+from app.projects import ProjectStore, ProjectsTab
 
 
-def _load_plugins() -> tuple[List[Plugin], List[str]]:
-    specs = registry.load_registry()
+def _load_plugins(specs: Sequence[registry.PluginSpec]) -> tuple[List[Plugin], List[str]]:
     plugins: List[Plugin] = []
     errors: List[str] = []
     for spec in specs:
@@ -36,7 +36,9 @@ def _load_plugins() -> tuple[List[Plugin], List[str]]:
                 raise TypeError(
                     f"{spec.module}.{spec.class_name} ist kein Plugin-Typ"
                 )
-            plugins.append(plugin_cls())
+            plugin_instance = plugin_cls()
+            plugin_instance.identifier = spec.identifier
+            plugins.append(plugin_instance)
         except Exception as exc:  # pragma: no cover - Laufzeitdiagnose
             errors.append(f"{spec.name}: {exc}")
     return plugins, errors
@@ -154,7 +156,8 @@ def main() -> None:
     _configure_theme(root)
 
     registry.ensure_default_registry()
-    plugins, load_errors = _load_plugins()
+    specs = registry.load_registry()
+    plugins, load_errors = _load_plugins(specs)
 
     _build_header(root, plugins)
     _build_warning_panel(root, load_errors)
@@ -167,7 +170,10 @@ def main() -> None:
     notebook = ttk.Notebook(content)
     notebook.grid(row=0, column=0, sticky="nsew")
 
-    context = AppContext(root=root, notebook=notebook)
+    project_store = ProjectStore()
+    ProjectsTab(notebook, project_store, plugins, specs)
+
+    context = AppContext(root=root, notebook=notebook, project_store=project_store)
     for plugin in plugins:
         plugin.attach(context)
 

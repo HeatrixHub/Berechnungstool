@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import LinearSegmentedColormap
 import sv_ttk
+from typing import Any, Dict, List, Tuple
 
 from .tab1_berechnung_logic import (
     validate_inputs,
@@ -12,7 +13,6 @@ from .tab1_berechnung_logic import (
     save_current_project,
     get_k_values_for_layers,
 )
-from ..core.database import get_all_project_names
 from .scrollable import ScrollableFrame
 
 
@@ -26,6 +26,7 @@ class BerechnungTab:
 
         self.frame = self.scrollable.inner
         self.build_ui()
+        self.last_result: Dict[str, Any] | None = None
 
     # ---------------------------------------------------------------
     # UI-Aufbau
@@ -143,6 +144,9 @@ class BerechnungTab:
                 temps = result.get("interface_temperatures", [])
                 if temps and thicknesses:
                     self.plot_temperature_profile(thicknesses, temps)
+                self.last_result = result
+            else:
+                self.last_result = None
 
         except Exception as e:
             import traceback
@@ -224,6 +228,7 @@ class BerechnungTab:
 
             result = perform_calculation(thicknesses, isolierungen, T_left, T_inf, h)
             self.display_result(result)
+            self.last_result = result
 
             if "interface_temperatures" in result and result["interface_temperatures"]:
                 self.plot_temperature_profile(thicknesses, result["interface_temperatures"])
@@ -234,6 +239,7 @@ class BerechnungTab:
     # Ergebnisdarstellung
     # ---------------------------------------------------------------
     def display_result(self, result: dict):
+        self.last_result = result
         # Vorherigen Textbereich löschen und ersetzen
         for widget in self.output_frame.winfo_children():
             widget.destroy()
@@ -328,6 +334,20 @@ class BerechnungTab:
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
 
+    def _collect_layer_data(self) -> Tuple[List[float], List[str]]:
+        thicknesses: List[float] = []
+        isolierungen: List[str] = []
+        for entry_d, combo in self.layer_rows:
+            thicknesses.append(self._safe_float(entry_d.get()))
+            isolierungen.append(combo.get().strip())
+        return thicknesses, isolierungen
+
+    def _safe_float(self, value: str) -> float:
+        try:
+            return float(value.strip())
+        except (ValueError, AttributeError):
+            return 0.0
+
     # ---------------------------------------------------------------
     # Projekt speichern
     # ---------------------------------------------------------------
@@ -362,6 +382,25 @@ class BerechnungTab:
             messagebox.showinfo("Gespeichert", f"Projekt '{name}' wurde gespeichert.")
         except Exception as e:
             messagebox.showerror("Fehler beim Speichern", str(e))
+
+    def export_state(self) -> Dict[str, Any]:
+        thicknesses, isolierungen = self._collect_layer_data()
+        try:
+            layer_count = int(self.entry_layers.get())
+        except ValueError:
+            layer_count = len(thicknesses)
+        state: Dict[str, Any] = {
+            "name": self.entry_project_name.get().strip(),
+            "layer_count": layer_count,
+            "thicknesses": thicknesses,
+            "isolierungen": isolierungen,
+            "T_left": self._safe_float(self.entry_T_left.get()),
+            "T_inf": self._safe_float(self.entry_T_inf.get()),
+            "h": self._safe_float(self.entry_h.get()),
+        }
+        if self.last_result is not None:
+            state["result"] = self.last_result
+        return state
 
     # ---------------------------------------------------------------
     # Theme
