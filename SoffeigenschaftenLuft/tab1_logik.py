@@ -1,5 +1,5 @@
-from nasa_poly import nasa_cp, nasa_cv, berechne_waermeleistung
-from viscosity_lucas import dynamic_viscosity_air
+from .nasa_poly import nasa_cp, nasa_cv, berechne_waermeleistung
+from .viscosity_lucas import dynamic_viscosity_air
 import traceback
 
 def berechne_zustand(p1, rho1, T1_C, T2_C, V1, V_norm, Q_kW, zustand, normart):

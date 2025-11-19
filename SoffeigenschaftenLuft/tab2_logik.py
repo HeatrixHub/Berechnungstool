@@ -1,6 +1,6 @@
-from viscosity_lucas import dynamic_viscosity_air
-from reynolds_berechnung import berechne_reynolds
-from gui_utils import check_float, zeige_fehlermeldung
+from .gui_utils import check_float, zeige_fehlermeldung
+from .reynolds_berechnung import berechne_reynolds
+from .viscosity_lucas import dynamic_viscosity_air
 
 def berechne_tab2_werte(entries, shape_var, flow_unit_var):
     fehler = False

@@ -20,6 +20,7 @@ from app.plugins.base import AppContext, Plugin
 # Statische Plugin-Liste; kann später durch dynamische Entdeckung ersetzt werden.
 PLUGIN_SPECS: Sequence[Tuple[str, str]] = (
     ("Isolierung.plugin", "IsolierungPlugin"),
+    ("SoffeigenschaftenLuft.plugin", "StoffeigenschaftenLuftPlugin"),
 )
 
 
