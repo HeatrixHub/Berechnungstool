@@ -15,26 +15,31 @@ try:
 except Exception:  # pragma: no cover - sv_ttk ist optional
     sv_ttk = None  # type: ignore[assignment]
 
+from tkinter import messagebox
+
 from app.plugins.base import AppContext, Plugin
-
-# Statische Plugin-Liste; kann später durch dynamische Entdeckung ersetzt werden.
-PLUGIN_SPECS: Sequence[Tuple[str, str]] = (
-    ("Isolierung.plugin", "IsolierungPlugin"),
-    ("SoffeigenschaftenLuft.plugin", "StoffeigenschaftenLuftPlugin"),
-)
+from app.plugins.manager import PluginManagerDialog
+from app.plugins import registry
 
 
-def _load_plugins() -> List[Plugin]:
+def _load_plugins() -> tuple[List[Plugin], List[str]]:
+    specs = registry.load_registry()
     plugins: List[Plugin] = []
-    for module_name, attr_name in PLUGIN_SPECS:
-        module = importlib.import_module(module_name)
-        plugin_cls = getattr(module, attr_name)
-        if not isinstance(plugin_cls, type) or not issubclass(plugin_cls, Plugin):
-            raise TypeError(
-                f"{module_name}.{attr_name} ist kein Plugin-Typ"
-            )
-        plugins.append(plugin_cls())
-    return plugins
+    errors: List[str] = []
+    for spec in specs:
+        if not spec.enabled:
+            continue
+        try:
+            module = importlib.import_module(spec.module)
+            plugin_cls = getattr(module, spec.class_name)
+            if not isinstance(plugin_cls, type) or not issubclass(plugin_cls, Plugin):
+                raise TypeError(
+                    f"{spec.module}.{spec.class_name} ist kein Plugin-Typ"
+                )
+            plugins.append(plugin_cls())
+        except Exception as exc:  # pragma: no cover - Laufzeitdiagnose
+            errors.append(f"{spec.name}: {exc}")
+    return plugins, errors
 
 
 def _configure_theme(root: tk.Misc) -> None:
@@ -46,7 +51,11 @@ def _configure_theme(root: tk.Misc) -> None:
         pass
 
 
-def _build_header(root: tk.Misc, theme_toggle: tk.Widget | None) -> None:
+def _build_header(
+    root: tk.Misc,
+    theme_toggle: tk.Widget | None,
+    plugin_manager_button: tk.Widget | None,
+) -> None:
     header = ttk.Frame(root, padding=(12, 10))
     header.pack(fill="x")
     ttk.Label(
@@ -54,6 +63,10 @@ def _build_header(root: tk.Misc, theme_toggle: tk.Widget | None) -> None:
         text="Heatrix Berechnungstools",
         font=("Segoe UI", 18, "bold"),
     ).pack(side="left")
+    controls_frame = ttk.Frame(header)
+    controls_frame.pack(side="right")
+    if plugin_manager_button is not None:
+        plugin_manager_button.pack(side="right", padx=(0, 6))
     if theme_toggle is not None:
         theme_toggle.pack(side="right")
 
@@ -89,6 +102,36 @@ def _create_theme_button(root: tk.Misc, plugins: Iterable[Plugin]) -> tk.Widget 
     return button
 
 
+def _create_plugin_manager_button(root: tk.Misc) -> tk.Widget:
+    def _show_dialog() -> None:
+        def _on_save() -> None:
+            messagebox.showinfo(
+                "Pluginverwaltung",
+                "Änderungen gespeichert. Bitte Anwendung neu starten, "
+                "damit die Plugin-Auswahl übernommen wird.",
+            )
+
+        dialog = PluginManagerDialog(root, on_save=_on_save)
+        dialog.grab_set()
+
+    return ttk.Button(root, text="Plugins verwalten", command=_show_dialog)
+
+
+def _build_warning_panel(root: tk.Misc, errors: Sequence[str]) -> None:
+    if not errors:
+        return
+    frame = ttk.Frame(root, padding=(12, 6))
+    frame.pack(fill="x")
+    ttk.Label(
+        frame,
+        text="Einige Plugins konnten nicht geladen werden:",
+        font=("Segoe UI", 10, "bold"),
+        foreground="#b45309",
+    ).pack(anchor="w")
+    for error in errors:
+        ttk.Label(frame, text=f"• {error}", foreground="#92400e").pack(anchor="w")
+
+
 def main() -> None:
     root = tk.Tk()
     root.title("Heatrix Berechnungstools")
@@ -97,10 +140,13 @@ def main() -> None:
 
     _configure_theme(root)
 
-    plugins = _load_plugins()
+    registry.ensure_default_registry()
+    plugins, load_errors = _load_plugins()
 
     theme_button = _create_theme_button(root, plugins)
-    _build_header(root, theme_button)
+    plugin_manager_button = _create_plugin_manager_button(root)
+    _build_header(root, theme_button, plugin_manager_button)
+    _build_warning_panel(root, load_errors)
 
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True, padx=10, pady=10)

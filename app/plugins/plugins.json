@@ -1,0 +1,18 @@
+{
+  "plugins": [
+    {
+      "identifier": "isolierung",
+      "name": "Isolierung",
+      "module": "Isolierung.plugin",
+      "class_name": "IsolierungPlugin",
+      "enabled": true
+    },
+    {
+      "identifier": "stoffeigenschaften-luft",
+      "name": "Stoffeigenschaften Luft",
+      "module": "SoffeigenschaftenLuft.plugin",
+      "class_name": "StoffeigenschaftenLuftPlugin",
+      "enabled": true
+    }
+  ]
+}
