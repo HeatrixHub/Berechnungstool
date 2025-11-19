@@ -1,5 +1,5 @@
 import numpy as np
-from tabs.tab4_isolierungen_logic import interpolate_k  # nutzt deine Interpolationsfunktion
+from ..tabs.tab4_isolierungen_logic import interpolate_k  # nutzt deine Interpolationsfunktion
 
 def compute_multilayer(thicknesses, k_tables, temps_tables, T_left, T_inf, h, tol=0.5, max_iter=100):
     """

@@ -4,9 +4,9 @@ Logische Steuerung des Berechnungs-Tabs.
 Validiert Eingaben, ruft Berechnungen auf, lädt Isolierungen aus der DB.
 """
 
-from core.computation import compute_multilayer
-from core.database import save_project
-from tabs.tab4_isolierungen_logic import load_insulation
+from ..core.computation import compute_multilayer
+from ..core.database import save_project
+from .tab4_isolierungen_logic import load_insulation
 from typing import Dict, List
 
 

@@ -4,8 +4,8 @@ Logische Steuerung des Projekte-Tabs.
 Beinhaltet alle Operationen zum Laden, Löschen und Anzeigen von Projekten.
 """
 
-from core.database import delete_project, list_projects_overview, load_project
-from core.models import Project
+from ..core.database import delete_project, list_projects_overview, load_project
+from ..core.models import Project
 from typing import Any, Dict, List, Optional
 
 
