@@ -4,14 +4,14 @@ Logische Steuerung des Projekte-Tabs.
 Beinhaltet alle Operationen zum Laden, Löschen und Anzeigen von Projekten.
 """
 
-from core.database import get_all_project_names, load_project, delete_project
+from core.database import delete_project, list_projects_overview, load_project
 from core.models import Project
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
-def list_projects() -> List[str]:
-    """Liefert alle gespeicherten Projektnamen alphabetisch sortiert."""
-    return get_all_project_names()
+def list_projects() -> List[Dict[str, Any]]:
+    """Liefert eine Übersicht aller Projekte inkl. Metadaten."""
+    return list_projects_overview()
 
 
 def get_project_details(name: str) -> Optional[Project]:

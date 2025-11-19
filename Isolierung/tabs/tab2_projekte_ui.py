@@ -4,7 +4,6 @@ from tkinter import ttk, messagebox
 import sv_ttk
 from tabs.scrollable import ScrollableFrame
 from .tab2_projekte_logic import list_projects, get_project_details, remove_project
-from core.database import get_all_project_names
 
 
 class ProjekteTab:
@@ -21,6 +20,7 @@ class ProjekteTab:
         self.scrollable.pack(fill="both", expand=True)
 
         self.frame = self.scrollable.inner
+        self.project_overview: list[dict] = []
         self.build_ui()
 
     # ---------------------------------------------------------------
@@ -35,7 +35,7 @@ class ProjekteTab:
         ).grid(row=0, column=0, sticky="w", padx=10, pady=(10, 5))
 
         # --- Treeview für Projekte ---
-        columns = ("name", "T_left", "T_inf", "h")
+        columns = ("name", "layers", "T_left", "T_inf", "h", "updated_at")
         self.tree = ttk.Treeview(
             self.frame,
             columns=columns,
@@ -44,13 +44,17 @@ class ProjekteTab:
             height=12,
         )
         self.tree.heading("name", text="Projektname")
+        self.tree.heading("layers", text="Schichten")
         self.tree.heading("T_left", text="T_links [°C]")
         self.tree.heading("T_inf", text="T_∞ [°C]")
         self.tree.heading("h", text="h [W/m²K]")
+        self.tree.heading("updated_at", text="Zuletzt aktualisiert")
         self.tree.column("name", width=220, anchor="w")
+        self.tree.column("layers", width=80, anchor="center")
         self.tree.column("T_left", width=80, anchor="center")
         self.tree.column("T_inf", width=80, anchor="center")
         self.tree.column("h", width=80, anchor="center")
+        self.tree.column("updated_at", width=160, anchor="center")
         self.tree.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
         self.tree.bind("<<TreeviewSelect>>", self.on_project_select)
 
@@ -102,10 +106,20 @@ class ProjekteTab:
     # ---------------------------------------------------------------
     def refresh_projects(self):
         self.tree.delete(*self.tree.get_children())
-        for name in list_projects():
-            project = get_project_details(name)
-            if project:
-                self.tree.insert("", "end", values=(project.name, project.T_left, project.T_inf, project.h))
+        self.project_overview = list_projects()
+        for project in self.project_overview:
+            self.tree.insert(
+                "",
+                "end",
+                values=(
+                    project.get("name"),
+                    project.get("layer_count", 0),
+                    project.get("T_left"),
+                    project.get("T_inf"),
+                    project.get("h"),
+                    project.get("updated_at"),
+                ),
+            )
         self.update_theme_colors()
 
     def on_project_select(self, event=None):
@@ -130,6 +144,8 @@ class ProjekteTab:
                 f"T_links [°C]: {project.T_left}",
                 f"T_∞ [°C]: {project.T_inf}",
                 f"h [W/m²K]: {project.h}",
+                f"Erstellt am: {project.created_at or '-'}",
+                f"Zuletzt aktualisiert: {project.updated_at or '-'}",
             ]
             if project.result:
                 lines.append("\n--- Ergebnis ---")
