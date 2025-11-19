@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
-from tab3_logik import berechne_heizerleistung
-from gui_utils import ToolTip
+
+from .gui_utils import ToolTip
+from .tab3_logik import berechne_heizerleistung
 
 def create_tab3(notebook, get_thermal_power_from_tab1):
     frame_tab3 = tk.Frame(notebook, padx=20, pady=10)

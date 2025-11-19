@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
-from gui_utils import check_float, zeige_fehlermeldung, set_entry_value
-from gui_utils import ToolTip
-from tab1_logik import (
+
+from .gui_utils import ToolTip, check_float, set_entry_value, zeige_fehlermeldung
+from .tab1_logik import (
     starte_berechnung,
     toggle_normbedingungen,
     toggle_normkubikmenge

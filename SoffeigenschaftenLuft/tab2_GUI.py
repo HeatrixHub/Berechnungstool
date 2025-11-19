@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
-from tab2_logik import berechne_tab2_werte
-from gui_utils import set_entry_value, ToolTip
+
+from .gui_utils import ToolTip, set_entry_value
+from .tab2_logik import berechne_tab2_werte
 
 def create_tab2(notebook):
     frame_tab2 = tk.Frame(notebook, padx=20, pady=10)
