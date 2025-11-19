@@ -4,71 +4,42 @@ Logik für den Isolierungen-Tab.
 Verwaltet das Speichern, Laden, Bearbeiten und Löschen von Isolierungen.
 """
 
-import sqlite3
-import json
 import numpy as np
-from typing import List, Dict
+from typing import Dict, List
 
-DB_PATH = "heatrix_data.db"
-
-
-def _get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS insulations (
-            name TEXT PRIMARY KEY,
-            classification_temp REAL,
-            density REAL,
-            temps TEXT,
-            ks TEXT
-        )
-    """)
-    return conn
+from core.database import (
+    delete_material,
+    list_materials,
+    load_material,
+    save_material,
+)
 
 
 def get_all_insulations() -> List[Dict]:
-    conn = _get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT name, classification_temp, density FROM insulations ORDER BY name")
-    rows = cur.fetchall()
-    conn.close()
-    return [{"name": r[0], "classification_temp": r[1], "density": r[2]} for r in rows]
+    materials = list_materials()
+    return [
+        {
+            "name": material.name,
+            "classification_temp": material.classification_temp,
+            "density": material.density,
+        }
+        for material in materials
+    ]
 
 
 def load_insulation(name: str) -> Dict:
-    conn = _get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM insulations WHERE name=?", (name,))
-    row = cur.fetchone()
-    conn.close()
-    if not row:
+    material = load_material(name)
+    if not material:
         return {}
-    return {
-        "name": row[0],
-        "classification_temp": row[1],
-        "density": row[2],
-        "temps": json.loads(row[3]),
-        "ks": json.loads(row[4]),
-    }
+    return material.to_dict(include_measurements=True)
 
 
 def save_insulation(name: str, classification_temp: float, density: float, temps: List[float], ks: List[float]):
-    conn = _get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT OR REPLACE INTO insulations (name, classification_temp, density, temps, ks)
-        VALUES (?, ?, ?, ?, ?)
-    """, (name, classification_temp, density, json.dumps(temps), json.dumps(ks)))
-    conn.commit()
-    conn.close()
+    return save_material(name, classification_temp, density, temps, ks)
 
 
 def delete_insulation(name: str):
-    conn = _get_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM insulations WHERE name=?", (name,))
-    conn.commit()
-    conn.close()
+    return delete_material(name)
 
 
 def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):

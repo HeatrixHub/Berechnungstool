@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+heatrix.db
+projects.db
+heatrix_data.db
+*.sqlite3
