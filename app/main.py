@@ -17,13 +17,9 @@ except Exception:  # pragma: no cover - sv_ttk ist optional
 
 from tkinter import messagebox
 
-from app.core.projects import ProjectManager
-from app.core.reporting import ReportManager
-from app.core.resources import IsolationLibrary
 from app.plugins.base import AppContext, Plugin
 from app.plugins.manager import PluginManagerDialog
 from app.plugins import registry
-from app.ui.global_tabs import ProjectsTab, IsolationTab, ReportTab
 
 
 def _load_plugins() -> tuple[List[Plugin], List[str]]:
@@ -171,21 +167,7 @@ def main() -> None:
     notebook = ttk.Notebook(content)
     notebook.grid(row=0, column=0, sticky="nsew")
 
-    project_manager = ProjectManager()
-    isolation_library = IsolationLibrary()
-    report_manager = ReportManager()
-
-    ProjectsTab(notebook, project_manager)
-    IsolationTab(notebook, isolation_library)
-    ReportTab(notebook, report_manager)
-
-    context = AppContext(
-        root=root,
-        notebook=notebook,
-        project_manager=project_manager,
-        isolation_library=isolation_library,
-        report_manager=report_manager,
-    )
+    context = AppContext(root=root, notebook=notebook)
     for plugin in plugins:
         plugin.attach(context)
 
