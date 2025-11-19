@@ -10,7 +10,7 @@ from .tab4_isolierungen_logic import (
     delete_insulation,
     interpolate_k
 )
-from tabs.scrollable import ScrollableFrame  # Importiere die ScrollableFrame-Klasse
+from .scrollable import ScrollableFrame  # Importiere die ScrollableFrame-Klasse
 
 class IsolierungenTab:
     def __init__(self, notebook):

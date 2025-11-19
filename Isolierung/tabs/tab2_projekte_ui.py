@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sv_ttk
-from tabs.scrollable import ScrollableFrame
+from .scrollable import ScrollableFrame
 from .tab2_projekte_logic import list_projects, get_project_details, remove_project
 
 

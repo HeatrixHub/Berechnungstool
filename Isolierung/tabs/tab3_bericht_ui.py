@@ -7,9 +7,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import LinearSegmentedColormap
 import sv_ttk
 
-from core.database import get_all_project_names, load_project
+from ..core.database import get_all_project_names, load_project
 from .tab3_bericht_logic import build_report_content, export_to_pdf, export_to_docx
-from tabs.scrollable import ScrollableFrame
+from .scrollable import ScrollableFrame
 
 
 class BerichtTab:

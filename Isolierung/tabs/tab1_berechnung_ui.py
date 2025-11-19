@@ -12,8 +12,8 @@ from .tab1_berechnung_logic import (
     save_current_project,
     get_k_values_for_layers,
 )
-from core.database import get_all_project_names
-from tabs.scrollable import ScrollableFrame
+from ..core.database import get_all_project_names
+from .scrollable import ScrollableFrame
 
 
 class BerechnungTab:
@@ -168,7 +168,7 @@ class BerechnungTab:
             iso_val = combo_iso.get().strip()
             current_data.append((t_val, iso_val))
 
-        from tabs.tab4_isolierungen_logic import get_all_insulations
+        from .tab4_isolierungen_logic import get_all_insulations
         isolierungen = [i["name"] for i in get_all_insulations()]
 
         current_n = len(self.layer_rows)

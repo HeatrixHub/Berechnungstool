@@ -7,7 +7,7 @@ Verwaltet das Speichern, Laden, Bearbeiten und Löschen von Isolierungen.
 import numpy as np
 from typing import Dict, List
 
-from core.database import (
+from ..core.database import (
     delete_material,
     list_materials,
     load_material,
