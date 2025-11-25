@@ -11,7 +11,6 @@ except Exception:  # pragma: no cover - Theme-Bibliothek optional
 from app.plugins.base import AppContext, Plugin
 from .tabs.tab1_berechnung_ui import BerechnungTab
 from .tabs.tab3_bericht_ui import BerichtTab
-from .tabs.tab4_isolierungen_ui import IsolierungenTab
 
 
 class IsolierungPlugin(Plugin):
@@ -24,7 +23,6 @@ class IsolierungPlugin(Plugin):
         super().__init__()
         self.berechnung_tab: BerechnungTab | None = None
         self.bericht_tab: BerichtTab | None = None
-        self.isolierungen_tab: IsolierungenTab | None = None
 
     def attach(self, context: AppContext) -> None:
         container = ttk.Frame(context.notebook)
@@ -51,7 +49,6 @@ class IsolierungPlugin(Plugin):
         try:
             self.berechnung_tab = BerechnungTab(notebook)
             self.bericht_tab = BerichtTab(notebook)
-            self.isolierungen_tab = IsolierungenTab(notebook)
         except Exception:
             import traceback
 

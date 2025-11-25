@@ -172,7 +172,7 @@ class BerechnungTab:
             iso_val = combo_iso.get().strip()
             current_data.append((t_val, iso_val))
 
-        from .tab4_isolierungen_logic import get_all_insulations
+        from app.global_tabs.isolierungen_db.logic import get_all_insulations
         isolierungen = [i["name"] for i in get_all_insulations()]
 
         current_n = len(self.layer_rows)

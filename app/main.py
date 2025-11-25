@@ -21,6 +21,7 @@ from app.plugins.base import AppContext, Plugin
 from app.plugins.manager import PluginManagerDialog
 from app.plugins import registry
 from app.projects import ProjectStore, ProjectsTab
+from app.global_tabs.isolierungen_db import IsolierungenTab
 
 
 def _load_plugins(specs: Sequence[registry.PluginSpec]) -> tuple[List[Plugin], List[str]]:
@@ -172,6 +173,7 @@ def main() -> None:
 
     project_store = ProjectStore()
     ProjectsTab(notebook, project_store, plugins, specs)
+    IsolierungenTab(notebook, tab_name="Isolierungen DB")
 
     context = AppContext(root=root, notebook=notebook, project_store=project_store)
     for plugin in plugins:
