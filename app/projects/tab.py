@@ -33,6 +33,12 @@ class ProjectsTab:
         }
         self.selected_project_id: str | None = None
         self.project_cache: Dict[str, ProjectRecord] = {}
+        self.status_var = tk.StringVar(
+            value=(
+                "Wähle ein vorhandenes Projekt oder lege ein neues an, "
+                "um Plugin-Eingaben und Ergebnisse zu sichern."
+            )
+        )
 
         self.frame = ttk.Frame(notebook, padding=(12, 12, 12, 12))
         notebook.add(self.frame, text="Projekte")
@@ -46,10 +52,23 @@ class ProjectsTab:
     def _build_ui(self) -> None:
         self.frame.columnconfigure(0, weight=2)
         self.frame.columnconfigure(1, weight=3)
-        self.frame.rowconfigure(2, weight=1)
+        self.frame.rowconfigure(3, weight=1)
+
+        intro = ttk.Label(
+            self.frame,
+            wraplength=620,
+            justify="left",
+            text=(
+                "Speichere den aktuellen Zustand aller Plugins – inklusive "
+                "Eingaben und Berechnungsergebnissen – direkt in einem Projekt. "
+                "Wähle links ein Projekt, lade es oder lege über \"Neu\" einen "
+                "frischen Eintrag an."
+            ),
+        )
+        intro.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
 
         meta_frame = ttk.LabelFrame(self.frame, text="Projekt-Metadaten")
-        meta_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 8))
+        meta_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 8))
         meta_frame.columnconfigure(1, weight=1)
 
         ttk.Label(meta_frame, text="Name:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
@@ -65,28 +84,44 @@ class ProjectsTab:
         )
 
         button_frame = ttk.Frame(self.frame)
-        button_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        button_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         for i in range(5):
             button_frame.columnconfigure(i, weight=1)
 
         ttk.Button(button_frame, text="Neu", command=self.reset_form).grid(
-            row=0, column=0, padx=4
+            row=0, column=0, padx=4, pady=(0, 2), sticky="ew"
         )
-        ttk.Button(button_frame, text="Speichern", command=self.save_project).grid(
-            row=0, column=1, padx=4
-        )
-        ttk.Button(button_frame, text="Laden", command=self.load_selected_project).grid(
-            row=0, column=2, padx=4
-        )
-        ttk.Button(button_frame, text="Löschen", command=self.delete_selected_project).grid(
-            row=0, column=3, padx=4
-        )
-        ttk.Button(button_frame, text="Aktualisieren", command=self.refresh_projects).grid(
-            row=0, column=4, padx=4
-        )
+        ttk.Button(
+            button_frame,
+            text="Projekt speichern",
+            command=self.save_project,
+        ).grid(row=0, column=1, padx=4, pady=(0, 2), sticky="ew")
+        ttk.Button(
+            button_frame,
+            text="Projekt laden",
+            command=self.load_selected_project,
+        ).grid(row=0, column=2, padx=4, pady=(0, 2), sticky="ew")
+        ttk.Button(
+            button_frame,
+            text="Löschen",
+            command=self.delete_selected_project,
+        ).grid(row=0, column=3, padx=4, pady=(0, 2), sticky="ew")
+        ttk.Button(
+            button_frame,
+            text="Aktualisieren",
+            command=self.refresh_projects,
+        ).grid(row=0, column=4, padx=4, pady=(0, 2), sticky="ew")
+
+        ttk.Label(
+            button_frame,
+            textvariable=self.status_var,
+            foreground="#6b7280",
+            wraplength=760,
+            justify="left",
+        ).grid(row=1, column=0, columnspan=5, sticky="w", padx=6, pady=(4, 0))
 
         tree_frame = ttk.Frame(self.frame)
-        tree_frame.grid(row=2, column=0, sticky="nsew", padx=(0, 8))
+        tree_frame.grid(row=3, column=0, sticky="nsew", padx=(0, 8))
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
 
@@ -111,8 +146,8 @@ class ProjectsTab:
         self.tree.configure(yscroll=scrollbar.set)
         scrollbar.grid(row=0, column=1, sticky="ns")
 
-        details_frame = ttk.LabelFrame(self.frame, text="Details")
-        details_frame.grid(row=2, column=1, sticky="nsew")
+        details_frame = ttk.LabelFrame(self.frame, text="Details & Vorschau")
+        details_frame.grid(row=3, column=1, sticky="nsew")
         details_frame.rowconfigure(0, weight=1)
         details_frame.columnconfigure(0, weight=1)
 
@@ -129,6 +164,7 @@ class ProjectsTab:
         self.selected_project_id = None
         self.tree.selection_remove(self.tree.selection())
         self._show_details(None)
+        self._set_status("Neues Projekt vorbereitet. Gib Name und Autor ein.")
 
     def refresh_projects(self) -> None:
         self.project_cache.clear()
@@ -146,6 +182,7 @@ class ProjectsTab:
             self.on_project_select()
         else:
             self.reset_form()
+        self._set_status("Liste aktualisiert. Wähle ein Projekt oder speichere ein neues.")
 
     def on_project_select(self) -> None:
         selection = self.tree.selection()
@@ -161,6 +198,7 @@ class ProjectsTab:
         self.name_var.set(record.name)
         self.author_var.set(record.author)
         self._show_details(record)
+        self._set_status(f"Projekt '{record.name}' ausgewählt.")
 
     # ------------------------------------------------------------------
     # Aktionen
@@ -170,6 +208,7 @@ class ProjectsTab:
         author = self.author_var.get().strip()
         if not name:
             messagebox.showerror("Fehler", "Bitte einen Projektnamen angeben.")
+            self._set_status("Speichern abgebrochen: Projektname fehlt.")
             return
 
         plugin_states: Dict[str, Dict] = {}
@@ -207,14 +246,19 @@ class ProjectsTab:
         self.selected_project_id = record.id
         self.refresh_projects()
         messagebox.showinfo("Gespeichert", f"Projekt '{record.name}' wurde gespeichert.")
+        self._set_status(
+            "Aktueller Plugin-Stand wurde erfolgreich im Projekt abgelegt."
+        )
 
     def load_selected_project(self) -> None:
         if not self.selected_project_id:
             messagebox.showinfo("Hinweis", "Bitte zuerst ein Projekt auswählen.")
+            self._set_status("Kein Projekt ausgewählt zum Laden.")
             return
         record = self.store.load_project(self.selected_project_id)
         if not record:
             messagebox.showerror("Fehler", "Projekt konnte nicht geladen werden.")
+            self._set_status("Projekt konnte nicht geladen werden.")
             return
 
         missing_plugins: List[str] = []
@@ -242,8 +286,12 @@ class ProjectsTab:
                     ]
                 ),
             )
+            self._set_status(
+                "Projekt geladen, aber einige Plugins fehlen in dieser Installation."
+            )
 
         messagebox.showinfo("Geladen", f"Projekt '{record.name}' wurde geladen.")
+        self._set_status("Projektzustand auf alle Plugins angewendet.")
 
     def delete_selected_project(self) -> None:
         if not self.selected_project_id:
@@ -261,8 +309,10 @@ class ProjectsTab:
             messagebox.showinfo("Gelöscht", f"Projekt '{record.name}' wurde entfernt.")
             self.selected_project_id = None
             self.refresh_projects()
+            self._set_status("Projekt gelöscht. Wähle einen anderen Eintrag oder speichere neu.")
         else:
             messagebox.showerror("Fehler", "Projekt konnte nicht gelöscht werden.")
+            self._set_status("Löschen fehlgeschlagen.")
 
     # ------------------------------------------------------------------
     # Darstellung
@@ -294,3 +344,6 @@ class ProjectsTab:
                 lines.append("")
         self.details.insert(tk.END, "\n".join(lines))
         self.details.configure(state="disabled")
+
+    def _set_status(self, message: str) -> None:
+        self.status_var.set(message)
