@@ -76,11 +76,13 @@ class SchichtaufbauTab:
         )
         self.layer_table = ttk.Frame(layer_frame)
         self.layer_table.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=4)
-        self.layer_table.columnconfigure(1, weight=1)
+        for col, weight in enumerate((0, 1, 1, 0)):
+            self.layer_table.columnconfigure(col, weight=weight)
 
         ttk.Label(self.layer_table, text="#", width=4).grid(row=0, column=0, padx=4, sticky="w")
         ttk.Label(self.layer_table, text="Dicke [mm]").grid(row=0, column=1, padx=4, sticky="w")
-        ttk.Label(self.layer_table, text="Aktionen").grid(row=0, column=2, padx=4, sticky="w")
+        ttk.Label(self.layer_table, text="Material").grid(row=0, column=2, padx=4, sticky="w")
+        ttk.Label(self.layer_table, text="Aktionen").grid(row=0, column=3, padx=4, sticky="w")
 
         self.add_layer_row()
 
@@ -134,7 +136,7 @@ class SchichtaufbauTab:
             row=0, column=0, padx=8, pady=8, sticky="ew"
         )
 
-        columns = ("layer", "plate", "L", "B", "H")
+        columns = ("layer", "material", "plate", "L", "B", "H")
         tree_frame = ttk.Frame(self.summary_frame)
         tree_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 4))
         tree_frame.columnconfigure(0, weight=1)
@@ -142,11 +144,13 @@ class SchichtaufbauTab:
 
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=10)
         self.tree.heading("layer", text="Schicht")
+        self.tree.heading("material", text="Material")
         self.tree.heading("plate", text="Platte")
         self.tree.heading("L", text="L [mm]")
         self.tree.heading("B", text="B [mm]")
         self.tree.heading("H", text="H [mm]")
         self.tree.column("layer", width=70, anchor="center")
+        self.tree.column("material", width=120, anchor="w")
         self.tree.column("plate", width=90, anchor="w")
         self.tree.column("L", width=90, anchor="center")
         self.tree.column("B", width=90, anchor="center")
@@ -159,7 +163,12 @@ class SchichtaufbauTab:
     # ---------------------------------------------------------------
     # Schichtverwaltung
     # ---------------------------------------------------------------
-    def add_layer_row(self, thickness: str | float = ""):
+    def _get_insulation_names(self) -> List[str]:
+        from app.global_tabs.isolierungen_db.logic import get_all_insulations
+
+        return [i["name"] for i in get_all_insulations()]
+
+    def add_layer_row(self, thickness: str | float = "", material: str = ""):
         row_index = len(self.layer_rows)
         grid_row = row_index + 1
 
@@ -171,8 +180,14 @@ class SchichtaufbauTab:
         if thickness != "":
             entry.insert(0, str(thickness))
 
+        combo_iso = ttk.Combobox(
+            self.layer_table, values=self._get_insulation_names(), state="readonly"
+        )
+        combo_iso.grid(row=grid_row, column=2, padx=4, pady=2, sticky="ew")
+        combo_iso.set(material)
+
         action_frame = ttk.Frame(self.layer_table)
-        action_frame.grid(row=grid_row, column=2, padx=4, pady=2, sticky="e")
+        action_frame.grid(row=grid_row, column=3, padx=4, pady=2, sticky="e")
         btn_up = ttk.Button(action_frame, text="▲", width=3)
         btn_up.grid(row=0, column=0, padx=1)
         btn_down = ttk.Button(action_frame, text="▼", width=3)
@@ -184,6 +199,7 @@ class SchichtaufbauTab:
             {
                 "number": number_label,
                 "entry": entry,
+                "combo": combo_iso,
                 "action_frame": action_frame,
                 "btn_up": btn_up,
                 "btn_down": btn_down,
@@ -209,6 +225,7 @@ class SchichtaufbauTab:
         row = self.layer_rows.pop(index)
         row["number"].destroy()
         row["entry"].destroy()
+        row["combo"].destroy()
         row["action_frame"].destroy()
 
         if not self.layer_rows:
@@ -221,6 +238,7 @@ class SchichtaufbauTab:
             grid_row = i + 1
             row["number"].grid_configure(row=grid_row)
             row["entry"].grid_configure(row=grid_row)
+            row["combo"].grid_configure(row=grid_row)
             row["action_frame"].grid_configure(row=grid_row)
             row["number"].configure(text=str(grid_row))
 
@@ -242,32 +260,32 @@ class SchichtaufbauTab:
             messagebox.showwarning("Keine Quelle", "Kein Tab zum Übernehmen verbunden.")
             return
         try:
-            thicknesses, _isolierungen = self.layer_importer()
-            self.apply_layers(thicknesses)
+            thicknesses, isolierungen = self.layer_importer()
+            self.apply_layers(thicknesses, isolierungen)
         except Exception as exc:  # pragma: no cover - GUI Fehlermeldung
             messagebox.showerror("Übernehmen fehlgeschlagen", str(exc))
 
-    def apply_layers(self, thicknesses: List[float]):
-        for row in self.layer_rows:
-            row["number"].destroy()
-            row["entry"].destroy()
-            row["action_frame"].destroy()
-        self.layer_rows.clear()
+    def apply_layers(self, thicknesses: List[float], isolierungen: List[str] | None = None):
+        self._clear_layer_rows()
+        isolierungen = isolierungen or []
 
-        for thickness in thicknesses:
-            self.add_layer_row(thickness)
+        for index, thickness in enumerate(thicknesses):
+            material = isolierungen[index] if index < len(isolierungen) else ""
+            self.add_layer_row(thickness, material)
 
         if not self.layer_rows:
             self.add_layer_row()
 
     def export_layer_data(self) -> Tuple[List[float], List[str]]:
-        """Gibt die aktuellen Schichtdicken zurück (Materialien werden ignoriert)."""
+        """Gibt die aktuellen Schichtdicken und Materialien zurück."""
 
         thicknesses: List[float] = []
+        isolierungen: List[str] = []
         for row in self.layer_rows:
             text = row["entry"].get().strip()
             thicknesses.append(float(text) if text else 0.0)
-        return thicknesses, []
+            isolierungen.append(row["combo"].get().strip())
+        return thicknesses, isolierungen
 
     def _build_dimension_rows(self, parent: ttk.Widget, variables: dict[str, tk.StringVar]):
         labels = [("Länge [mm]:", "L"), ("Breite [mm]:", "B"), ("Höhe [mm]:", "H")]
@@ -284,13 +302,17 @@ class SchichtaufbauTab:
         for entry in (self.entry_L, self.entry_B, self.entry_H):
             entry.delete(0, tk.END)
         self.measure_type.set("outer")
+        self._clear_layer_rows()
+        self.add_layer_row()
+        self.clear_results()
+
+    def _clear_layer_rows(self):
         for row in self.layer_rows:
             row["number"].destroy()
             row["entry"].destroy()
+            row["combo"].destroy()
             row["action_frame"].destroy()
         self.layer_rows.clear()
-        self.add_layer_row()
-        self.clear_results()
 
     def calculate(self):
         try:
@@ -300,17 +322,19 @@ class SchichtaufbauTab:
             H = float(self.entry_H.get())
 
             thicknesses: List[float] = []
+            isolierungen: List[str] = []
             for row in self.layer_rows:
                 text = row["entry"].get().strip()
                 if text == "":
                     continue
                 thicknesses.append(float(text))
+                isolierungen.append(row["combo"].get().strip())
 
             if not thicknesses:
                 raise ValueError("Bitte mindestens eine Schichtdicke angeben.")
 
             result = compute_plate_dimensions(thicknesses, dims_type, L, B, H)
-            self.display_result(result)
+            self.display_result(result, isolierungen)
         except ValueError as exc:
             messagebox.showerror("Eingabefehler", str(exc))
         except Exception as exc:  # pragma: no cover - GUI Fehlerdialog
@@ -326,7 +350,7 @@ class SchichtaufbauTab:
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-    def display_result(self, result: BuildResult):
+    def display_result(self, result: BuildResult, isolierungen: List[str] | None = None):
         self.clear_results()
         dims_type = self.measure_type.get()
         if dims_type == "outer":
@@ -346,13 +370,19 @@ class SchichtaufbauTab:
             var.set(f"{value:.3f} mm")
         self.layer_count_var.set(str(len(result.layers)))
 
+        isolierungen = isolierungen or []
         for layer in result.layers:
+            material = "-"
+            if layer.layer_index - 1 < len(isolierungen):
+                chosen = isolierungen[layer.layer_index - 1].strip()
+                material = chosen if chosen else "-"
             for plate in layer.plates:
                 self.tree.insert(
                     "",
                     "end",
                     values=(
                         f"{layer.layer_index}",
+                        material,
                         plate.name,
                         f"{plate.L:.3f}",
                         f"{plate.B:.3f}",
