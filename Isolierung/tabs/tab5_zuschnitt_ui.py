@@ -347,7 +347,7 @@ class ZuschnittTab:
             row_heights[row] = max(row_heights[row], entries[0].bin_height)
 
         gap = 30.0
-        padding = 12.0
+        padding = 16.0
         total_width = sum(col_widths) + gap * (columns - 1)
         total_height = sum(row_heights) + gap * (rows - 1)
 
@@ -367,6 +367,7 @@ class ZuschnittTab:
         for height in row_heights[:-1]:
             row_offsets.append(row_offsets[-1] + height * scale + gap * scale)
 
+        label_offset = 6
         for idx, ((material, bin_idx), entries) in enumerate(bins):
             col = idx % columns
             row = idx // columns
@@ -377,24 +378,25 @@ class ZuschnittTab:
 
             self.preview_canvas.create_rectangle(
                 x_cursor,
-                y_cursor,
+                y_cursor + label_offset,
                 x_cursor + bin_w * scale,
-                y_cursor + bin_h * scale,
+                y_cursor + bin_h * scale + label_offset,
                 outline="#444",
                 width=2,
             )
             self.preview_canvas.create_text(
-                x_cursor + 5,
-                y_cursor - 4,
-                anchor="sw",
+                x_cursor + 6,
+                y_cursor + 6,
+                anchor="nw",
                 text=f"{material} – Rohling {bin_idx}",
                 font=("Segoe UI", 9, "bold"),
+                width=max(bin_w * scale - 12, 50),
             )
 
             for placement in entries:
                 color = self._color_for(material)
                 px = x_cursor + placement.x * scale
-                py = y_cursor + placement.y * scale
+                py = y_cursor + label_offset + placement.y * scale
                 pw = placement.width * scale
                 ph = placement.height * scale
                 self.preview_canvas.create_rectangle(
@@ -410,12 +412,12 @@ class ZuschnittTab:
                     py + ph / 2,
                     text=placement.part_label,
                     font=("Segoe UI", 8),
-                    width=max(pw - 8, 20),
+                    width=max(pw - 12, 20),
                 )
 
-        self.preview_canvas.configure(
-            scrollregion=(0, 0, max(canvas_width, 0), max(canvas_height, 0))
-        )
+        layout_width = padding * 2 + total_width * scale + max(gap * scale, 0)
+        layout_height = padding * 2 + total_height * scale + label_offset + max(gap * scale, 0)
+        self.preview_canvas.configure(scrollregion=(0, 0, layout_width, layout_height))
 
     def _on_canvas_resize(self, _event) -> None:
         if self.placements:
