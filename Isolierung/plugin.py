@@ -52,6 +52,13 @@ class IsolierungPlugin(Plugin):
             self.berechnung_tab = BerechnungTab(notebook)
             self.schichtaufbau_tab = SchichtaufbauTab(notebook)
             self.bericht_tab = BerichtTab(notebook)
+            if self.berechnung_tab is not None and self.schichtaufbau_tab is not None:
+                self.berechnung_tab.register_layer_importer(
+                    self.schichtaufbau_tab.export_layer_data
+                )
+                self.schichtaufbau_tab.register_layer_importer(
+                    self.berechnung_tab.export_layer_data
+                )
         except Exception:
             import traceback
 
