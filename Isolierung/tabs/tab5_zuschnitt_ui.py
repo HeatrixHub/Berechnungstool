@@ -48,6 +48,8 @@ class ZuschnittTab:
 
         self.plate_importer: Callable[[], List[dict]] | None = None
         self.placements: List[Placement] = []
+        self.material_summary: List[dict] = []
+        self.total_cost: float | None = None
 
         self._build_ui()
 
@@ -87,6 +89,33 @@ class ZuschnittTab:
             row=2, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 6)
         )
 
+        overview_frame = ttk.LabelFrame(self.frame, text="Rohlingübersicht")
+        overview_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=6)
+        overview_frame.columnconfigure(0, weight=1)
+
+        overview_columns = ("material", "count", "price", "cost")
+        self.overview_tree = ttk.Treeview(
+            overview_frame, columns=overview_columns, show="headings", height=5
+        )
+        headings = {
+            "material": "Material",
+            "count": "Rohlinge (min)",
+            "price": "Preis/Stk [€]",
+            "cost": "Kosten [€]",
+        }
+        for key, label in headings.items():
+            self.overview_tree.heading(key, text=label)
+        self.overview_tree.column("material", width=160, anchor="w")
+        self.overview_tree.column("count", width=110, anchor="center")
+        self.overview_tree.column("price", width=110, anchor="center")
+        self.overview_tree.column("cost", width=110, anchor="center")
+        self.overview_tree.grid(row=0, column=0, sticky="ew")
+
+        self.total_cost_var = tk.StringVar(value="Gesamtkosten: -")
+        ttk.Label(overview_frame, textvariable=self.total_cost_var).grid(
+            row=1, column=0, sticky="w", pady=4
+        )
+
         columns = (
             "material",
             "bin",
@@ -98,7 +127,7 @@ class ZuschnittTab:
             "rotation",
         )
         table_frame = ttk.LabelFrame(self.frame, text="Platzierungen")
-        table_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=6)
+        table_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", padx=10, pady=6)
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
 
@@ -143,7 +172,7 @@ class ZuschnittTab:
         )
 
         preview_frame = ttk.LabelFrame(self.frame, text="Graphische Übersicht")
-        preview_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))
+        preview_frame.grid(row=5, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.rowconfigure(0, weight=1)
 
@@ -218,10 +247,12 @@ class ZuschnittTab:
             grouped.setdefault(material, []).append(plate)
 
         placements: List[Placement] = []
+        self.material_summary = []
+        self.total_cost = None
         total_bins = 0
         for material, items in grouped.items():
-            dims = self._load_raw_dimensions(material)
-            bin_width, bin_height = dims
+            raw_data = self._load_raw_data(material)
+            bin_width, bin_height = raw_data["length"], raw_data["width"]
             if bin_width <= 0 or bin_height <= 0:
                 raise ValueError(
                     f"Ungültige Rohlingmaße für {material}. Bitte Länge/Breite in der Isolierung DB pflegen."
@@ -279,6 +310,16 @@ class ZuschnittTab:
                         )
                     )
             total_bins += len(packer)
+            price = raw_data["price"]
+            cost = None if price is None else price * len(packer)
+            self.material_summary.append(
+                {
+                    "material": material,
+                    "count": len(packer),
+                    "price": price,
+                    "cost": cost,
+                }
+            )
 
         if not placements:
             raise ValueError("Keine Platzierungen erstellt.")
@@ -286,17 +327,21 @@ class ZuschnittTab:
         self.summary_var.set(
             f"Minimal benötigte Rohlingplatten: {total_bins} (über alle Materialien)"
         )
+        known_costs = [entry["cost"] for entry in self.material_summary if entry["cost"] is not None]
+        self.total_cost = sum(known_costs) if known_costs else None
         return placements
 
-    def _load_raw_dimensions(self, material: str) -> Tuple[float, float]:
+    def _load_raw_data(self, material: str) -> Dict[str, float | None]:
         data = load_insulation(material)
         length = data.get("length")
         width = data.get("width")
+        price = data.get("price")
         if length is None or width is None:
             raise ValueError(
                 f"Für {material} sind keine Rohlingmaße in der Isolierung DB hinterlegt."
             )
-        return float(length), float(width)
+        parsed_price = None if price is None else float(price)
+        return {"length": float(length), "width": float(width), "price": parsed_price}
 
     # ---------------------------------------------------------------
     # Darstellung
@@ -321,7 +366,38 @@ class ZuschnittTab:
                 ),
             )
 
+        self._update_summary_table()
         self._draw_preview()
+
+    def _update_summary_table(self) -> None:
+        for item in self.overview_tree.get_children():
+            self.overview_tree.delete(item)
+
+        for entry in self.material_summary:
+            price = entry.get("price")
+            cost = entry.get("cost")
+            self.overview_tree.insert(
+                "",
+                "end",
+                values=(
+                    entry.get("material", "-"),
+                    entry.get("count", "-"),
+                    "-" if price is None else f"{price:.2f}",
+                    "-" if cost is None else f"{cost:.2f}",
+                ),
+            )
+
+        missing_prices = any(entry.get("price") is None for entry in self.material_summary)
+        if not self.material_summary:
+            self.total_cost_var.set("Gesamtkosten: -")
+        elif missing_prices and self.total_cost is not None:
+            self.total_cost_var.set(
+                f"Gesamtkosten (ohne fehlende Preise): {self.total_cost:.2f} €"
+            )
+        elif missing_prices:
+            self.total_cost_var.set("Gesamtkosten: - (fehlende Preise)")
+        else:
+            self.total_cost_var.set(f"Gesamtkosten: {self.total_cost:.2f} €")
 
     def _draw_preview(self) -> None:
         self.preview_canvas.delete("all")
