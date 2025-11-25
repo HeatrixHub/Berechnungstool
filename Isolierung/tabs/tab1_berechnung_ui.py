@@ -85,17 +85,15 @@ class BerechnungTab:
         ttk.Label(control_frame, text="Schichten verwalten:").grid(row=0, column=0, sticky="w")
         ttk.Button(control_frame, text="+ Schicht hinzufügen", command=self.add_layer_row).grid(row=0, column=1, padx=4)
 
-        header = ttk.Frame(self.layers_frame)
-        header.grid(row=1, column=0, sticky='ew', padx=6)
-        header.columnconfigure(1, weight=1)
-        ttk.Label(header, text="#", width=4).grid(row=0, column=0, padx=4, sticky="w")
-        ttk.Label(header, text="Dicke [m]").grid(row=0, column=1, padx=4, sticky="w")
-        ttk.Label(header, text="Material").grid(row=0, column=2, padx=4, sticky="w")
-        ttk.Label(header, text="Aktionen").grid(row=0, column=3, padx=4, sticky="w")
+        self.layers_table = ttk.Frame(self.layers_frame)
+        self.layers_table.grid(row=1, column=0, sticky='ew', padx=6)
+        for col, weight in enumerate((0, 0, 1, 0)):
+            self.layers_table.columnconfigure(col, weight=weight)
 
-        self.layers_body = ttk.Frame(self.layers_frame)
-        self.layers_body.grid(row=2, column=0, sticky='ew', padx=4, pady=(2, 6))
-        self.layers_body.columnconfigure(2, weight=1)
+        ttk.Label(self.layers_table, text="#", width=4).grid(row=0, column=0, padx=4, sticky="w")
+        ttk.Label(self.layers_table, text="Dicke [mm]").grid(row=0, column=1, padx=4, sticky="w")
+        ttk.Label(self.layers_table, text="Material").grid(row=0, column=2, padx=4, sticky="w")
+        ttk.Label(self.layers_table, text="Aktionen").grid(row=0, column=3, padx=4, sticky="w")
 
         self.layer_rows: List[dict] = []
         self.add_layer_row()
@@ -107,7 +105,10 @@ class BerechnungTab:
 
     def _clear_layers(self):
         for row in self.layer_rows:
-            row["frame"].destroy()
+            row["number"].destroy()
+            row["entry"].destroy()
+            row["combo"].destroy()
+            row["action_frame"].destroy()
         self.layer_rows.clear()
 
     # ---------------------------------------------------------------
@@ -179,23 +180,22 @@ class BerechnungTab:
     # ---------------------------------------------------------------
     def add_layer_row(self, thickness: str | float = "", material: str = ""):
         row_index = len(self.layer_rows)
-        frame = ttk.Frame(self.layers_body)
-        frame.grid(row=row_index, column=0, sticky="ew", pady=2)
-        frame.columnconfigure(2, weight=1)
+        grid_row = row_index + 1
 
-        ttk.Label(frame, text=f"{row_index + 1}", width=4).grid(row=0, column=0, padx=4, sticky="w")
+        number_label = ttk.Label(self.layers_table, text=f"{row_index + 1}", width=4)
+        number_label.grid(row=grid_row, column=0, padx=4, pady=2, sticky="w")
 
-        entry_d = ttk.Entry(frame, width=10)
-        entry_d.grid(row=0, column=1, padx=4, sticky="ew")
+        entry_d = ttk.Entry(self.layers_table, width=10)
+        entry_d.grid(row=grid_row, column=1, padx=4, pady=2, sticky="ew")
         if thickness != "":
             entry_d.insert(0, str(thickness))
 
-        combo_iso = ttk.Combobox(frame, values=self._get_insulation_names(), state="readonly")
-        combo_iso.grid(row=0, column=2, padx=4, sticky="ew")
+        combo_iso = ttk.Combobox(self.layers_table, values=self._get_insulation_names(), state="readonly")
+        combo_iso.grid(row=grid_row, column=2, padx=4, pady=2, sticky="ew")
         combo_iso.set(material)
 
-        action_frame = ttk.Frame(frame)
-        action_frame.grid(row=0, column=3, padx=4, sticky="e")
+        action_frame = ttk.Frame(self.layers_table)
+        action_frame.grid(row=grid_row, column=3, padx=4, pady=2, sticky="e")
         btn_up = ttk.Button(action_frame, text="▲", width=3, command=lambda: self.move_layer(row_index, -1))
         btn_up.grid(row=0, column=0, padx=1)
         btn_down = ttk.Button(action_frame, text="▼", width=3, command=lambda: self.move_layer(row_index, 1))
@@ -204,9 +204,10 @@ class BerechnungTab:
         btn_delete.grid(row=0, column=2, padx=1)
 
         self.layer_rows.append({
-            "frame": frame,
+            "number": number_label,
             "entry": entry_d,
             "combo": combo_iso,
+            "action_frame": action_frame,
             "btn_up": btn_up,
             "btn_down": btn_down,
             "btn_delete": btn_delete,
@@ -220,7 +221,10 @@ class BerechnungTab:
             messagebox.showwarning("Aktion nicht möglich", "Mindestens eine Schicht wird benötigt.")
             return
         row = self.layer_rows.pop(index)
-        row["frame"].destroy()
+        row["number"].destroy()
+        row["entry"].destroy()
+        row["combo"].destroy()
+        row["action_frame"].destroy()
         self._refresh_layer_rows_layout()
 
     def move_layer(self, index: int, direction: int):
@@ -232,16 +236,19 @@ class BerechnungTab:
 
     def _refresh_layer_rows_layout(self):
         for i, row in enumerate(self.layer_rows):
-            row["frame"].grid_configure(row=i)
-            for widget in row["frame"].grid_slaves(row=0, column=0):
-                widget.configure(text=f"{i + 1}")
+            grid_row = i + 1
+            row["number"].grid_configure(row=grid_row)
+            row["entry"].grid_configure(row=grid_row)
+            row["combo"].grid_configure(row=grid_row)
+            row["action_frame"].grid_configure(row=grid_row)
+            row["number"].configure(text=f"{i + 1}")
 
             row["btn_up"].state(["!disabled"] if i > 0 else ["disabled"])
             row["btn_down"].state(["!disabled"] if i < len(self.layer_rows) - 1 else ["disabled"])
             row["btn_up"].configure(command=lambda idx=i: self.move_layer(idx, -1))
             row["btn_down"].configure(command=lambda idx=i: self.move_layer(idx, 1))
             row["btn_delete"].configure(command=lambda idx=i: self.delete_layer(idx))
-        self.layers_body.update_idletasks()
+        self.layers_table.update_idletasks()
 
     # ---------------------------------------------------------------
     # Berechnung
