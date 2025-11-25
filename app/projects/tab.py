@@ -85,7 +85,7 @@ class ProjectsTab:
 
         button_frame = ttk.Frame(self.frame)
         button_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        for i in range(5):
+        for i in range(4):
             button_frame.columnconfigure(i, weight=1)
 
         ttk.Button(button_frame, text="Neu", command=self.reset_form).grid(
@@ -106,11 +106,6 @@ class ProjectsTab:
             text="Löschen",
             command=self.delete_selected_project,
         ).grid(row=0, column=3, padx=4, pady=(0, 2), sticky="ew")
-        ttk.Button(
-            button_frame,
-            text="Aktualisieren",
-            command=self.refresh_projects,
-        ).grid(row=0, column=4, padx=4, pady=(0, 2), sticky="ew")
 
         ttk.Label(
             button_frame,
@@ -118,7 +113,7 @@ class ProjectsTab:
             foreground="#6b7280",
             wraplength=760,
             justify="left",
-        ).grid(row=1, column=0, columnspan=5, sticky="w", padx=6, pady=(4, 0))
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(4, 0))
 
         tree_frame = ttk.Frame(self.frame)
         tree_frame.grid(row=3, column=0, sticky="nsew", padx=(0, 8))
