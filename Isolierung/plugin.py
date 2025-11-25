@@ -1,6 +1,5 @@
 """Plugin-Integration für das Isolierungstool."""
 
-import tkinter as tk
 from tkinter import ttk
 
 try:
@@ -10,7 +9,6 @@ except Exception:  # pragma: no cover - Theme-Bibliothek optional
 
 from app.plugins.base import AppContext, Plugin
 from .tabs.tab1_berechnung_ui import BerechnungTab
-from .tabs.tab3_bericht_ui import BerichtTab
 from .tabs.tab4_schichtaufbau_ui import SchichtaufbauTab
 
 
@@ -24,7 +22,6 @@ class IsolierungPlugin(Plugin):
         super().__init__()
         self.berechnung_tab: BerechnungTab | None = None
         self.schichtaufbau_tab: SchichtaufbauTab | None = None
-        self.bericht_tab: BerichtTab | None = None
 
     def attach(self, context: AppContext) -> None:
         container = ttk.Frame(context.notebook)
@@ -51,7 +48,6 @@ class IsolierungPlugin(Plugin):
         try:
             self.berechnung_tab = BerechnungTab(notebook)
             self.schichtaufbau_tab = SchichtaufbauTab(notebook)
-            self.bericht_tab = BerichtTab(notebook)
             if self.berechnung_tab is not None and self.schichtaufbau_tab is not None:
                 self.berechnung_tab.register_layer_importer(
                     self.schichtaufbau_tab.export_layer_data
@@ -65,8 +61,6 @@ class IsolierungPlugin(Plugin):
             print("Fehler beim Erstellen der Isolierungstabs:")
             traceback.print_exc()
 
-        notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-
         footer = ttk.Frame(container, padding=(10, 5))
         footer.grid(row=2, column=0, sticky="ew")
         ttk.Label(
@@ -75,17 +69,6 @@ class IsolierungPlugin(Plugin):
             font=("Segoe UI", 9),
         ).pack(side="left")
 
-    def on_tab_changed(self, event: tk.Event) -> None:
-        notebook = event.widget
-        selected_tab = notebook.nametowidget(notebook.select())
-
-        if (
-            self.bericht_tab is not None
-            and selected_tab == self.bericht_tab.scrollable.master
-        ):
-            self.bericht_tab.refresh_project_list()
-            print("[Auto-Update] Tab 3 (Bericht) aktualisiert.")
-
     def on_theme_changed(self, theme: str) -> None:  # pragma: no cover - GUI Callback
         if theme not in {"light", "dark"} or not sv_ttk:
             return
@@ -93,10 +76,6 @@ class IsolierungPlugin(Plugin):
             self.berechnung_tab.update_theme_colors()
         if self.schichtaufbau_tab is not None:
             self.schichtaufbau_tab.update_theme_colors()
-        if self.bericht_tab is not None and hasattr(
-            self.bericht_tab, "update_theme_colors"
-        ):
-            self.bericht_tab.update_theme_colors()
 
     def export_state(self) -> dict:
         if self.berechnung_tab is None:
