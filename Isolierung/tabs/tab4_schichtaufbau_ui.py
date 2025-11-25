@@ -90,12 +90,32 @@ class SchichtaufbauTab:
         self.summary_frame = ttk.LabelFrame(self.frame, text="Ergebnis")
         self.summary_frame.grid(row=5, column=0, columnspan=2, sticky="nsew", padx=10, pady=(4, 10))
         self.frame.rowconfigure(5, weight=1)
+        self.summary_frame.columnconfigure(0, weight=1)
+        self.summary_frame.rowconfigure(1, weight=1)
 
-        self.summary_text = tk.Text(self.summary_frame, height=5, wrap="word", relief="flat", borderwidth=0)
-        self.summary_text.pack(fill="x", padx=6, pady=4)
+        text_frame = ttk.Frame(self.summary_frame)
+        text_frame.grid(row=0, column=0, sticky="ew", padx=6, pady=4)
+        text_frame.columnconfigure(0, weight=1)
+
+        self.summary_text = tk.Text(
+            text_frame,
+            height=5,
+            wrap="word",
+            relief="flat",
+            borderwidth=0,
+        )
+        summary_scroll = ttk.Scrollbar(text_frame, orient="vertical", command=self.summary_text.yview)
+        self.summary_text.configure(yscrollcommand=summary_scroll.set)
+        self.summary_text.grid(row=0, column=0, sticky="ew")
+        summary_scroll.grid(row=0, column=1, sticky="ns", padx=(4, 0))
 
         columns = ("layer", "plate", "L", "B", "H")
-        self.tree = ttk.Treeview(self.summary_frame, columns=columns, show="headings", height=10)
+        tree_frame = ttk.Frame(self.summary_frame)
+        tree_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 4))
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=10)
         self.tree.heading("layer", text="Schicht")
         self.tree.heading("plate", text="Platte")
         self.tree.heading("L", text="L [mm]")
@@ -106,7 +126,10 @@ class SchichtaufbauTab:
         self.tree.column("L", width=90, anchor="center")
         self.tree.column("B", width=90, anchor="center")
         self.tree.column("H", width=90, anchor="center")
-        self.tree.pack(fill="both", expand=True, padx=6, pady=(0, 4))
+        tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=tree_scroll.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        tree_scroll.grid(row=0, column=1, sticky="ns", padx=(4, 0))
 
     # ---------------------------------------------------------------
     # Schichtverwaltung
