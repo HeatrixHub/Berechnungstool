@@ -22,7 +22,7 @@ class SchichtaufbauTab:
         self.scrollable.pack(fill="both", expand=True)
         self.frame = self.scrollable.inner
 
-        self.layer_rows: List[ttk.Entry] = []
+        self.layer_rows: List[dict] = []
         self.build_ui()
         self.update_theme_colors()
 
@@ -112,55 +112,77 @@ class SchichtaufbauTab:
     # Schichtverwaltung
     # ---------------------------------------------------------------
     def add_layer_row(self, thickness: str | float = ""):
-        row_idx = len(self.layer_rows) + 1
-        ttk.Label(self.layer_table, text=str(row_idx), width=4).grid(
-            row=row_idx, column=0, padx=4, pady=2, sticky="w"
-        )
+        row_index = len(self.layer_rows)
+        grid_row = row_index + 1
+
+        number_label = ttk.Label(self.layer_table, text=str(grid_row), width=4)
+        number_label.grid(row=grid_row, column=0, padx=4, pady=2, sticky="w")
+
         entry = ttk.Entry(self.layer_table, width=10)
-        entry.grid(row=row_idx, column=1, padx=4, pady=2, sticky="ew")
+        entry.grid(row=grid_row, column=1, padx=4, pady=2, sticky="ew")
         if thickness != "":
             entry.insert(0, str(thickness))
 
         action_frame = ttk.Frame(self.layer_table)
-        action_frame.grid(row=row_idx, column=2, padx=4, pady=2, sticky="e")
-        ttk.Button(action_frame, text="▲", width=3, command=lambda: self.move_layer(row_idx - 1, -1)).grid(
-            row=0, column=0, padx=1
-        )
-        ttk.Button(action_frame, text="▼", width=3, command=lambda: self.move_layer(row_idx - 1, 1)).grid(
-            row=0, column=1, padx=1
-        )
-        ttk.Button(action_frame, text="✖", width=3, command=lambda: self.remove_layer(row_idx - 1)).grid(
-            row=0, column=2, padx=1
-        )
+        action_frame.grid(row=grid_row, column=2, padx=4, pady=2, sticky="e")
+        btn_up = ttk.Button(action_frame, text="▲", width=3)
+        btn_up.grid(row=0, column=0, padx=1)
+        btn_down = ttk.Button(action_frame, text="▼", width=3)
+        btn_down.grid(row=0, column=1, padx=1)
+        btn_delete = ttk.Button(action_frame, text="✖", width=3)
+        btn_delete.grid(row=0, column=2, padx=1)
 
-        self.layer_rows.append(entry)
+        self.layer_rows.append(
+            {
+                "number": number_label,
+                "entry": entry,
+                "action_frame": action_frame,
+                "btn_up": btn_up,
+                "btn_down": btn_down,
+                "btn_delete": btn_delete,
+            }
+        )
+        self._refresh_layer_rows_layout()
 
     def move_layer(self, index: int, direction: int):
         target = index + direction
         if target < 0 or target >= len(self.layer_rows):
             return
-        self.layer_rows[index], self.layer_rows[target] = self.layer_rows[target], self.layer_rows[index]
-        self.refresh_layer_table()
+        self.layer_rows[index], self.layer_rows[target] = (
+            self.layer_rows[target],
+            self.layer_rows[index],
+        )
+        self._refresh_layer_rows_layout()
 
     def remove_layer(self, index: int):
-        if 0 <= index < len(self.layer_rows):
-            self.layer_rows[index].destroy()
-            del self.layer_rows[index]
-            self.refresh_layer_table()
+        if index < 0 or index >= len(self.layer_rows):
+            return
 
-    def refresh_layer_table(self):
-        # Alle Widgets entfernen
-        for widget in self.layer_table.winfo_children():
-            widget.destroy()
+        row = self.layer_rows.pop(index)
+        row["number"].destroy()
+        row["entry"].destroy()
+        row["action_frame"].destroy()
 
-        ttk.Label(self.layer_table, text="#", width=4).grid(row=0, column=0, padx=4, sticky="w")
-        ttk.Label(self.layer_table, text="Dicke [mm]").grid(row=0, column=1, padx=4, sticky="w")
-        ttk.Label(self.layer_table, text="Aktionen").grid(row=0, column=2, padx=4, sticky="w")
+        if not self.layer_rows:
+            self.add_layer_row()
+        else:
+            self._refresh_layer_rows_layout()
 
-        existing_values = [entry.get() for entry in self.layer_rows]
-        self.layer_rows.clear()
-        for val in existing_values:
-            self.add_layer_row(val)
+    def _refresh_layer_rows_layout(self):
+        for i, row in enumerate(self.layer_rows):
+            grid_row = i + 1
+            row["number"].grid_configure(row=grid_row)
+            row["entry"].grid_configure(row=grid_row)
+            row["action_frame"].grid_configure(row=grid_row)
+            row["number"].configure(text=str(grid_row))
+
+            row["btn_up"].state(["!disabled"] if i > 0 else ["disabled"])
+            row["btn_down"].state(["!disabled"] if i < len(self.layer_rows) - 1 else ["disabled"])
+            row["btn_up"].configure(command=lambda idx=i: self.move_layer(idx, -1))
+            row["btn_down"].configure(command=lambda idx=i: self.move_layer(idx, 1))
+            row["btn_delete"].configure(command=lambda idx=i: self.remove_layer(idx))
+
+        self.layer_table.update_idletasks()
 
     # ---------------------------------------------------------------
     # Aktionen
@@ -169,8 +191,10 @@ class SchichtaufbauTab:
         for entry in (self.entry_L, self.entry_B, self.entry_H):
             entry.delete(0, tk.END)
         self.measure_type.set("outer")
-        for entry in self.layer_rows:
-            entry.destroy()
+        for row in self.layer_rows:
+            row["number"].destroy()
+            row["entry"].destroy()
+            row["action_frame"].destroy()
         self.layer_rows.clear()
         self.add_layer_row()
         self.clear_results()
@@ -183,8 +207,8 @@ class SchichtaufbauTab:
             H = float(self.entry_H.get())
 
             thicknesses: List[float] = []
-            for entry in self.layer_rows:
-                text = entry.get().strip()
+            for row in self.layer_rows:
+                text = row["entry"].get().strip()
                 if text == "":
                     continue
                 thicknesses.append(float(text))
@@ -209,19 +233,35 @@ class SchichtaufbauTab:
 
     def display_result(self, result: BuildResult):
         self.clear_results()
-        summary_lines = [
-            "Verwendete Außenmaße:",
-            f"  Länge: {result.la_l:.3f} mm",  # Werte in mm belassen
-            f"  Breite: {result.la_b:.3f} mm",
-            f"  Höhe: {result.la_h:.3f} mm",
-            "",
-            "Resultierende Innenmaße:",
-            f"  Länge: {result.li_l:.3f} mm",
-            f"  Breite: {result.li_b:.3f} mm",
-            f"  Höhe: {result.li_h:.3f} mm",
-            "",
-            f"Schichten: {len(result.layers)}",
-        ]
+        dims_type = self.measure_type.get()
+        if dims_type == "outer":
+            summary_lines = [
+                "Gegebene Außenmaße:",
+                f"  Länge: {result.la_l:.3f} mm",  # Werte in mm belassen
+                f"  Breite: {result.la_b:.3f} mm",
+                f"  Höhe: {result.la_h:.3f} mm",
+                "",
+                "Berechnete Innenmaße:",
+                f"  Länge: {result.li_l:.3f} mm",
+                f"  Breite: {result.li_b:.3f} mm",
+                f"  Höhe: {result.li_h:.3f} mm",
+                "",
+                f"Schichten: {len(result.layers)}",
+            ]
+        else:
+            summary_lines = [
+                "Gegebene Innenmaße:",
+                f"  Länge: {result.li_l:.3f} mm",
+                f"  Breite: {result.li_b:.3f} mm",
+                f"  Höhe: {result.li_h:.3f} mm",
+                "",
+                "Berechnete Außenmaße:",
+                f"  Länge: {result.la_l:.3f} mm",
+                f"  Breite: {result.la_b:.3f} mm",
+                f"  Höhe: {result.la_h:.3f} mm",
+                "",
+                f"Schichten: {len(result.layers)}",
+            ]
         self.summary_text.insert("1.0", "\n".join(summary_lines))
 
         for layer in result.layers:
