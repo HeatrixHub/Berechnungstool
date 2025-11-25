@@ -93,21 +93,42 @@ class SchichtaufbauTab:
         self.summary_frame.columnconfigure(0, weight=1)
         self.summary_frame.rowconfigure(1, weight=1)
 
-        text_frame = ttk.Frame(self.summary_frame)
-        text_frame.grid(row=0, column=0, sticky="ew", padx=6, pady=4)
-        text_frame.columnconfigure(0, weight=1)
+        # Ergebnisübersicht ohne Scrollen
+        overview_frame = ttk.Frame(self.summary_frame)
+        overview_frame.grid(row=0, column=0, sticky="ew", padx=6, pady=4)
+        overview_frame.columnconfigure(0, weight=1)
+        overview_frame.columnconfigure(1, weight=1)
+        overview_frame.columnconfigure(2, weight=1)
 
-        self.summary_text = tk.Text(
-            text_frame,
-            height=5,
-            wrap="word",
-            relief="flat",
-            borderwidth=0,
+        self.given_section = ttk.LabelFrame(overview_frame, text="Gegebene Maße")
+        self.given_section.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self.calculated_section = ttk.LabelFrame(overview_frame, text="Berechnete Maße")
+        self.calculated_section.grid(row=0, column=1, sticky="nsew", padx=6)
+
+        for section in (self.given_section, self.calculated_section):
+            section.columnconfigure(1, weight=1)
+
+        self.layer_info = ttk.LabelFrame(overview_frame, text="Schichten")
+        self.layer_info.grid(row=0, column=2, sticky="nsew", padx=(6, 0))
+        self.layer_info.columnconfigure(0, weight=1)
+
+        self.given_vars = {
+            "L": tk.StringVar(value="–"),
+            "B": tk.StringVar(value="–"),
+            "H": tk.StringVar(value="–"),
+        }
+        self.calculated_vars = {
+            "L": tk.StringVar(value="–"),
+            "B": tk.StringVar(value="–"),
+            "H": tk.StringVar(value="–"),
+        }
+        self.layer_count_var = tk.StringVar(value="–")
+
+        self._build_dimension_rows(self.given_section, self.given_vars)
+        self._build_dimension_rows(self.calculated_section, self.calculated_vars)
+        ttk.Label(self.layer_info, textvariable=self.layer_count_var, anchor="center").grid(
+            row=0, column=0, padx=8, pady=8, sticky="ew"
         )
-        summary_scroll = ttk.Scrollbar(text_frame, orient="vertical", command=self.summary_text.yview)
-        self.summary_text.configure(yscrollcommand=summary_scroll.set)
-        self.summary_text.grid(row=0, column=0, sticky="ew")
-        summary_scroll.grid(row=0, column=1, sticky="ns", padx=(4, 0))
 
         columns = ("layer", "plate", "L", "B", "H")
         tree_frame = ttk.Frame(self.summary_frame)
@@ -207,6 +228,14 @@ class SchichtaufbauTab:
 
         self.layer_table.update_idletasks()
 
+    def _build_dimension_rows(self, parent: ttk.Widget, variables: dict[str, tk.StringVar]):
+        labels = [("Länge [mm]:", "L"), ("Breite [mm]:", "B"), ("Höhe [mm]:", "H")]
+        for row_index, (label, key) in enumerate(labels):
+            ttk.Label(parent, text=label).grid(row=row_index, column=0, padx=6, pady=3, sticky="w")
+            ttk.Label(parent, textvariable=variables[key]).grid(
+                row=row_index, column=1, padx=6, pady=3, sticky="e"
+            )
+
     # ---------------------------------------------------------------
     # Aktionen
     # ---------------------------------------------------------------
@@ -250,7 +279,9 @@ class SchichtaufbauTab:
             messagebox.showerror("Fehler", f"Berechnung fehlgeschlagen: {exc}")
 
     def clear_results(self):
-        self.summary_text.delete("1.0", tk.END)
+        for var in (*self.given_vars.values(), *self.calculated_vars.values()):
+            var.set("–")
+        self.layer_count_var.set("–")
         for item in self.tree.get_children():
             self.tree.delete(item)
 
@@ -258,34 +289,21 @@ class SchichtaufbauTab:
         self.clear_results()
         dims_type = self.measure_type.get()
         if dims_type == "outer":
-            summary_lines = [
-                "Gegebene Außenmaße:",
-                f"  Länge: {result.la_l:.3f} mm",  # Werte in mm belassen
-                f"  Breite: {result.la_b:.3f} mm",
-                f"  Höhe: {result.la_h:.3f} mm",
-                "",
-                "Berechnete Innenmaße:",
-                f"  Länge: {result.li_l:.3f} mm",
-                f"  Breite: {result.li_b:.3f} mm",
-                f"  Höhe: {result.li_h:.3f} mm",
-                "",
-                f"Schichten: {len(result.layers)}",
-            ]
+            self.given_section.configure(text="Gegebene Außenmaße")
+            self.calculated_section.configure(text="Berechnete Innenmaße")
+            values_given = (result.la_l, result.la_b, result.la_h)
+            values_calc = (result.li_l, result.li_b, result.li_h)
         else:
-            summary_lines = [
-                "Gegebene Innenmaße:",
-                f"  Länge: {result.li_l:.3f} mm",
-                f"  Breite: {result.li_b:.3f} mm",
-                f"  Höhe: {result.li_h:.3f} mm",
-                "",
-                "Berechnete Außenmaße:",
-                f"  Länge: {result.la_l:.3f} mm",
-                f"  Breite: {result.la_b:.3f} mm",
-                f"  Höhe: {result.la_h:.3f} mm",
-                "",
-                f"Schichten: {len(result.layers)}",
-            ]
-        self.summary_text.insert("1.0", "\n".join(summary_lines))
+            self.given_section.configure(text="Gegebene Innenmaße")
+            self.calculated_section.configure(text="Berechnete Außenmaße")
+            values_given = (result.li_l, result.li_b, result.li_h)
+            values_calc = (result.la_l, result.la_b, result.la_h)
+
+        for var, value in zip(self.given_vars.values(), values_given):
+            var.set(f"{value:.3f} mm")
+        for var, value in zip(self.calculated_vars.values(), values_calc):
+            var.set(f"{value:.3f} mm")
+        self.layer_count_var.set(str(len(result.layers)))
 
         for layer in result.layers:
             for plate in layer.plates:
@@ -305,13 +323,16 @@ class SchichtaufbauTab:
     # Theme
     # ---------------------------------------------------------------
     def update_theme_colors(self):
+        if not sv_ttk:
+            return
         theme = sv_ttk.get_theme()
-        if theme == "dark":
-            bg_color = "#2D2D2D"
-            fg_color = "white"
-        else:
-            bg_color = "#f9f9f9"
-            fg_color = "black"
+        fg_color = "white" if theme == "dark" else "black"
 
-        self.summary_text.config(bg=bg_color, fg=fg_color, insertbackground=fg_color)
+        style = ttk.Style()
+        style.configure("ResultValue.TLabel", foreground=fg_color)
+
+        for section in (self.given_section, self.calculated_section, self.layer_info):
+            for child in section.winfo_children():
+                if isinstance(child, ttk.Label):
+                    child.configure(style="ResultValue.TLabel")
 
