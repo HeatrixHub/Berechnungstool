@@ -116,7 +116,11 @@ def _migration_1(conn: sqlite3.Connection) -> None:
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
     existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column not in existing_columns:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+        # definition must include both column name and type, because SQLite's ALTER TABLE
+        # syntax requires the full column definition. Passing only the type ("REAL") would
+        # try to create a column literally named after the type and raise a duplicate
+        # column error on subsequent runs.
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def _migration_2(conn: sqlite3.Connection) -> None:
