@@ -11,6 +11,7 @@ except Exception:  # pragma: no cover - Theme-Bibliothek optional
 from app.plugins.base import AppContext, Plugin
 from .tabs.tab1_berechnung_ui import BerechnungTab
 from .tabs.tab3_bericht_ui import BerichtTab
+from .tabs.tab4_schichtaufbau_ui import SchichtaufbauTab
 
 
 class IsolierungPlugin(Plugin):
@@ -22,6 +23,7 @@ class IsolierungPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__()
         self.berechnung_tab: BerechnungTab | None = None
+        self.schichtaufbau_tab: SchichtaufbauTab | None = None
         self.bericht_tab: BerichtTab | None = None
 
     def attach(self, context: AppContext) -> None:
@@ -48,6 +50,7 @@ class IsolierungPlugin(Plugin):
 
         try:
             self.berechnung_tab = BerechnungTab(notebook)
+            self.schichtaufbau_tab = SchichtaufbauTab(notebook)
             self.bericht_tab = BerichtTab(notebook)
         except Exception:
             import traceback
@@ -81,6 +84,8 @@ class IsolierungPlugin(Plugin):
             return
         if self.berechnung_tab is not None:
             self.berechnung_tab.update_theme_colors()
+        if self.schichtaufbau_tab is not None:
+            self.schichtaufbau_tab.update_theme_colors()
         if self.bericht_tab is not None and hasattr(
             self.bericht_tab, "update_theme_colors"
         ):
