@@ -39,20 +39,14 @@ class BerechnungTab:
         self.entry_project_name = ttk.Entry(self.frame)
         self.entry_project_name.grid(row=0, column=1, sticky='ew', padx=6, pady=4)
 
-        # Anzahl Schichten
-        ttk.Label(self.frame, text="Anzahl Schichten:").grid(row=1, column=0, sticky='w', padx=6, pady=4)
-        self.entry_layers = ttk.Entry(self.frame)
-        self.entry_layers.grid(row=1, column=1, sticky='ew', padx=6, pady=4)
-        self.entry_layers.bind("<KeyRelease>", lambda e: self.update_layers_ui())
-
-        # Container für dynamische Schichtenfelder
+        # Container für Schichttabelle
         self.layers_frame = ttk.LabelFrame(self.frame, text="Schichten")
-        self.layers_frame.grid(row=2, column=0, columnspan=2, sticky='ew', padx=6, pady=4)
-        self.layer_rows = []
+        self.layers_frame.grid(row=1, column=0, columnspan=2, sticky='ew', padx=6, pady=4)
+        self._build_layers_table()
 
         # Randbedingungen
         rand_frame = ttk.LabelFrame(self.frame, text="Randbedingungen")
-        rand_frame.grid(row=3, column=0, columnspan=2, sticky='ew', padx=6, pady=6)
+        rand_frame.grid(row=2, column=0, columnspan=2, sticky='ew', padx=6, pady=6)
         ttk.Label(rand_frame, text="T_links [°C]:").grid(row=0, column=0, sticky='w', padx=6, pady=4)
         self.entry_T_left = ttk.Entry(rand_frame)
         self.entry_T_left.grid(row=0, column=1, sticky='ew', padx=6, pady=4)
@@ -67,21 +61,54 @@ class BerechnungTab:
 
         # Buttons
         btn_frame = ttk.Frame(self.frame)
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=10, sticky='ew')
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=10, sticky='ew')
         ttk.Button(btn_frame, text="Berechnen", command=self.calculate).pack(side=tk.LEFT, padx=3)
         ttk.Button(btn_frame, text="Projekt speichern", command=self.save_project).pack(side=tk.LEFT, padx=3)
 
         # Ergebnisse
         self.output_frame = ttk.LabelFrame(self.frame, text="Ergebnisse")
-        self.output_frame.grid(row=5, column=0, columnspan=2, pady=5, sticky='nsew', padx=6)
+        self.output_frame.grid(row=4, column=0, columnspan=2, pady=5, sticky='nsew', padx=6)
         self.output_text = tk.Text(self.output_frame, height=8, wrap='word', relief='flat')
         self.output_text.pack(fill='both', expand=True, padx=5, pady=5)
 
         # Plotbereich
         self.plot_frame = ttk.LabelFrame(self.frame, text="Temperaturverlauf")
-        self.plot_frame.grid(row=6, column=0, columnspan=2, pady=10, sticky='nsew', padx=6)
+        self.plot_frame.grid(row=5, column=0, columnspan=2, pady=10, sticky='nsew', padx=6)
 
         self.update_theme_colors()
+
+    def _build_layers_table(self):
+        control_frame = ttk.Frame(self.layers_frame)
+        control_frame.grid(row=0, column=0, sticky='ew', padx=6, pady=(4, 2))
+        control_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(control_frame, text="Schichten verwalten:").grid(row=0, column=0, sticky="w")
+        ttk.Button(control_frame, text="+ Schicht hinzufügen", command=self.add_layer_row).grid(row=0, column=1, padx=4)
+
+        header = ttk.Frame(self.layers_frame)
+        header.grid(row=1, column=0, sticky='ew', padx=6)
+        header.columnconfigure(1, weight=1)
+        ttk.Label(header, text="#", width=4).grid(row=0, column=0, padx=4, sticky="w")
+        ttk.Label(header, text="Dicke [m]").grid(row=0, column=1, padx=4, sticky="w")
+        ttk.Label(header, text="Material").grid(row=0, column=2, padx=4, sticky="w")
+        ttk.Label(header, text="Aktionen").grid(row=0, column=3, padx=4, sticky="w")
+
+        self.layers_body = ttk.Frame(self.layers_frame)
+        self.layers_body.grid(row=2, column=0, sticky='ew', padx=4, pady=(2, 6))
+        self.layers_body.columnconfigure(2, weight=1)
+
+        self.layer_rows: List[dict] = []
+        self.add_layer_row()
+
+    def _get_insulation_names(self) -> List[str]:
+        from app.global_tabs.isolierungen_db.logic import get_all_insulations
+
+        return [i["name"] for i in get_all_insulations()]
+
+    def _clear_layers(self):
+        for row in self.layer_rows:
+            row["frame"].destroy()
+        self.layer_rows.clear()
 
     # ---------------------------------------------------------------
     # Projekt laden
@@ -117,19 +144,13 @@ class BerechnungTab:
             self.entry_project_name.delete(0, "end")
             self.entry_project_name.insert(0, name)
 
-            self.entry_layers.delete(0, "end")
-            self.entry_layers.insert(0, str(len(thicknesses)))
+            self._clear_layers()
+            for i, thickness in enumerate(thicknesses):
+                material = isolierungen[i] if i < len(isolierungen) else ""
+                self.add_layer_row(thickness, material)
 
-            # Dynamische Schichtzeilen erzeugen
-            self.update_layers_ui()
-
-            # Werte eintragen
-            for i, (entry_d, combo_iso) in enumerate(self.layer_rows):
-                if i < len(thicknesses):
-                    entry_d.delete(0, tk.END)
-                    entry_d.insert(0, str(thicknesses[i]))
-                if i < len(isolierungen):
-                    combo_iso.set(isolierungen[i])
+            if not self.layer_rows:
+                self.add_layer_row()
 
             self.entry_T_left.delete(0, tk.END)
             self.entry_T_left.insert(0, str(T_left))
@@ -154,64 +175,86 @@ class BerechnungTab:
             messagebox.showerror("Fehler beim Laden", str(e))
 
     # ---------------------------------------------------------------
-    # Dynamische Schichtsteuerung
+    # Schichtverwaltung
     # ---------------------------------------------------------------
-    def update_layers_ui(self):
-        """Passt dynamisch die Anzahl der Schichten an, ohne bestehende Eingaben zu löschen."""
-        try:
-            new_n = int(self.entry_layers.get())
-            if new_n <= 0:
-                return
-        except ValueError:
+    def add_layer_row(self, thickness: str | float = "", material: str = ""):
+        row_index = len(self.layer_rows)
+        frame = ttk.Frame(self.layers_body)
+        frame.grid(row=row_index, column=0, sticky="ew", pady=2)
+        frame.columnconfigure(2, weight=1)
+
+        ttk.Label(frame, text=f"{row_index + 1}", width=4).grid(row=0, column=0, padx=4, sticky="w")
+
+        entry_d = ttk.Entry(frame, width=10)
+        entry_d.grid(row=0, column=1, padx=4, sticky="ew")
+        if thickness != "":
+            entry_d.insert(0, str(thickness))
+
+        combo_iso = ttk.Combobox(frame, values=self._get_insulation_names(), state="readonly")
+        combo_iso.grid(row=0, column=2, padx=4, sticky="ew")
+        combo_iso.set(material)
+
+        action_frame = ttk.Frame(frame)
+        action_frame.grid(row=0, column=3, padx=4, sticky="e")
+        btn_up = ttk.Button(action_frame, text="▲", width=3, command=lambda: self.move_layer(row_index, -1))
+        btn_up.grid(row=0, column=0, padx=1)
+        btn_down = ttk.Button(action_frame, text="▼", width=3, command=lambda: self.move_layer(row_index, 1))
+        btn_down.grid(row=0, column=1, padx=1)
+        btn_delete = ttk.Button(action_frame, text="✕", width=3, command=lambda: self.delete_layer(row_index))
+        btn_delete.grid(row=0, column=2, padx=1)
+
+        self.layer_rows.append({
+            "frame": frame,
+            "entry": entry_d,
+            "combo": combo_iso,
+            "btn_up": btn_up,
+            "btn_down": btn_down,
+            "btn_delete": btn_delete,
+        })
+        self._refresh_layer_rows_layout()
+
+    def delete_layer(self, index: int):
+        if index < 0 or index >= len(self.layer_rows):
             return
+        if len(self.layer_rows) <= 1:
+            messagebox.showwarning("Aktion nicht möglich", "Mindestens eine Schicht wird benötigt.")
+            return
+        row = self.layer_rows.pop(index)
+        row["frame"].destroy()
+        self._refresh_layer_rows_layout()
 
-        # --- Aktuelle Eingaben zwischenspeichern ---
-        current_data = []
-        for entry_d, combo_iso in self.layer_rows:
-            t_val = entry_d.get().strip()
-            iso_val = combo_iso.get().strip()
-            current_data.append((t_val, iso_val))
+    def move_layer(self, index: int, direction: int):
+        new_index = index + direction
+        if new_index < 0 or new_index >= len(self.layer_rows):
+            return
+        self.layer_rows[index], self.layer_rows[new_index] = self.layer_rows[new_index], self.layer_rows[index]
+        self._refresh_layer_rows_layout()
 
-        from app.global_tabs.isolierungen_db.logic import get_all_insulations
-        isolierungen = [i["name"] for i in get_all_insulations()]
+    def _refresh_layer_rows_layout(self):
+        for i, row in enumerate(self.layer_rows):
+            row["frame"].grid_configure(row=i)
+            for widget in row["frame"].grid_slaves(row=0, column=0):
+                widget.configure(text=f"{i + 1}")
 
-        current_n = len(self.layer_rows)
+            row["btn_up"].state(["!disabled"] if i > 0 else ["disabled"])
+            row["btn_down"].state(["!disabled"] if i < len(self.layer_rows) - 1 else ["disabled"])
+            row["btn_up"].configure(command=lambda idx=i: self.move_layer(idx, -1))
+            row["btn_down"].configure(command=lambda idx=i: self.move_layer(idx, 1))
+            row["btn_delete"].configure(command=lambda idx=i: self.delete_layer(idx))
+        self.layers_body.update_idletasks()
 
-        # --- Wenn neue Schicht(en) hinzukommen ---
-        if new_n > current_n:
-            for i in range(current_n, new_n):
-                ttk.Label(self.layers_frame, text=f"Schicht {i+1}:").grid(row=i, column=0, sticky='w', padx=5, pady=2)
-                entry_d = ttk.Entry(self.layers_frame, width=10)
-                entry_d.grid(row=i, column=1, padx=5, pady=2)
-                combo_iso = ttk.Combobox(self.layers_frame, values=isolierungen, state="readonly")
-                combo_iso.grid(row=i, column=2, sticky='ew', padx=5, pady=2)
-                self.layer_rows.append((entry_d, combo_iso))
-
-        # --- Wenn Schicht(en) gelöscht werden ---
-        elif new_n < current_n:
-            for i in range(current_n - 1, new_n - 1, -1):
-                for widget in self.layers_frame.grid_slaves(row=i):
-                    widget.destroy()
-                self.layer_rows.pop()
-
-        # --- Bestehende Eingaben wiederherstellen ---
-        for i, (entry_d, combo_iso) in enumerate(self.layer_rows):
-            if i < len(current_data):
-                t_val, iso_val = current_data[i]
-                entry_d.delete(0, tk.END)
-                entry_d.insert(0, t_val)
-                combo_iso.set(iso_val)
-                
     # ---------------------------------------------------------------
     # Berechnung
     # ---------------------------------------------------------------
     def calculate(self):
         try:
-            n = int(self.entry_layers.get())
+            n = len(self.layer_rows)
             thicknesses = []
             isolierungen = []
 
-            for entry_d, combo in self.layer_rows:
+            for row in self.layer_rows:
+                entry_d = row["entry"]
+                combo = row["combo"]
                 t = float(entry_d.get()) if entry_d.get().strip() else 0.0
                 iso = combo.get().strip()
                 thicknesses.append(t)
@@ -271,7 +314,7 @@ class BerechnungTab:
         k_avg = result.get("k_final", [])
 
         n_layers = len(T_if) - 1
-        isolierungsnamen = [combo.get() for (_, combo) in self.layer_rows]
+        isolierungsnamen = [row["combo"].get() for row in self.layer_rows]
 
         for i in range(n_layers):
             iso_name = isolierungsnamen[i] if i < len(isolierungsnamen) else f"Schicht {i+1}"
@@ -337,7 +380,9 @@ class BerechnungTab:
     def _collect_layer_data(self) -> Tuple[List[float], List[str]]:
         thicknesses: List[float] = []
         isolierungen: List[str] = []
-        for entry_d, combo in self.layer_rows:
+        for row in self.layer_rows:
+            entry_d = row["entry"]
+            combo = row["combo"]
             thicknesses.append(self._safe_float(entry_d.get()))
             isolierungen.append(combo.get().strip())
         return thicknesses, isolierungen
@@ -358,11 +403,13 @@ class BerechnungTab:
                 messagebox.showerror("Fehler", "Bitte einen Projektnamen angeben.")
                 return
 
-            n = int(self.entry_layers.get())
+            n = len(self.layer_rows)
             thicknesses = []
             isolierungen = []
 
-            for entry_d, combo in self.layer_rows:
+            for row in self.layer_rows:
+                entry_d = row["entry"]
+                combo = row["combo"]
                 t = float(entry_d.get()) if entry_d.get().strip() else 0.0
                 iso = combo.get().strip()
                 thicknesses.append(t)
@@ -385,10 +432,7 @@ class BerechnungTab:
 
     def export_state(self) -> Dict[str, Any]:
         thicknesses, isolierungen = self._collect_layer_data()
-        try:
-            layer_count = int(self.entry_layers.get())
-        except ValueError:
-            layer_count = len(thicknesses)
+        layer_count = len(thicknesses)
         state: Dict[str, Any] = {
             "name": self.entry_project_name.get().strip(),
             "layer_count": layer_count,
