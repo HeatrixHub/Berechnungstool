@@ -148,10 +148,16 @@ class ZuschnittTab:
         preview_frame.rowconfigure(0, weight=1)
 
         self.preview_canvas = tk.Canvas(preview_frame, height=360, background="white")
-        scroll_x = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.preview_canvas.xview)
+        scroll_x = ttk.Scrollbar(
+            preview_frame, orient="horizontal", command=self.preview_canvas.xview
+        )
         self.preview_canvas.configure(xscrollcommand=scroll_x.set)
         self.preview_canvas.grid(row=0, column=0, sticky="nsew")
         scroll_x.grid(row=1, column=0, sticky="ew")
+
+        # Bei Größenänderungen die grafische Übersicht neu zeichnen, damit alle
+        # Rohlinge sichtbar bleiben.
+        self.preview_canvas.bind("<Configure>", self._on_canvas_resize)
 
     # ---------------------------------------------------------------
     # Datenbeschaffung
@@ -328,28 +334,52 @@ class ZuschnittTab:
             key = (placement.material, placement.bin_index)
             grouped.setdefault(key, []).append(placement)
 
-        x_cursor = 10
-        y_cursor = 10
-        max_height_in_row = 0
-        canvas_height = int(self.preview_canvas["height"])
+        bins = list(grouped.items())
+        columns = max(1, math.ceil(math.sqrt(len(bins))))
+        rows = math.ceil(len(bins) / columns)
 
-        for (material, bin_idx), entries in grouped.items():
+        col_widths: List[float] = [0.0 for _ in range(columns)]
+        row_heights: List[float] = [0.0 for _ in range(rows)]
+        for idx, (_, entries) in enumerate(bins):
+            col = idx % columns
+            row = idx // columns
+            col_widths[col] = max(col_widths[col], entries[0].bin_width)
+            row_heights[row] = max(row_heights[row], entries[0].bin_height)
+
+        gap = 30.0
+        padding = 12.0
+        total_width = sum(col_widths) + gap * (columns - 1)
+        total_height = sum(row_heights) + gap * (rows - 1)
+
+        self.preview_canvas.update_idletasks()
+        canvas_width = max(self.preview_canvas.winfo_width(), 200)
+        canvas_height = max(self.preview_canvas.winfo_height(), 200)
+        scale = min(
+            (canvas_width - 2 * padding) / total_width,
+            (canvas_height - 2 * padding) / total_height,
+        )
+        scale = min(scale, 2.0)
+
+        col_offsets: List[float] = [padding]
+        for width in col_widths[:-1]:
+            col_offsets.append(col_offsets[-1] + width * scale + gap * scale)
+        row_offsets: List[float] = [padding]
+        for height in row_heights[:-1]:
+            row_offsets.append(row_offsets[-1] + height * scale + gap * scale)
+
+        for idx, ((material, bin_idx), entries) in enumerate(bins):
+            col = idx % columns
+            row = idx // columns
+            x_cursor = col_offsets[col]
+            y_cursor = row_offsets[row]
             bin_w = entries[0].bin_width
             bin_h = entries[0].bin_height
-            scale = min(280 / bin_w, (canvas_height - 40) / bin_h)
-            scaled_w = bin_w * scale
-            scaled_h = bin_h * scale
-            if x_cursor + scaled_w + 20 > 1000:
-                x_cursor = 10
-                y_cursor += max_height_in_row + 20
-                max_height_in_row = 0
-            max_height_in_row = max(max_height_in_row, scaled_h)
 
             self.preview_canvas.create_rectangle(
                 x_cursor,
                 y_cursor,
-                x_cursor + scaled_w,
-                y_cursor + scaled_h,
+                x_cursor + bin_w * scale,
+                y_cursor + bin_h * scale,
                 outline="#444",
                 width=2,
             )
@@ -380,12 +410,16 @@ class ZuschnittTab:
                     py + ph / 2,
                     text=placement.part_label,
                     font=("Segoe UI", 8),
+                    width=max(pw - 8, 20),
                 )
 
-            x_cursor += scaled_w + 30
+        self.preview_canvas.configure(
+            scrollregion=(0, 0, max(canvas_width, 0), max(canvas_height, 0))
+        )
 
-        total_height = max(y_cursor + max_height_in_row + 20, canvas_height)
-        self.preview_canvas.configure(scrollregion=(0, 0, x_cursor + 50, total_height))
+    def _on_canvas_resize(self, _event) -> None:
+        if self.placements:
+            self._draw_preview()
 
     @staticmethod
     def _color_for(material: str) -> str:
