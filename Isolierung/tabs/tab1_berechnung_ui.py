@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.colors import LinearSegmentedColormap
 import sv_ttk
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 from .tab1_berechnung_logic import (
     validate_inputs,
@@ -27,6 +27,7 @@ class BerechnungTab:
         self.frame = self.scrollable.inner
         self.build_ui()
         self.last_result: Dict[str, Any] | None = None
+        self.layer_importer: Callable[[], Tuple[List[float], List[str]]] | None = None
 
     # ---------------------------------------------------------------
     # UI-Aufbau
@@ -84,6 +85,7 @@ class BerechnungTab:
 
         ttk.Label(control_frame, text="Schichten verwalten:").grid(row=0, column=0, sticky="w")
         ttk.Button(control_frame, text="+ Schicht hinzufügen", command=self.add_layer_row).grid(row=0, column=1, padx=4)
+        ttk.Button(control_frame, text="Übernehmen", command=self._import_layers_from_other).grid(row=0, column=2, padx=4)
 
         self.layers_table = ttk.Frame(self.layers_frame)
         self.layers_table.grid(row=1, column=0, sticky='ew', padx=6)
@@ -175,6 +177,21 @@ class BerechnungTab:
             traceback.print_exc()
             messagebox.showerror("Fehler beim Laden", str(e))
 
+    def register_layer_importer(self, importer: Callable[[], Tuple[List[float], List[str]]]):
+        """Ermöglicht das Übernehmen der Schichten aus einem anderen Tab."""
+
+        self.layer_importer = importer
+
+    def _import_layers_from_other(self):
+        if self.layer_importer is None:
+            messagebox.showwarning("Keine Quelle", "Kein Tab zum Übernehmen verbunden.")
+            return
+        try:
+            thicknesses, isolierungen = self.layer_importer()
+            self.apply_layers(thicknesses, isolierungen)
+        except Exception as exc:  # pragma: no cover - GUI Fehlermeldung
+            messagebox.showerror("Übernehmen fehlgeschlagen", str(exc))
+
     # ---------------------------------------------------------------
     # Schichtverwaltung
     # ---------------------------------------------------------------
@@ -249,6 +266,17 @@ class BerechnungTab:
             row["btn_down"].configure(command=lambda idx=i: self.move_layer(idx, 1))
             row["btn_delete"].configure(command=lambda idx=i: self.delete_layer(idx))
         self.layers_table.update_idletasks()
+
+    def apply_layers(self, thicknesses: List[float], isolierungen: List[str] | None = None):
+        self._clear_layers()
+        isolierungen = isolierungen or []
+
+        for index, thickness in enumerate(thicknesses):
+            material = isolierungen[index] if index < len(isolierungen) else ""
+            self.add_layer_row(thickness, material)
+
+        if not self.layer_rows:
+            self.add_layer_row()
 
     # ---------------------------------------------------------------
     # Berechnung
@@ -393,6 +421,11 @@ class BerechnungTab:
             thicknesses.append(self._safe_float(entry_d.get()))
             isolierungen.append(combo.get().strip())
         return thicknesses, isolierungen
+
+    def export_layer_data(self) -> Tuple[List[float], List[str]]:
+        """Gibt die aktuellen Schichten (Dicken & Materialien) zurück."""
+
+        return self._collect_layer_data()
 
     def _safe_float(self, value: str) -> float:
         try:

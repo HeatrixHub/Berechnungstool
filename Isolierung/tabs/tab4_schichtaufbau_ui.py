@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import List
+from typing import Callable, List, Tuple
 
 import sv_ttk
 
@@ -23,6 +23,7 @@ class SchichtaufbauTab:
         self.frame = self.scrollable.inner
 
         self.layer_rows: List[dict] = []
+        self.layer_importer: Callable[[], Tuple[List[float], List[str]]] | None = None
         self.build_ui()
         self.update_theme_colors()
 
@@ -69,6 +70,9 @@ class SchichtaufbauTab:
         layer_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
         ttk.Button(layer_frame, text="+ Schicht", command=self.add_layer_row).grid(
             row=0, column=0, padx=6, pady=4, sticky="w"
+        )
+        ttk.Button(layer_frame, text="Übernehmen", command=self._import_layers_from_other).grid(
+            row=0, column=1, padx=6, pady=4, sticky="w"
         )
         self.layer_table = ttk.Frame(layer_frame)
         self.layer_table.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=4)
@@ -227,6 +231,43 @@ class SchichtaufbauTab:
             row["btn_delete"].configure(command=lambda idx=i: self.remove_layer(idx))
 
         self.layer_table.update_idletasks()
+
+    def register_layer_importer(self, importer: Callable[[], Tuple[List[float], List[str]]]):
+        """Ermöglicht das Übernehmen der Schichtdicken aus einem anderen Tab."""
+
+        self.layer_importer = importer
+
+    def _import_layers_from_other(self):
+        if self.layer_importer is None:
+            messagebox.showwarning("Keine Quelle", "Kein Tab zum Übernehmen verbunden.")
+            return
+        try:
+            thicknesses, _isolierungen = self.layer_importer()
+            self.apply_layers(thicknesses)
+        except Exception as exc:  # pragma: no cover - GUI Fehlermeldung
+            messagebox.showerror("Übernehmen fehlgeschlagen", str(exc))
+
+    def apply_layers(self, thicknesses: List[float]):
+        for row in self.layer_rows:
+            row["number"].destroy()
+            row["entry"].destroy()
+            row["action_frame"].destroy()
+        self.layer_rows.clear()
+
+        for thickness in thicknesses:
+            self.add_layer_row(thickness)
+
+        if not self.layer_rows:
+            self.add_layer_row()
+
+    def export_layer_data(self) -> Tuple[List[float], List[str]]:
+        """Gibt die aktuellen Schichtdicken zurück (Materialien werden ignoriert)."""
+
+        thicknesses: List[float] = []
+        for row in self.layer_rows:
+            text = row["entry"].get().strip()
+            thicknesses.append(float(text) if text else 0.0)
+        return thicknesses, []
 
     def _build_dimension_rows(self, parent: ttk.Widget, variables: dict[str, tk.StringVar]):
         labels = [("Länge [mm]:", "L"), ("Breite [mm]:", "B"), ("Höhe [mm]:", "H")]
