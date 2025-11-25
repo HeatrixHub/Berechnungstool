@@ -24,6 +24,8 @@ class SchichtaufbauTab:
 
         self.layer_rows: List[dict] = []
         self.layer_importer: Callable[[], Tuple[List[float], List[str]]] | None = None
+        self.last_result: BuildResult | None = None
+        self.last_isolierungen: List[str] = []
         self.build_ui()
         self.update_theme_colors()
 
@@ -349,6 +351,8 @@ class SchichtaufbauTab:
         self.layer_count_var.set("–")
         for item in self.tree.get_children():
             self.tree.delete(item)
+        self.last_result = None
+        self.last_isolierungen = []
 
     def display_result(self, result: BuildResult, isolierungen: List[str] | None = None):
         self.clear_results()
@@ -389,6 +393,33 @@ class SchichtaufbauTab:
                         f"{plate.H:.3f}",
                     ),
                 )
+
+        self.last_result = result
+        self.last_isolierungen = isolierungen
+
+    def export_plate_list(self) -> List[dict]:
+        """Stellt die berechnete Plattenliste für andere Tabs bereit."""
+
+        if self.last_result is None:
+            raise ValueError("Bitte zuerst den Schichtaufbau berechnen.")
+
+        plates: List[dict] = []
+        for layer in self.last_result.layers:
+            material = ""
+            if layer.layer_index - 1 < len(self.last_isolierungen):
+                material = self.last_isolierungen[layer.layer_index - 1]
+            for plate in layer.plates:
+                plates.append(
+                    {
+                        "layer": layer.layer_index,
+                        "material": material,
+                        "name": plate.name,
+                        "length": plate.L,
+                        "width": plate.B,
+                        "thickness": plate.H,
+                    }
+                )
+        return plates
 
     # ---------------------------------------------------------------
     # Theme

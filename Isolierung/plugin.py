@@ -10,6 +10,7 @@ except Exception:  # pragma: no cover - Theme-Bibliothek optional
 from app.plugins.base import AppContext, Plugin
 from .tabs.tab1_berechnung_ui import BerechnungTab
 from .tabs.tab4_schichtaufbau_ui import SchichtaufbauTab
+from .tabs.tab5_zuschnitt_ui import ZuschnittTab
 
 
 class IsolierungPlugin(Plugin):
@@ -22,6 +23,7 @@ class IsolierungPlugin(Plugin):
         super().__init__()
         self.berechnung_tab: BerechnungTab | None = None
         self.schichtaufbau_tab: SchichtaufbauTab | None = None
+        self.zuschnitt_tab: ZuschnittTab | None = None
 
     def attach(self, context: AppContext) -> None:
         container = ttk.Frame(context.notebook)
@@ -55,6 +57,12 @@ class IsolierungPlugin(Plugin):
                 self.schichtaufbau_tab.register_layer_importer(
                     self.berechnung_tab.export_layer_data
                 )
+
+            self.zuschnitt_tab = ZuschnittTab(notebook)
+            if self.zuschnitt_tab is not None and self.schichtaufbau_tab is not None:
+                self.zuschnitt_tab.register_plate_importer(
+                    self.schichtaufbau_tab.export_plate_list
+                )
         except Exception:
             import traceback
 
@@ -76,6 +84,8 @@ class IsolierungPlugin(Plugin):
             self.berechnung_tab.update_theme_colors()
         if self.schichtaufbau_tab is not None:
             self.schichtaufbau_tab.update_theme_colors()
+        if self.zuschnitt_tab is not None:
+            self.zuschnitt_tab.update_theme_colors()
 
     def export_state(self) -> dict:
         if self.berechnung_tab is None:
