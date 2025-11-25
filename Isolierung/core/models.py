@@ -22,6 +22,10 @@ class Material:
     name: str
     classification_temp: Optional[float] = None
     density: Optional[float] = None
+    length: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    price: Optional[float] = None
     measurements: List[MaterialMeasurement] = field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -31,6 +35,10 @@ class Material:
             "name": self.name,
             "classification_temp": self.classification_temp,
             "density": self.density,
+            "length": self.length,
+            "width": self.width,
+            "height": self.height,
+            "price": self.price,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

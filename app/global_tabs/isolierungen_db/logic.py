@@ -24,6 +24,10 @@ def get_all_insulations() -> List[Dict]:
             "name": material.name,
             "classification_temp": material.classification_temp,
             "density": material.density,
+            "length": material.length,
+            "width": material.width,
+            "height": material.height,
+            "price": material.price,
         }
         for material in materials
     ]
@@ -40,10 +44,24 @@ def save_insulation(
     name: str,
     classification_temp: float,
     density: float,
+    length: float | None,
+    width: float | None,
+    height: float | None,
+    price: float | None,
     temps: List[float],
     ks: List[float],
 ):
-    return save_material(name, classification_temp, density, temps, ks)
+    return save_material(
+        name,
+        classification_temp,
+        density,
+        length,
+        width,
+        height,
+        price,
+        temps,
+        ks,
+    )
 
 
 def delete_insulation(name: str):

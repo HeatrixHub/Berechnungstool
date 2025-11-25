@@ -66,6 +66,10 @@ def _migration_1(conn: sqlite3.Connection) -> None:
             name TEXT NOT NULL UNIQUE,
             classification_temp REAL,
             density REAL,
+            length REAL,
+            width REAL,
+            height REAL,
+            price REAL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -109,8 +113,22 @@ def _migration_1(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    existing_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in existing_columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
+
+def _migration_2(conn: sqlite3.Connection) -> None:
+    _add_column_if_missing(conn, "materials", "length", "REAL")
+    _add_column_if_missing(conn, "materials", "width", "REAL")
+    _add_column_if_missing(conn, "materials", "height", "REAL")
+    _add_column_if_missing(conn, "materials", "price", "REAL")
+
+
 MIGRATIONS: Sequence[Tuple[int, Any]] = [
     (1, _migration_1),
+    (2, _migration_2),
 ]
 
 
@@ -204,6 +222,10 @@ def _migrate_legacy_materials(conn: sqlite3.Connection) -> None:
             name=row["name"],
             classification_temp=row["classification_temp"],
             density=row["density"],
+            length=None,
+            width=None,
+            height=None,
+            price=None,
             temps=temps,
             ks=ks,
         )
@@ -313,20 +335,28 @@ def _persist_material(
     name: str,
     classification_temp: Optional[float],
     density: Optional[float],
+    length: Optional[float],
+    width: Optional[float],
+    height: Optional[float],
+    price: Optional[float],
     temps: Sequence[float],
     ks: Sequence[float],
 ) -> bool:
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO materials (name, classification_temp, density)
-        VALUES (?, ?, ?)
+        INSERT INTO materials (name, classification_temp, density, length, width, height, price)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             classification_temp = excluded.classification_temp,
             density = excluded.density,
+            length = excluded.length,
+            width = excluded.width,
+            height = excluded.height,
+            price = excluded.price,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (name, classification_temp, density),
+        (name, classification_temp, density, length, width, height, price),
     )
     material_id = cursor.execute("SELECT id FROM materials WHERE name = ?", (name,)).fetchone()["id"]
     cursor.execute("DELETE FROM material_measurements WHERE material_id = ?", (material_id,))
@@ -505,13 +535,30 @@ def list_materials() -> List[Material]:
     try:
         with _get_connection() as conn:
             rows = conn.execute(
-                "SELECT name, classification_temp, density, created_at, updated_at FROM materials ORDER BY name COLLATE NOCASE"
+                """
+                SELECT
+                    name,
+                    classification_temp,
+                    density,
+                    length,
+                    width,
+                    height,
+                    price,
+                    created_at,
+                    updated_at
+                FROM materials
+                ORDER BY name COLLATE NOCASE
+                """
             ).fetchall()
             return [
                 Material(
                     name=row["name"],
                     classification_temp=row["classification_temp"],
                     density=row["density"],
+                    length=row["length"],
+                    width=row["width"],
+                    height=row["height"],
+                    price=row["price"],
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                 )
@@ -543,6 +590,10 @@ def load_material(name: str) -> Optional[Material]:
                 name=row["name"],
                 classification_temp=row["classification_temp"],
                 density=row["density"],
+                length=row["length"],
+                width=row["width"],
+                height=row["height"],
+                price=row["price"],
                 measurements=measurements,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
@@ -556,6 +607,10 @@ def save_material(
     name: str,
     classification_temp: Optional[float],
     density: Optional[float],
+    length: Optional[float],
+    width: Optional[float],
+    height: Optional[float],
+    price: Optional[float],
     temps: Sequence[float],
     ks: Sequence[float],
 ) -> bool:
@@ -566,6 +621,10 @@ def save_material(
                 name=name,
                 classification_temp=classification_temp,
                 density=density,
+                length=length,
+                width=width,
+                height=height,
+                price=price,
                 temps=temps,
                 ks=ks,
             )
