@@ -13,6 +13,7 @@ except Exception as exc:  # pragma: no cover - tkinter ist optional bei Tests
 
 if TYPE_CHECKING:  # pragma: no cover - nur für Typprüfungen
     from app.projects.store import ProjectStore
+    from app.reporting import ReportBuilder, ReportContext, ReportTemplateMetadata
 
 
 @dataclass(slots=True)
@@ -73,3 +74,31 @@ class Plugin(ABC):
         """Stellt einen Abschnitt für den PDF-Bericht bereit."""
 
         return None
+
+    # ------------------------------------------------------------------
+    # Erweiterte Reporting-API (Preppy + ReportLab)
+    # ------------------------------------------------------------------
+    def list_report_templates(self) -> Sequence["ReportTemplateMetadata"]:
+        """Liefert die verfügbaren Berichtsvorlagen des Plugins.
+
+        Plugins ohne Reporting-Support geben eine leere Sequenz zurück. Jeder
+        Eintrag beschreibt eine Template-ID und Metadaten wie Titel oder
+        Dateinamen.
+        """
+
+        return ()
+
+    def render_report(
+        self,
+        template_id: str,
+        builder: "ReportBuilder",
+        context: "ReportContext",
+    ) -> None:
+        """Erzeugt den PDF-Inhalt für die angegebene Template-ID.
+
+        Standardimplementierung existiert nicht – Plugins, die
+        :meth:`list_report_templates` überschreiben, müssen diese Methode
+        implementieren und den übergebenen ``builder`` nutzen.
+        """
+
+        raise NotImplementedError("Plugin bietet keine Berichtsvorlagen an")
