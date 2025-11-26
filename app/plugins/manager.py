@@ -13,6 +13,8 @@ except Exception as exc:  # pragma: no cover - tkinter ist optional
     raise RuntimeError("tkinter wird für die Host-Anwendung benötigt") from exc
 
 from app.plugins import registry
+from app.ui.styles import BUTTON_STYLES
+from app.ui.tooltips import add_tooltip
 
 
 @dataclass
@@ -59,16 +61,32 @@ class PluginManagerDialog(tk.Toplevel):
         button_row.grid(row=3, column=0, sticky="ew")
         button_row.columnconfigure(0, weight=1)
 
-        ttk.Button(
-            button_row, text="Plugin hinzufügen", command=self._show_add_dialog
-        ).grid(row=0, column=0, sticky="w")
+        add_button = ttk.Button(
+            button_row,
+            text="➕ Plugin hinzufügen",
+            style=BUTTON_STYLES["info"],
+            command=self._show_add_dialog,
+        )
+        add_button.grid(row=0, column=0, sticky="w")
+        add_tooltip(add_button, "Neuen Plugin-Eintrag anlegen")
 
-        ttk.Button(button_row, text="Speichern", command=self._save).grid(
-            row=0, column=1, padx=(12, 0)
+        save_button = ttk.Button(
+            button_row,
+            text="💾 Speichern",
+            style=BUTTON_STYLES["apply"],
+            command=self._save,
         )
-        ttk.Button(button_row, text="Schließen", command=self.destroy).grid(
-            row=0, column=2, padx=(6, 0)
+        save_button.grid(row=0, column=1, padx=(12, 0))
+        add_tooltip(save_button, "Änderungen an der Pluginliste übernehmen")
+
+        close_button = ttk.Button(
+            button_row,
+            text="✖ Schließen",
+            style=BUTTON_STYLES["secondary"],
+            command=self.destroy,
         )
+        close_button.grid(row=0, column=2, padx=(6, 0))
+        add_tooltip(close_button, "Dialog schließen ohne Änderungen")
 
     def _build_rows(self) -> None:
         for child in self._list_frame.winfo_children():
@@ -139,12 +157,23 @@ class _AddPluginDialog(tk.Toplevel):
         button_row.grid(row=3, column=0, columnspan=2, sticky="ew")
         button_row.columnconfigure(0, weight=1)
 
-        ttk.Button(button_row, text="Abbrechen", command=self.destroy).grid(
-            row=0, column=0, sticky="w"
+        cancel_button = ttk.Button(
+            button_row,
+            text="✖ Abbrechen",
+            style=BUTTON_STYLES["secondary"],
+            command=self.destroy,
         )
-        ttk.Button(button_row, text="Hinzufügen", command=self._submit).grid(
-            row=0, column=1, sticky="e"
+        cancel_button.grid(row=0, column=0, sticky="w")
+        add_tooltip(cancel_button, "Eingaben verwerfen")
+
+        submit_button = ttk.Button(
+            button_row,
+            text="✅ Hinzufügen",
+            style=BUTTON_STYLES["primary"],
+            command=self._submit,
         )
+        submit_button.grid(row=0, column=1, sticky="e")
+        add_tooltip(submit_button, "Plugin in die Liste aufnehmen")
 
         self._name_entry.focus()
 

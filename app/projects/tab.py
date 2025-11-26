@@ -9,6 +9,8 @@ from typing import Dict, Iterable, List, Sequence
 from app.plugins.base import Plugin
 from .store import ProjectRecord, ProjectStore
 from app.plugins.registry import PluginSpec
+from app.ui.styles import BUTTON_STYLES
+from app.ui.tooltips import add_tooltip
 
 
 class ProjectsTab:
@@ -87,25 +89,41 @@ class ProjectsTab:
         for i in range(4):
             actions.columnconfigure(i, weight=1)
 
-        ttk.Button(actions, text="Neu", command=self.reset_form).grid(
-            row=0, column=0, padx=6, sticky="ew"
+        new_button = ttk.Button(
+            actions,
+            text="🆕 Neu",
+            style=BUTTON_STYLES["secondary"],
+            command=self.reset_form,
         )
-        ttk.Button(
+        new_button.grid(row=0, column=0, padx=6, sticky="ew")
+        add_tooltip(new_button, "Formular leeren und ein neues Projekt vorbereiten")
+
+        save_button = ttk.Button(
             actions,
-            text="Projekt speichern",
-            style="Accent.TButton",
+            text="💾 Projekt speichern",
+            style=BUTTON_STYLES["primary"],
             command=self.save_project,
-        ).grid(row=0, column=1, padx=6, sticky="ew")
-        ttk.Button(
+        )
+        save_button.grid(row=0, column=1, padx=6, sticky="ew")
+        add_tooltip(save_button, "Aktuellen Plugin-Stand im Projekt sichern")
+
+        load_button = ttk.Button(
             actions,
-            text="Projekt laden",
+            text="📂 Projekt laden",
+            style=BUTTON_STYLES["info"],
             command=self.load_selected_project,
-        ).grid(row=0, column=2, padx=6, sticky="ew")
-        ttk.Button(
+        )
+        load_button.grid(row=0, column=2, padx=6, sticky="ew")
+        add_tooltip(load_button, "Ausgewähltes Projekt in alle Plugins laden")
+
+        delete_button = ttk.Button(
             actions,
-            text="Löschen",
+            text="🗑️ Löschen",
+            style=BUTTON_STYLES["danger"],
             command=self.delete_selected_project,
-        ).grid(row=0, column=3, padx=6, sticky="ew")
+        )
+        delete_button.grid(row=0, column=3, padx=6, sticky="ew")
+        add_tooltip(delete_button, "Ausgewähltes Projekt dauerhaft entfernen")
 
         ttk.Label(
             actions,
