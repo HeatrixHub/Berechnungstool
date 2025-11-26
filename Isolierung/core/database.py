@@ -130,9 +130,37 @@ def _migration_2(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "materials", "price", "REAL")
 
 
+def _migration_3(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS project_layers_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            material_id INTEGER NOT NULL,
+            order_index INTEGER NOT NULL,
+            thickness REAL NOT NULL,
+            custom_name TEXT,
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE,
+            UNIQUE(project_id, order_index)
+        );
+
+        INSERT INTO project_layers_new (project_id, material_id, order_index, thickness, custom_name)
+        SELECT project_id, material_id, order_index, thickness, custom_name FROM project_layers;
+
+        DROP TABLE project_layers;
+        ALTER TABLE project_layers_new RENAME TO project_layers;
+
+        CREATE INDEX IF NOT EXISTS idx_project_layers_project ON project_layers(project_id);
+        CREATE INDEX IF NOT EXISTS idx_project_layers_material ON project_layers(material_id);
+        """
+    )
+
+
 MIGRATIONS: Sequence[Tuple[int, Any]] = [
     (1, _migration_1),
     (2, _migration_2),
+    (3, _migration_3),
 ]
 
 
@@ -642,31 +670,9 @@ def delete_material(name: str) -> bool:
         with _get_connection() as conn:
             cursor = conn.cursor()
             row = cursor.execute(
-                "SELECT id FROM materials WHERE name = ?", (name,)
+                "SELECT id FROM materials WHERE name = ?", (name,),
             ).fetchone()
             if not row:
-                return False
-
-            # Entferne eventuelle veraltete Layers ohne gültiges Projekt, damit die
-            # Verwendung korrekt geprüft werden kann.
-            cursor.execute(
-                "DELETE FROM project_layers WHERE project_id NOT IN (SELECT id FROM projects)"
-            )
-
-            usage_count = cursor.execute(
-                """
-                SELECT COUNT(1)
-                FROM project_layers pl
-                INNER JOIN projects p ON p.id = pl.project_id
-                WHERE pl.material_id = ?
-                """,
-                (row["id"],),
-            ).fetchone()[0]
-
-            if usage_count > 0:
-                print(
-                    f"[DB] Material '{name}' wird noch von Projekten verwendet und kann nicht gelöscht werden."
-                )
                 return False
 
             cursor.execute("DELETE FROM materials WHERE id = ?", (row["id"],))
