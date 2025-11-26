@@ -640,14 +640,38 @@ def save_material(
 def delete_material(name: str) -> bool:
     try:
         with _get_connection() as conn:
-            cur = conn.execute("DELETE FROM materials WHERE name = ?", (name,))
+            cursor = conn.cursor()
+            row = cursor.execute(
+                "SELECT id FROM materials WHERE name = ?", (name,)
+            ).fetchone()
+            if not row:
+                return False
+
+            # Entferne eventuelle veraltete Layers ohne gültiges Projekt, damit die
+            # Verwendung korrekt geprüft werden kann.
+            cursor.execute(
+                "DELETE FROM project_layers WHERE project_id NOT IN (SELECT id FROM projects)"
+            )
+
+            usage_count = cursor.execute(
+                """
+                SELECT COUNT(1)
+                FROM project_layers pl
+                INNER JOIN projects p ON p.id = pl.project_id
+                WHERE pl.material_id = ?
+                """,
+                (row["id"],),
+            ).fetchone()[0]
+
+            if usage_count > 0:
+                print(
+                    f"[DB] Material '{name}' wird noch von Projekten verwendet und kann nicht gelöscht werden."
+                )
+                return False
+
+            cursor.execute("DELETE FROM materials WHERE id = ?", (row["id"],))
             conn.commit()
-            return cur.rowcount > 0
-    except sqlite3.IntegrityError:
-        print(
-            f"[DB] Material '{name}' wird noch von Projekten verwendet und kann nicht gelöscht werden."
-        )
-        return False
+            return cursor.rowcount > 0
     except Exception as exc:
         print(f"[DB] Fehler beim Löschen der Isolierung '{name}': {exc}")
         return False
