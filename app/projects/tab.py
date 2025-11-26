@@ -198,13 +198,13 @@ class ProjectsTab:
     # ------------------------------------------------------------------
     # Aktionen
     # ------------------------------------------------------------------
-    def save_project(self) -> None:
+    def save_project(self) -> bool:
         name = self.name_var.get().strip()
         author = self.author_var.get().strip()
         if not name:
             messagebox.showerror("Fehler", "Bitte einen Projektnamen angeben.")
             self._set_status("Speichern abgebrochen: Projektname fehlt.")
-            return
+            return False
 
         plugin_states: Dict[str, Dict] = {}
         errors: List[str] = []
@@ -224,7 +224,7 @@ class ProjectsTab:
                 "Plugin-Fehler",
                 "\n".join(["Folgende Plugins konnten nicht exportiert werden:"] + errors),
             )
-            return
+            return False
 
         try:
             record = self.store.save_project(
@@ -235,7 +235,7 @@ class ProjectsTab:
             )
         except Exception as exc:
             messagebox.showerror("Fehler", str(exc))
-            return
+            return False
 
         self.project_cache[record.id] = record
         self.selected_project_id = record.id
@@ -244,6 +244,7 @@ class ProjectsTab:
         self._set_status(
             "Aktueller Plugin-Stand wurde erfolgreich im Projekt abgelegt."
         )
+        return True
 
     def load_selected_project(self) -> None:
         if not self.selected_project_id:

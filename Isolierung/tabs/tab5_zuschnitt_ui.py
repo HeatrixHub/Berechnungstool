@@ -6,7 +6,7 @@ import csv
 import math
 import random
 import tkinter as tk
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Dict, List, Tuple
@@ -333,6 +333,46 @@ class ZuschnittTab:
             )
         parsed_price = None if price is None else float(price)
         return {"length": float(length), "width": float(width), "price": parsed_price}
+
+    # ---------------------------------------------------------------
+    # Projektzustand
+    # ---------------------------------------------------------------
+    def _safe_float(self, value: str | float | int | None) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def export_state(self) -> Dict[str, object]:
+        return {
+            "kerf": self._safe_float(self.kerf_var.get()),
+            "cached_plates": getattr(self, "_cached_plates", []),
+            "placements": [asdict(item) for item in self.placements],
+            "material_summary": self.material_summary,
+            "total_cost": self.total_cost,
+            "total_bin_count": self.total_bin_count,
+        }
+
+    def import_state(self, state: Dict[str, object]) -> None:
+        self.kerf_var.set(str(state.get("kerf", 0) or 0))
+        cached = state.get("cached_plates")
+        self._cached_plates = cached if isinstance(cached, list) else []
+
+        placements_raw = state.get("placements") or []
+        placements: List[Placement] = []
+        for placement in placements_raw:
+            try:
+                placements.append(Placement(**placement))
+            except Exception:
+                continue
+        self.placements = placements
+
+        summary = state.get("material_summary")
+        self.material_summary = summary if isinstance(summary, list) else []
+        self.total_cost = state.get("total_cost")
+        self.total_bin_count = state.get("total_bin_count")
+
+        self._display_results()
 
     # ---------------------------------------------------------------
     # Darstellung

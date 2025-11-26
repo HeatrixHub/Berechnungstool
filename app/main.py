@@ -172,7 +172,7 @@ def main() -> None:
     notebook.grid(row=0, column=0, sticky="nsew")
 
     project_store = ProjectStore()
-    ProjectsTab(notebook, project_store, plugins, specs)
+    projects_tab = ProjectsTab(notebook, project_store, plugins, specs)
     IsolierungenTab(notebook, tab_name="Isolierungen DB")
 
     context = AppContext(root=root, notebook=notebook, project_store=project_store)
@@ -185,6 +185,21 @@ def main() -> None:
             plugin.on_theme_changed(current)
 
     _build_footer(root)
+
+    def _on_close() -> None:
+        answer = messagebox.askyesnocancel(
+            "Programm schließen",
+            "Möchten Sie den aktuellen Stand speichern, bevor das Programm beendet wird?",
+        )
+        if answer is None:
+            return
+        if answer:
+            saved = projects_tab.save_project()
+            if not saved:
+                return
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
 
     root.mainloop()
 
