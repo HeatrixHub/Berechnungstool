@@ -250,14 +250,20 @@ class IsolierungenTab:
             messagebox.showinfo("Hinweis", "Bitte eine Isolierung auswählen.")
             return
         name = self.tree.item(selection[0])["values"][0]
-        if messagebox.askyesno("Löschen", f"Soll '{name}' wirklich gelöscht werden?"):
+        if messagebox.askyesno(
+            "Löschen bestätigen",
+            (
+                f"Soll das Material '{name}' endgültig gelöscht werden?\n"
+                "Dieser Vorgang kann nicht rückgängig gemacht werden."
+            ),
+        ):
             if delete_insulation(name):
                 self.refresh_table()
                 self.clear_fields()
             else:
                 messagebox.showerror(
-                    "Löschen nicht möglich",
-                    "Die Isolierung konnte nicht gelöscht werden (wird vermutlich von Projekten verwendet).",
+                    "Löschen fehlgeschlagen",
+                    "Das Material konnte nicht gelöscht werden.",
                 )
 
     def export_selected(self) -> None:
