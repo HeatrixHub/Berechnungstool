@@ -13,6 +13,7 @@ from .tab1_berechnung_logic import (
     save_current_project,
     get_k_values_for_layers,
 )
+from app.global_tabs.isolierungen_db import logic as insulation_logic
 from .scrollable import ScrollableFrame
 
 
@@ -28,6 +29,9 @@ class BerechnungTab:
         self.build_ui()
         self.last_result: Dict[str, Any] | None = None
         self.layer_importer: Callable[[], Tuple[List[float], List[str]]] | None = None
+        insulation_logic.register_material_change_listener(
+            self._refresh_material_choices
+        )
 
     # ---------------------------------------------------------------
     # UI-Aufbau
@@ -104,6 +108,17 @@ class BerechnungTab:
         from app.global_tabs.isolierungen_db.logic import get_all_insulations
 
         return [i["name"] for i in get_all_insulations()]
+
+    def _refresh_material_choices(self) -> None:
+        """Aktualisiert alle Dropdowns, sobald neue Materialien verfügbar sind."""
+
+        options = self._get_insulation_names()
+        for row in self.layer_rows:
+            combo = row["combo"]
+            current_value = combo.get()
+            combo.configure(values=options)
+            if current_value and current_value not in options:
+                combo.set("")
 
     def _clear_layers(self):
         for row in self.layer_rows:
