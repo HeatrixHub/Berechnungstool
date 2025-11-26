@@ -42,7 +42,7 @@ class LeistungsrechnerTab(ttk.Frame):
         frame.grid(row=0, column=0, padx=(0, 8), pady=4, sticky="nsew")
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Formel: P = U × I (Wirklast)").grid(
+        ttk.Label(frame, text="Formel: P = U × I").grid(
             row=0, column=0, columnspan=2, sticky="w"
         )
 
@@ -72,7 +72,7 @@ class LeistungsrechnerTab(ttk.Frame):
         frame.grid(row=0, column=1, padx=(8, 0), pady=4, sticky="nsew")
         frame.columnconfigure(1, weight=1)
 
-        ttk.Label(frame, text="Formel: P = U × I × √3 (symmetrische Last)").grid(
+        ttk.Label(frame, text="Formel: P = U × I × √3").grid(
             row=0, column=0, columnspan=2, sticky="w"
         )
 
