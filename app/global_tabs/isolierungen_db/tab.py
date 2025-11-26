@@ -21,6 +21,8 @@ from app.global_tabs.isolierungen_db.logic import (
     save_insulation,
     register_material_change_listener,
 )
+from app.ui.styles import BUTTON_STYLES
+from app.ui.tooltips import add_tooltip
 
 
 class IsolierungenTab:
@@ -89,21 +91,50 @@ class IsolierungenTab:
         for i in range(5):
             action_bar.columnconfigure(i, weight=1)
 
-        ttk.Button(action_bar, text="Neu", command=self.new_entry).grid(
-            row=0, column=0, sticky="ew", padx=4
+        new_button = ttk.Button(
+            action_bar,
+            text="🆕 Neu",
+            style=BUTTON_STYLES["secondary"],
+            command=self.new_entry,
         )
-        ttk.Button(action_bar, text="Bearbeiten", command=self.edit_entry).grid(
-            row=0, column=1, sticky="ew", padx=4
+        new_button.grid(row=0, column=0, sticky="ew", padx=4)
+        add_tooltip(new_button, "Einen leeren Datensatz vorbereiten")
+
+        edit_button = ttk.Button(
+            action_bar,
+            text="✏️ Bearbeiten",
+            style=BUTTON_STYLES["info"],
+            command=self.edit_entry,
         )
-        ttk.Button(action_bar, text="Löschen", command=self.delete_entry).grid(
-            row=0, column=2, sticky="ew", padx=4
+        edit_button.grid(row=0, column=1, sticky="ew", padx=4)
+        add_tooltip(edit_button, "Ausgewählten Eintrag zum Bearbeiten laden")
+
+        delete_button = ttk.Button(
+            action_bar,
+            text="🗑️ Löschen",
+            style=BUTTON_STYLES["danger"],
+            command=self.delete_entry,
         )
-        ttk.Button(
-            action_bar, text="Exportieren (CSV)", command=self.export_selected
-        ).grid(row=0, column=3, sticky="ew", padx=4)
-        ttk.Button(action_bar, text="Importieren (CSV)", command=self.import_from_csv).grid(
-            row=0, column=4, sticky="ew", padx=4
+        delete_button.grid(row=0, column=2, sticky="ew", padx=4)
+        add_tooltip(delete_button, "Markierten Datensatz endgültig entfernen")
+
+        export_button = ttk.Button(
+            action_bar,
+            text="📤 Exportieren (CSV)",
+            style=BUTTON_STYLES["info"],
+            command=self.export_selected,
         )
+        export_button.grid(row=0, column=3, sticky="ew", padx=4)
+        add_tooltip(export_button, "Gewählte Isolierungen als CSV exportieren")
+
+        import_button = ttk.Button(
+            action_bar,
+            text="📥 Importieren (CSV)",
+            style=BUTTON_STYLES["apply"],
+            command=self.import_from_csv,
+        )
+        import_button.grid(row=0, column=4, sticky="ew", padx=4)
+        add_tooltip(import_button, "Isolierungen aus CSV-Dateien übernehmen")
 
         form = ttk.LabelFrame(
             self.frame, text="Isolierung bearbeiten/erstellen", style="Section.TLabelframe"
@@ -151,9 +182,14 @@ class IsolierungenTab:
         self.entry_ks = ttk.Entry(form)
         self.entry_ks.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Button(
-            form, text="💾 Speichern", style="Accent.TButton", command=self.save_entry
-        ).grid(row=5, column=0, columnspan=4, pady=10, sticky="e")
+        save_button = ttk.Button(
+            form,
+            text="💾 Speichern",
+            style=BUTTON_STYLES["primary"],
+            command=self.save_entry,
+        )
+        save_button.grid(row=5, column=0, columnspan=4, pady=10, sticky="e")
+        add_tooltip(save_button, "Eingegebene Isolierungsdaten sichern")
 
         self.plot_frame = ttk.LabelFrame(
             self.frame,
@@ -328,15 +364,32 @@ class IsolierungenTab:
             dialog.destroy()
             self._export_to_files(chosen)
 
-        ttk.Button(button_bar, text="Alle auswählen", command=_select_all).grid(
-            row=0, column=0, padx=4, sticky="ew"
+        select_all_button = ttk.Button(
+            button_bar,
+            text="✅ Alle auswählen",
+            style=BUTTON_STYLES["secondary"],
+            command=_select_all,
         )
-        ttk.Button(button_bar, text="Auswahl löschen", command=_deselect_all).grid(
-            row=0, column=1, padx=4, sticky="ew"
+        select_all_button.grid(row=0, column=0, padx=4, sticky="ew")
+        add_tooltip(select_all_button, "Sämtliche Materialien für den Export markieren")
+
+        deselect_button = ttk.Button(
+            button_bar,
+            text="🧹 Auswahl löschen",
+            style=BUTTON_STYLES["secondary"],
+            command=_deselect_all,
         )
-        ttk.Button(button_bar, text="Export starten", command=_confirm).grid(
-            row=0, column=2, padx=4, sticky="ew"
+        deselect_button.grid(row=0, column=1, padx=4, sticky="ew")
+        add_tooltip(deselect_button, "Aktuelle Auswahl zurücksetzen")
+
+        confirm_button = ttk.Button(
+            button_bar,
+            text="📤 Export starten",
+            style=BUTTON_STYLES["primary"],
+            command=_confirm,
         )
+        confirm_button.grid(row=0, column=2, padx=4, sticky="ew")
+        add_tooltip(confirm_button, "Export der gewählten Isolierungen durchführen")
 
     def _export_to_files(self, names: list[str]) -> None:
         try:

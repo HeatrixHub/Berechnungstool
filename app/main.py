@@ -22,6 +22,8 @@ from app.plugins.manager import PluginManagerDialog
 from app.plugins import registry
 from app.projects import ProjectStore, ProjectsTab
 from app.global_tabs.isolierungen_db import IsolierungenTab
+from app.ui.styles import BUTTON_STYLES, configure_button_styles
+from app.ui.tooltips import add_tooltip
 
 
 def _load_plugins(specs: Sequence[registry.PluginSpec]) -> tuple[List[Plugin], List[str]]:
@@ -61,13 +63,8 @@ def _configure_styles(root: tk.Misc) -> ttk.Style:
     style.configure("Title.TLabel", font=("Segoe UI", 16, "bold"))
     style.configure("Section.TLabelframe", padding=(12, 8, 12, 12))
     style.configure("Section.TLabelframe.Label", font=("Segoe UI", 11, "bold"))
-    style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
-    style.configure("TButton", padding=(10, 6))
     style.configure("Card.TFrame", relief="ridge", padding=(14, 12))
-    style.map(
-        "TButton",
-        relief=[("pressed", "sunken"), ("active", "raised")],
-    )
+    configure_button_styles(style)
     return style
 
 
@@ -122,7 +119,11 @@ def _create_theme_button(parent: tk.Misc, plugins: Iterable[Plugin]) -> tk.Widge
             plugin.on_theme_changed(new_theme)
 
     button = ttk.Button(
-        parent, text="☀", width=3, style="Toolbutton", command=toggle_theme
+        parent,
+        text="☀",
+        width=3,
+        style=BUTTON_STYLES["info"],
+        command=toggle_theme,
     )
     try:
         current_theme = sv_ttk.get_theme()
@@ -130,6 +131,7 @@ def _create_theme_button(parent: tk.Misc, plugins: Iterable[Plugin]) -> tk.Widge
         current_theme = "dark"
     if current_theme == "light":
         button.config(text="🌙")
+    add_tooltip(button, "Helles/Dunkles Design umschalten")
     return button
 
 
@@ -147,9 +149,15 @@ def _create_plugin_manager_button(
         dialog = PluginManagerDialog(dialog_parent, on_save=_on_save)
         dialog.grab_set()
 
-    return ttk.Button(
-        parent, text="⚙", width=3, style="Toolbutton", command=_show_dialog
+    button = ttk.Button(
+        parent,
+        text="⚙",
+        width=3,
+        style=BUTTON_STYLES["info"],
+        command=_show_dialog,
     )
+    add_tooltip(button, "Pluginverwaltung öffnen")
+    return button
 
 
 def _build_warning_panel(root: tk.Misc, errors: Sequence[str]) -> None:
