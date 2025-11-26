@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, Sequence
 
 try:
     import tkinter as tk
@@ -22,6 +22,17 @@ class AppContext:
     root: tk.Tk
     notebook: ttk.Notebook
     project_store: "ProjectStore"
+    plugins: Sequence["Plugin"]
+
+
+@dataclass(slots=True)
+class ReportSection:
+    """Inhaltlicher Abschnitt für den Berichtsexport."""
+
+    title: str
+    widget: tk.Widget | None = None
+    html: str | None = None
+    data: Any | None = None
 
 
 class Plugin(ABC):
@@ -57,3 +68,8 @@ class Plugin(ABC):
         """Stellt einen zuvor gespeicherten Zustand wieder her."""
 
         del state
+
+    def export_report(self) -> ReportSection | None:  # pragma: no cover - optionaler Hook
+        """Stellt einen Abschnitt für den PDF-Bericht bereit."""
+
+        return None

@@ -68,6 +68,28 @@ werden müssen:
   aufgerufen, wenn der/die Benutzer:in mit dem Theme-Schalter zwischen Hell- und
   Dunkelmodus umschaltet. Hier können Plugins Farben nachjustieren.
 
+## Optionale Hooks
+
+### `export_report`
+
+Plugins können freiwillig Inhalte zu einem PDF-Bericht beitragen, der im
+globalen Berichtstab aggregiert wird. Hierzu steht der Hook
+`export_report(self) -> ReportSection | None` zur Verfügung. Die Rückgabe ist
+eine `ReportSection`-Instanz mit folgenden Feldern:
+
+* `title` (**Pflicht**): Abschnittstitel, der im Tab und im PDF angezeigt wird.
+* `widget` (**optional**): Ein Tk-Widget, das im Berichtstab eingebettet wird.
+  Das Widget sollte bereits mit einem passenden Parent erstellt worden sein und
+  keine eigenen Geometry-Manager-Aufrufe ausführen.
+* `html` (**optional**): HTML-ähnlicher Text, der als Paragraph in das PDF
+  übernommen wird.
+* `data` (**optional**): Beliebige Datenstruktur, die im Tab per `str()`
+  dargestellt und im PDF ausgegeben wird.
+
+Wird `None` zurückgegeben, erscheint das Plugin nicht im Bericht. Ausgelieferte
+Plugins können so Schritt für Schritt Berichtsunterstützung nachrüsten, ohne
+den Haupt-Workflow zu beeinflussen.
+
 ## Laden neuer Plugins
 
 Plugins werden in `app/main.py` über die Liste `PLUGIN_SPECS` registriert:
