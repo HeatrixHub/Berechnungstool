@@ -40,7 +40,7 @@ class ProjectsTab:
             )
         )
 
-        self.frame = ttk.Frame(notebook, padding=(12, 12, 12, 12))
+        self.frame = ttk.Frame(notebook, padding=(18, 16, 18, 16))
         notebook.add(self.frame, text="Projekte")
 
         self._build_ui()
@@ -50,26 +50,35 @@ class ProjectsTab:
     # UI-Aufbau
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
-        self.frame.columnconfigure(0, weight=2)
-        self.frame.columnconfigure(1, weight=3)
+        self.frame.columnconfigure(0, weight=1)
         self.frame.rowconfigure(3, weight=1)
 
-        intro = ttk.Label(
-            self.frame,
-            wraplength=620,
-            justify="left",
-            text=(
-                "Speichere den aktuellen Zustand aller Plugins – inklusive "
-                "Eingaben und Berechnungsergebnissen – direkt in einem Projekt. "
-                "Wähle links ein Projekt, lade es oder lege über \"Neu\" einen "
-                "frischen Eintrag an."
-            ),
-        )
-        intro.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        header_frame = ttk.Frame(self.frame, padding=(0, 0, 0, 8))
+        header_frame.grid(row=0, column=0, sticky="ew")
+        header_frame.columnconfigure(0, weight=1)
 
-        meta_frame = ttk.LabelFrame(self.frame, text="Projekt-Metadaten")
-        meta_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=4, pady=(0, 8))
-        meta_frame.columnconfigure(1, weight=1)
+        ttk.Label(
+            header_frame,
+            text="Projektverwaltung",  # Titel
+            style="Title.TLabel",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            header_frame,
+            text=(
+                "Projekte speichern Plugin-Zustände dauerhaft. Organisiere deine Arbeit, "
+                "lade fertige Berechnungen erneut und halte alle Ergebnisse synchron."
+            ),
+            wraplength=920,
+            foreground="#6b7280",
+            justify="left",
+        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        meta_frame = ttk.LabelFrame(
+            self.frame, text="Projekt-Metadaten", style="Section.TLabelframe"
+        )
+        meta_frame.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        for col in range(4):
+            meta_frame.columnconfigure(col, weight=1)
 
         ttk.Label(meta_frame, text="Name:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
         self.name_var = tk.StringVar()
@@ -77,52 +86,62 @@ class ProjectsTab:
             row=0, column=1, sticky="ew", padx=4, pady=4
         )
 
-        ttk.Label(meta_frame, text="Autor:").grid(row=1, column=0, sticky="w", padx=4, pady=4)
+        ttk.Label(meta_frame, text="Autor:").grid(row=0, column=2, sticky="w", padx=4, pady=4)
         self.author_var = tk.StringVar()
         ttk.Entry(meta_frame, textvariable=self.author_var).grid(
-            row=1, column=1, sticky="ew", padx=4, pady=4
+            row=0, column=3, sticky="ew", padx=4, pady=4
         )
 
-        button_frame = ttk.Frame(self.frame)
-        button_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        actions = ttk.Frame(self.frame, padding=(0, 4, 0, 8))
+        actions.grid(row=2, column=0, sticky="ew")
         for i in range(4):
-            button_frame.columnconfigure(i, weight=1)
+            actions.columnconfigure(i, weight=1)
 
-        ttk.Button(button_frame, text="Neu", command=self.reset_form).grid(
-            row=0, column=0, padx=4, pady=(0, 2), sticky="ew"
+        ttk.Button(actions, text="Neu", command=self.reset_form).grid(
+            row=0, column=0, padx=6, sticky="ew"
         )
         ttk.Button(
-            button_frame,
+            actions,
             text="Projekt speichern",
+            style="Accent.TButton",
             command=self.save_project,
-        ).grid(row=0, column=1, padx=4, pady=(0, 2), sticky="ew")
+        ).grid(row=0, column=1, padx=6, sticky="ew")
         ttk.Button(
-            button_frame,
+            actions,
             text="Projekt laden",
             command=self.load_selected_project,
-        ).grid(row=0, column=2, padx=4, pady=(0, 2), sticky="ew")
+        ).grid(row=0, column=2, padx=6, sticky="ew")
         ttk.Button(
-            button_frame,
+            actions,
             text="Löschen",
             command=self.delete_selected_project,
-        ).grid(row=0, column=3, padx=4, pady=(0, 2), sticky="ew")
+        ).grid(row=0, column=3, padx=6, sticky="ew")
 
         ttk.Label(
-            button_frame,
+            actions,
             textvariable=self.status_var,
             foreground="#6b7280",
-            wraplength=760,
+            wraplength=1080,
             justify="left",
-        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(4, 0))
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=4, pady=(6, 0))
 
-        tree_frame = ttk.Frame(self.frame)
-        tree_frame.grid(row=3, column=0, sticky="nsew", padx=(0, 8))
-        tree_frame.rowconfigure(0, weight=1)
-        tree_frame.columnconfigure(0, weight=1)
+        panes = ttk.Panedwindow(self.frame, orient="horizontal")
+        panes.grid(row=3, column=0, sticky="nsew")
+        self.frame.rowconfigure(3, weight=1)
+
+        tree_container = ttk.LabelFrame(
+            panes, text="Projektliste", padding=8, style="Section.TLabelframe"
+        )
+        tree_container.columnconfigure(0, weight=1)
+        tree_container.rowconfigure(1, weight=1)
+
+        filter_frame = ttk.Frame(tree_container)
+        filter_frame.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        ttk.Label(filter_frame, text="Alle gespeicherten Projekte").pack(side="left")
 
         columns = ("name", "author", "updated")
         self.tree = ttk.Treeview(
-            tree_frame,
+            tree_container,
             columns=columns,
             show="headings",
             selectmode="browse",
@@ -131,24 +150,28 @@ class ProjectsTab:
         self.tree.heading("name", text="Projekt")
         self.tree.heading("author", text="Autor")
         self.tree.heading("updated", text="Zuletzt geändert")
-        self.tree.column("name", anchor="w", width=220)
-        self.tree.column("author", anchor="center", width=120)
-        self.tree.column("updated", anchor="center", width=160)
-        self.tree.grid(row=0, column=0, sticky="nsew")
+        self.tree.column("name", anchor="w", width=240)
+        self.tree.column("author", anchor="center", width=140)
+        self.tree.column("updated", anchor="center", width=180)
+        self.tree.grid(row=1, column=0, sticky="nsew")
         self.tree.bind("<<TreeviewSelect>>", lambda _: self.on_project_select())
 
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        scrollbar = ttk.Scrollbar(tree_container, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscroll=scrollbar.set)
-        scrollbar.grid(row=0, column=1, sticky="ns")
+        scrollbar.grid(row=1, column=1, sticky="ns")
 
-        details_frame = ttk.LabelFrame(self.frame, text="Details & Vorschau")
-        details_frame.grid(row=3, column=1, sticky="nsew")
+        details_frame = ttk.LabelFrame(
+            panes, text="Details & Vorschau", padding=8, style="Section.TLabelframe"
+        )
         details_frame.rowconfigure(0, weight=1)
         details_frame.columnconfigure(0, weight=1)
 
         self.details = tk.Text(details_frame, wrap="word", height=18)
-        self.details.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+        self.details.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
         self.details.configure(state="disabled")
+
+        panes.add(tree_container, weight=2)
+        panes.add(details_frame, weight=3)
 
     # ------------------------------------------------------------------
     # Ereignisse
