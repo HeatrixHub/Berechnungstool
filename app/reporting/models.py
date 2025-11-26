@@ -116,6 +116,33 @@ def _as_text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
+def _infer_element_type(raw: Dict[str, Any]) -> str | None:
+    """Leitet den Elementtyp aus vorhandenen Feldern ab.
+
+    Dadurch können bereits serialisierte Dataclasses (z. B. via ``asdict``)
+    ohne expliziten ``type``-Schlüssel wieder in konkrete Report-Elemente
+    umgewandelt werden.
+    """
+
+    if "rows" in raw:
+        return "table"
+    if "items" in raw:
+        return "bullet_list"
+    if "path" in raw:
+        return "image"
+    if "size" in raw:
+        return "spacer"
+    if {"thickness", "color", "width"} & set(raw):
+        return "separator"
+    if "level" in raw:
+        return "heading"
+    if "text" in raw:
+        return "paragraph"
+    if not raw:
+        return "page_break"
+    return None
+
+
 def _parse_report_element(raw: Any) -> ReportElement:
     if isinstance(
         raw,
@@ -131,11 +158,20 @@ def _parse_report_element(raw: Any) -> ReportElement:
         ),
     ):
         return raw
-    if not isinstance(raw, dict) or "type" not in raw:
+    if not isinstance(raw, dict):
         raise ValueError(
             "Report-Elemente müssen eine 'type'-Schlüssel enthalten oder bereits dataklassen sein"
         )
-    kind = str(raw.get("type")).lower()
+
+    kind_raw = raw.get("type")
+    if kind_raw is None:
+        kind_raw = _infer_element_type(raw)
+        if kind_raw is None:
+            raise ValueError(
+                "Report-Elemente müssen eine 'type'-Schlüssel enthalten oder bereits dataklassen sein"
+            )
+
+    kind = str(kind_raw).lower()
     if kind == "heading":
         return ReportHeading(text=_as_text(raw.get("text", "")), level=int(raw.get("level", 1)))
     if kind == "paragraph":
