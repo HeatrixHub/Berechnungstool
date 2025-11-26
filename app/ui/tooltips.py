@@ -15,7 +15,8 @@ def add_tooltip(widget: ttk.Widget, text: str, *, delay_ms: int = 400) -> None:
     label = tk.Label(
         tooltip,
         text=text,
-        padding=(8, 6),
+        padx=8,
+        pady=6,
         justify="left",
         background="#111827",
         foreground="#f9fafb",
