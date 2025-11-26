@@ -119,7 +119,16 @@ def _as_text(value: Any) -> str:
 def _parse_report_element(raw: Any) -> ReportElement:
     if isinstance(
         raw,
-        (ReportHeading, ReportParagraph, ReportBulletList, ReportTable, ReportImage, ReportSpacer, ReportPageBreak),
+        (
+            ReportHeading,
+            ReportParagraph,
+            ReportBulletList,
+            ReportTable,
+            ReportImage,
+            ReportSpacer,
+            ReportSeparator,
+            ReportPageBreak,
+        ),
     ):
         return raw
     if not isinstance(raw, dict) or "type" not in raw:
