@@ -13,6 +13,13 @@
       "module": "SoffeigenschaftenLuft.plugin",
       "class_name": "StoffeigenschaftenLuftPlugin",
       "enabled": true
+    },
+    {
+      "identifier": "elektrik",
+      "name": "Elektrik",
+      "module": "Elektrik.plugin",
+      "class_name": "ElektrikPlugin",
+      "enabled": true
     }
   ]
 }
