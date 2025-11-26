@@ -71,12 +71,7 @@ def create_tab3(notebook, get_thermal_power_from_tab1):
 
     entries["Effizienz (%):"].bind("<KeyRelease>", lambda event: on_effizienz_change())
 
-    calculate_button = ttk.Button(
-        frame_tab3,
-        text="Berechnen",
-        command=calculate_power,
-        style="Success.TButton",
-    )
+    calculate_button = ttk.Button(frame_tab3, text="Berechnen", command=calculate_power)
     calculate_button.grid(row=4, column=1, columnspan=4, pady=15, padx=(45, 0), sticky=tk.W)
     ToolTip(calculate_button, "Berechnet elektrische oder thermische Leistung basierend auf Eingaben.")
 

@@ -78,18 +78,12 @@ class ZuschnittTab:
 
         btn_frame = ttk.Frame(settings)
         btn_frame.grid(row=0, column=2, padx=6, pady=4, sticky="e")
-        ttk.Button(
-            btn_frame,
-            text="Platten übernehmen",
-            command=self.import_plates,
-            style="Warning.TButton",
-        ).pack(side=tk.LEFT, padx=3)
-        ttk.Button(
-            btn_frame,
-            text="Berechnen",
-            command=self.run_optimization,
-            style="Success.TButton",
-        ).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_frame, text="Platten übernehmen", command=self.import_plates).pack(
+            side=tk.LEFT, padx=3
+        )
+        ttk.Button(btn_frame, text="Berechnen", command=self.run_optimization).pack(
+            side=tk.LEFT, padx=3
+        )
 
         overview_frame = ttk.LabelFrame(self.frame, text="Rohlingübersicht")
         overview_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=6)
@@ -162,18 +156,12 @@ class ZuschnittTab:
 
         export_frame = ttk.Frame(table_frame)
         export_frame.grid(row=1, column=0, columnspan=2, sticky="e", pady=4)
-        ttk.Button(
-            export_frame,
-            text="CSV exportieren",
-            command=self.export_csv,
-            style="Neutral.TButton",
-        ).pack(side=tk.LEFT, padx=4)
-        ttk.Button(
-            export_frame,
-            text="Excel exportieren",
-            command=self.export_excel,
-            style="Neutral.TButton",
-        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(export_frame, text="CSV exportieren", command=self.export_csv).pack(
+            side=tk.LEFT, padx=4
+        )
+        ttk.Button(export_frame, text="Excel exportieren", command=self.export_excel).pack(
+            side=tk.LEFT, padx=4
+        )
 
         preview_frame = ttk.LabelFrame(self.frame, text="Graphische Übersicht")
         preview_frame.grid(row=5, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 10))

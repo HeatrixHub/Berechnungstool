@@ -65,24 +65,9 @@ class ProjekteTab:
         # --- Buttons ---
         btn_frame = ttk.Frame(self.frame)
         btn_frame.grid(row=2, column=0, pady=8, sticky="ew", padx=10)
-        ttk.Button(
-            btn_frame,
-            text="🔄 Aktualisieren",
-            command=self.refresh_projects,
-            style="Neutral.TButton",
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Button(
-            btn_frame,
-            text="📄 Laden in Tab 1",
-            command=self.load_selected_into_tab1,
-            style="Warning.TButton",
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Button(
-            btn_frame,
-            text="🗑️ Löschen",
-            command=self.delete_selected_project,
-            style="Danger.TButton",
-        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="🔄 Aktualisieren", command=self.refresh_projects).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="📄 Laden in Tab 1", command=self.load_selected_into_tab1).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="🗑️ Löschen", command=self.delete_selected_project).pack(side=tk.LEFT, padx=5)
 
         # --- Projektdetails ---
         ttk.Label(self.frame, text="Projektdetails", font=("Segoe UI", 11, "bold")).grid(

@@ -22,7 +22,6 @@ from app.plugins.manager import PluginManagerDialog
 from app.plugins import registry
 from app.projects import ProjectStore, ProjectsTab
 from app.global_tabs.isolierungen_db import IsolierungenTab
-from app.ui_styles import apply_button_styles
 
 
 def _load_plugins(specs: Sequence[registry.PluginSpec]) -> tuple[List[Plugin], List[str]]:
@@ -69,7 +68,6 @@ def _configure_styles(root: tk.Misc) -> ttk.Style:
         "TButton",
         relief=[("pressed", "sunken"), ("active", "raised")],
     )
-    apply_button_styles(style)
     return style
 
 
