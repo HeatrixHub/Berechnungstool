@@ -22,6 +22,7 @@ from app.plugins.manager import PluginManagerDialog
 from app.plugins import registry
 from app.projects import ProjectStore, ProjectsTab
 from app.global_tabs.isolierungen_db import IsolierungenTab
+from app.global_tabs.report import ReportTab
 
 
 def _load_plugins(specs: Sequence[registry.PluginSpec]) -> tuple[List[Plugin], List[str]]:
@@ -197,10 +198,12 @@ def main() -> None:
     notebook.grid(row=0, column=0, sticky="nsew")
 
     project_store = ProjectStore()
+    context = AppContext(
+        root=root, notebook=notebook, project_store=project_store, plugins=plugins
+    )
     projects_tab = ProjectsTab(notebook, project_store, plugins, specs)
+    ReportTab(notebook, context)
     IsolierungenTab(notebook, tab_name="Isolierungen DB")
-
-    context = AppContext(root=root, notebook=notebook, project_store=project_store)
     for plugin in plugins:
         plugin.attach(context)
 
