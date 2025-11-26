@@ -11,6 +11,7 @@ import csv
 import re
 from datetime import datetime
 from pathlib import Path
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -135,6 +136,16 @@ CSV_HEADERS = [
     "ks",
 ]
 
+REQUIRED_HEADERS = {"name", "temps", "ks"}
+
+
+@dataclass
+class FileImportResult:
+    file_path: str
+    imported: int
+    errors: List[str]
+    skipped_reason: str | None = None
+
 
 def export_insulations_to_csv(names: List[str], file_path: str) -> Tuple[int, List[str]]:
     """Exportiert ausgewählte Isolierungen in eine einzige CSV-Datei.
@@ -197,46 +208,110 @@ def export_insulations_to_folder(
     return exported, failed, str(export_dir)
 
 
-def import_insulations_from_csv(file_path: str) -> Tuple[int, List[str]]:
-    """Importiert Isolierungen aus einer CSV-Datei.
+def import_insulations_from_csv_files(
+    file_paths: List[str],
+) -> Tuple[int, List[FileImportResult]]:
+    """Importiert Isolierungen aus mehreren CSV-Dateien.
+
+    Jeder Dateipfad wird einzeln validiert (Encoding, Kopfzeilen, Pflichtfelder).
+    Bei Dateifehlern wird die Datei übersprungen, gültige Dateien werden Zeile für
+    Zeile verarbeitet. Pro Zeile wird entweder ein vollständiger Datensatz
+    gespeichert oder verworfen.
 
     Returns:
-        Tuple[int, List[str]]: Anzahl erfolgreich importierter Datensätze und
-        Zeilen, die fehlschlugen (nach Name gekennzeichnet).
+        Gesamtzahl importierter Datensätze und eine Liste mit Dateiergebnissen.
     """
 
-    imported = 0
-    errors: List[str] = []
-    with open(file_path, newline="", encoding="utf-8") as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            name = (row.get("name") or "").strip()
-            try:
-                class_temp = _parse_optional_float(row.get("classification_temp"))
-                density = _parse_optional_float(row.get("density"))
-                length = _parse_optional_float(row.get("length"))
-                width = _parse_optional_float(row.get("width"))
-                height = _parse_optional_float(row.get("height"))
-                price = _parse_optional_float(row.get("price"))
-                temps = _parse_numeric_list(row.get("temps", ""))
-                ks = _parse_numeric_list(row.get("ks", ""))
-                if len(temps) != len(ks):
-                    raise ValueError("Temperatur- und k-Liste müssen gleich lang sein.")
-                save_insulation(
-                    name,
-                    class_temp if class_temp is not None else 0.0,
-                    density if density is not None else 0.0,
-                    length,
-                    width,
-                    height,
-                    price,
-                    temps,
-                    ks,
+    existing_names = {material.name for material in list_materials()}
+    results: List[FileImportResult] = []
+    total_imported = 0
+
+    for file_path in file_paths:
+        imported = 0
+        errors: List[str] = []
+
+        try:
+            with open(file_path, newline="", encoding="utf-8") as csvfile:
+                reader = csv.DictReader(csvfile)
+                validation_error = _validate_csv_headers(reader.fieldnames)
+                if validation_error:
+                    results.append(
+                        FileImportResult(
+                            file_path=file_path,
+                            imported=0,
+                            errors=[],
+                            skipped_reason=validation_error,
+                        )
+                    )
+                    continue
+
+                for idx, row in enumerate(reader, start=2):
+                    base_name = (row.get("name") or "").strip()
+                    try:
+                        _ensure_required_fields(base_name)
+                        class_temp = _parse_optional_float(
+                            row.get("classification_temp")
+                        )
+                        density = _parse_optional_float(row.get("density"))
+                        length = _parse_optional_float(row.get("length"))
+                        width = _parse_optional_float(row.get("width"))
+                        height = _parse_optional_float(row.get("height"))
+                        price = _parse_optional_float(row.get("price"))
+                        temps = _parse_numeric_list(row.get("temps", ""))
+                        ks = _parse_numeric_list(row.get("ks", ""))
+                        if len(temps) != len(ks):
+                            raise ValueError(
+                                "Temperatur- und k-Liste müssen gleich lang sein."
+                            )
+
+                        name = _generate_unique_name(base_name, existing_names)
+                        saved = save_insulation(
+                            name,
+                            class_temp if class_temp is not None else 0.0,
+                            density if density is not None else 0.0,
+                            length,
+                            width,
+                            height,
+                            price,
+                            temps,
+                            ks,
+                        )
+                        if not saved:
+                            raise ValueError("Speichern fehlgeschlagen.")
+                        imported += 1
+                    except Exception as exc:  # pragma: no cover - Laufzeitvalidierung
+                        display_name = base_name or "<unbenannt>"
+                        errors.append(f"Zeile {idx} ({display_name}): {exc}")
+
+        except UnicodeDecodeError as exc:
+            results.append(
+                FileImportResult(
+                    file_path=file_path,
+                    imported=0,
+                    errors=[],
+                    skipped_reason=f"Ungültiges Encoding: {exc}",
                 )
-                imported += 1
-            except Exception:
-                errors.append(name or "<unbenannt>")
-    return imported, errors
+            )
+            continue
+        except Exception as exc:
+            results.append(
+                FileImportResult(
+                    file_path=file_path,
+                    imported=0,
+                    errors=[],
+                    skipped_reason=f"Datei konnte nicht gelesen werden: {exc}",
+                )
+            )
+            continue
+
+        total_imported += imported
+        results.append(
+            FileImportResult(
+                file_path=file_path, imported=imported, errors=errors, skipped_reason=None
+            )
+        )
+
+    return total_imported, results
 
 
 def _parse_optional_float(value: str | None) -> float | None:
@@ -253,6 +328,33 @@ def _parse_numeric_list(value: str) -> List[float]:
     if not cleaned:
         return []
     return [float(item.strip()) for item in cleaned.split(";") if item.strip()]
+
+
+def _ensure_required_fields(name: str) -> None:
+    if not name:
+        raise ValueError("Pflichtfeld 'name' fehlt.")
+
+
+def _validate_csv_headers(headers: List[str] | None) -> str | None:
+    if not headers:
+        return "Datei enthält keine Kopfzeile."
+    missing = REQUIRED_HEADERS.difference({header.strip() for header in headers})
+    if missing:
+        return f"Pflichtspalten fehlen: {', '.join(sorted(missing))}"
+    unexpected = [h for h in headers if h not in CSV_HEADERS]
+    if unexpected:
+        return "Unbekannte Spalten gefunden. Bitte Schema prüfen."
+    return None
+
+
+def _generate_unique_name(base_name: str, used_names: set[str]) -> str:
+    name = base_name
+    counter = 1
+    while name in used_names:
+        name = f"{base_name} ({counter})"
+        counter += 1
+    used_names.add(name)
+    return name
 
 
 def _build_insulation_row(name: str) -> Dict[str, str | float] | None:

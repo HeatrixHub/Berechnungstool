@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,12 +10,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from Isolierung.tabs.scrollable import ScrollableFrame
 from app.global_tabs.isolierungen_db.logic import (
+    FileImportResult,
     delete_insulation,
     export_insulations_to_csv,
     export_insulations_to_folder,
     get_all_insulations,
     interpolate_k,
-    import_insulations_from_csv,
+    import_insulations_from_csv_files,
     load_insulation,
     save_insulation,
 )
@@ -363,18 +365,39 @@ class IsolierungenTab:
             messagebox.showerror("Export fehlgeschlagen", str(exc))
 
     def import_from_csv(self) -> None:
-        file_path = filedialog.askopenfilename(
+        file_paths = filedialog.askopenfilenames(
             filetypes=[("CSV Dateien", "*.csv"), ("Alle Dateien", "*.*")],
             title="Isolierungen importieren",
         )
-        if not file_path:
+        if not file_paths:
             return
-        imported, errors = import_insulations_from_csv(file_path)
-        self.refresh_table()
-        message = f"{imported} Isolierung(en) importiert."
-        if errors:
-            message += "\nFehlgeschlagen: " + ", ".join(errors)
-        messagebox.showinfo("Import abgeschlossen", message)
+        try:
+            imported, results = import_insulations_from_csv_files(list(file_paths))
+            self.refresh_table()
+            message = self._build_import_summary(imported, results)
+            messagebox.showinfo("Import abgeschlossen", message)
+        except Exception as exc:  # pragma: no cover - GUI Verarbeitung
+            messagebox.showerror("Import fehlgeschlagen", str(exc))
+
+    def _build_import_summary(
+        self, imported: int, results: list[FileImportResult]
+    ) -> str:
+        lines = [f"{imported} Isolierung(en) importiert."]
+        skipped = [r for r in results if r.skipped_reason]
+        per_file_errors = [r for r in results if r.errors]
+
+        if skipped:
+            lines.append("Übersprungene Dateien:")
+            for result in skipped:
+                lines.append(f"- {Path(result.file_path).name}: {result.skipped_reason}")
+
+        if per_file_errors:
+            lines.append("Fehlerhafte Zeilen:")
+            for result in per_file_errors:
+                lines.append(f"- {Path(result.file_path).name}:")
+                lines.extend([f"    * {err}" for err in result.errors])
+
+        return "\n".join(lines)
 
     def on_select(self, event: tk.Event | None = None) -> None:
         selection = self.tree.selection()
