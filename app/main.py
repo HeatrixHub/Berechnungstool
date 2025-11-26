@@ -80,12 +80,6 @@ def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> ttk.Frame:
     ttk.Label(header, text="Heatrix Berechnungstools", style="Title.TLabel").grid(
         row=0, column=0, sticky="w"
     )
-    subtitle = ttk.Label(
-        header,
-        text="Zentrale Steuerung für Plugins, Projekte und Datenbanken",
-        foreground="#6b7280",
-    )
-    subtitle.grid(row=1, column=0, sticky="w")
 
     controls_frame = ttk.Frame(header)
     controls_frame.grid(row=0, column=1, rowspan=2, sticky="e", padx=(12, 0))
