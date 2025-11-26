@@ -54,24 +54,49 @@ def _configure_theme(root: tk.Misc) -> None:
         pass
 
 
-def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> None:
-    header = ttk.Frame(root, padding=(0, 8, 12, 0))
-    header.place(relx=1.0, rely=0.0, x=-4, y=8, anchor="ne")
-    # Sobald weitere Widgets über ``pack`` oder ``grid`` in ``root`` platziert
-    # werden, können sie den Header verdecken. Deshalb heben wir ihn an und
-    # stellen außerdem sicher, dass dies erneut geschieht, sobald der Tk-Event
-    # Loop Zeit hatte, alle Layout-Operationen abzuarbeiten.
-    header.lift()
-    root.after_idle(header.lift)
+def _configure_styles(root: tk.Misc) -> ttk.Style:
+    style = ttk.Style(root)
+    style.configure("TFrame", padding=0)
+    style.configure("TLabel", font=("Segoe UI", 10))
+    style.configure("Title.TLabel", font=("Segoe UI", 16, "bold"))
+    style.configure("Section.TLabelframe", padding=(12, 8, 12, 12))
+    style.configure("Section.TLabelframe.Label", font=("Segoe UI", 11, "bold"))
+    style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
+    style.configure("TButton", padding=(10, 6))
+    style.configure("Card.TFrame", relief="ridge", padding=(14, 12))
+    style.map(
+        "TButton",
+        relief=[("pressed", "sunken"), ("active", "raised")],
+    )
+    return style
+
+
+def _build_header(root: tk.Misc, plugins: Iterable[Plugin]) -> ttk.Frame:
+    header = ttk.Frame(root, padding=(16, 12))
+    header.pack(fill="x")
+
+    header.columnconfigure(0, weight=1)
+
+    ttk.Label(header, text="Heatrix Berechnungstools", style="Title.TLabel").grid(
+        row=0, column=0, sticky="w"
+    )
+    subtitle = ttk.Label(
+        header,
+        text="Zentrale Steuerung für Plugins, Projekte und Datenbanken",
+        foreground="#6b7280",
+    )
+    subtitle.grid(row=1, column=0, sticky="w")
+
     controls_frame = ttk.Frame(header)
-    controls_frame.pack(side="right")
+    controls_frame.grid(row=0, column=1, rowspan=2, sticky="e", padx=(12, 0))
     theme_toggle = _create_theme_button(controls_frame, plugins)
     plugin_manager_button = _create_plugin_manager_button(
         controls_frame, dialog_parent=root
     )
-    for widget in (theme_toggle, plugin_manager_button):
+    for widget in (plugin_manager_button, theme_toggle):
         if widget is not None:
             widget.pack(side="right", padx=(8, 0))
+    return header
 
 
 def _build_footer(root: tk.Misc) -> None:
@@ -136,7 +161,7 @@ def _create_plugin_manager_button(
 def _build_warning_panel(root: tk.Misc, errors: Sequence[str]) -> None:
     if not errors:
         return
-    frame = ttk.Frame(root, padding=(12, 6))
+    frame = ttk.Frame(root, padding=(16, 10))
     frame.pack(fill="x")
     ttk.Label(
         frame,
@@ -155,20 +180,26 @@ def main() -> None:
     root.minsize(1100, 720)
 
     _configure_theme(root)
+    _configure_styles(root)
 
     registry.ensure_default_registry()
     specs = registry.load_registry()
     plugins, load_errors = _load_plugins(specs)
 
-    _build_header(root, plugins)
+    header = _build_header(root, plugins)
     _build_warning_panel(root, load_errors)
 
-    content = ttk.Frame(root, padding=(16, 12, 16, 16))
+    content = ttk.Frame(root, padding=(16, 0, 16, 16))
     content.pack(fill="both", expand=True)
     content.columnconfigure(0, weight=1)
     content.rowconfigure(0, weight=1)
 
-    notebook = ttk.Notebook(content)
+    notebook_container = ttk.Frame(content, padding=(0, 8, 0, 0), style="Card.TFrame")
+    notebook_container.grid(row=0, column=0, sticky="nsew")
+    notebook_container.columnconfigure(0, weight=1)
+    notebook_container.rowconfigure(0, weight=1)
+
+    notebook = ttk.Notebook(notebook_container)
     notebook.grid(row=0, column=0, sticky="nsew")
 
     project_store = ProjectStore()

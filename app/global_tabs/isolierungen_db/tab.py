@@ -19,7 +19,7 @@ from app.global_tabs.isolierungen_db.logic import (
 
 class IsolierungenTab:
     def __init__(self, notebook: ttk.Notebook, tab_name: str = "Isolierungen"):
-        container = ttk.Frame(notebook)
+        container = ttk.Frame(notebook, padding=(14, 12, 14, 12))
         notebook.add(container, text=tab_name)
 
         self.scrollable = ScrollableFrame(container)
@@ -32,6 +32,27 @@ class IsolierungenTab:
         self.frame.rowconfigure(4, weight=1)
         self.frame.columnconfigure(0, weight=1)
 
+        ttk.Label(
+            self.frame,
+            text="Isolierungen verwalten",
+            style="Title.TLabel",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        ttk.Label(
+            self.frame,
+            text=(
+                "Pflege die Materialdatenbank, erfasse Messwerte und prüfe die "
+                "Interpolationen direkt in der Vorschau."
+            ),
+            foreground="#6b7280",
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 8))
+
+        table_section = ttk.LabelFrame(
+            self.frame, text="Isolierungen", padding=8, style="Section.TLabelframe"
+        )
+        table_section.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(0, 8))
+        table_section.rowconfigure(1, weight=1)
+        table_section.columnconfigure(0, weight=1)
+
         columns = (
             "name",
             "classification_temp",
@@ -42,7 +63,11 @@ class IsolierungenTab:
             "price",
         )
         self.tree = ttk.Treeview(
-            self.frame, columns=columns, show="headings", height=10, selectmode="browse"
+            table_section,
+            columns=columns,
+            show="headings",
+            height=10,
+            selectmode="browse",
         )
         self.tree.heading("name", text="Name")
         self.tree.heading("classification_temp", text="Klass.-Temp [°C]")
@@ -53,21 +78,32 @@ class IsolierungenTab:
         self.tree.heading("price", text="Preis [€]")
         for column in columns:
             self.tree.column(column, anchor="center", width=120)
-        self.tree.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=10, pady=5)
+        self.tree.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=6, pady=4)
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
 
-        ttk.Button(self.frame, text="Neu", command=self.new_entry).grid(
-            row=1, column=0, sticky="ew", padx=10
+        scrollbar = ttk.Scrollbar(table_section, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        scrollbar.grid(row=1, column=2, sticky="ns")
+
+        action_bar = ttk.Frame(table_section)
+        action_bar.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 4))
+        for i in range(3):
+            action_bar.columnconfigure(i, weight=1)
+
+        ttk.Button(action_bar, text="Neu", command=self.new_entry).grid(
+            row=0, column=0, sticky="ew", padx=4
         )
-        ttk.Button(self.frame, text="Bearbeiten", command=self.edit_entry).grid(
-            row=1, column=1, sticky="ew"
+        ttk.Button(action_bar, text="Bearbeiten", command=self.edit_entry).grid(
+            row=0, column=1, sticky="ew", padx=4
         )
-        ttk.Button(self.frame, text="Löschen", command=self.delete_entry).grid(
-            row=1, column=2, sticky="ew", padx=10
+        ttk.Button(action_bar, text="Löschen", command=self.delete_entry).grid(
+            row=0, column=2, sticky="ew", padx=4
         )
 
-        form = ttk.LabelFrame(self.frame, text="Isolierung bearbeiten/erstellen")
-        form.grid(row=2, column=0, columnspan=3, sticky="ew", padx=10, pady=5)
+        form = ttk.LabelFrame(
+            self.frame, text="Isolierung bearbeiten/erstellen", style="Section.TLabelframe"
+        )
+        form.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 8))
         form.columnconfigure(1, weight=1)
         form.columnconfigure(3, weight=1)
 
@@ -110,15 +146,17 @@ class IsolierungenTab:
         self.entry_ks = ttk.Entry(form)
         self.entry_ks.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Button(form, text="💾 Speichern", command=self.save_entry).grid(
-            row=5, column=0, columnspan=4, pady=8, sticky="e"
-        )
+        ttk.Button(
+            form, text="💾 Speichern", style="Accent.TButton", command=self.save_entry
+        ).grid(row=5, column=0, columnspan=4, pady=10, sticky="e")
 
         self.plot_frame = ttk.LabelFrame(
-            self.frame, text="Interpolierte Wärmeleitfähigkeit"
+            self.frame,
+            text="Interpolierte Wärmeleitfähigkeit",
+            style="Section.TLabelframe",
         )
-        self.plot_frame.grid(row=3, column=0, columnspan=3, sticky="nsew", padx=10, pady=10)
-        self.frame.rowconfigure(3, weight=1)
+        self.plot_frame.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=(0, 4))
+        self.frame.rowconfigure(4, weight=1)
         self.refresh_table()
 
     def refresh_table(self) -> None:
