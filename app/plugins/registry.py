@@ -33,6 +33,12 @@ DEFAULT_SPECS: Sequence[PluginSpec] = (
         module="SoffeigenschaftenLuft.plugin",
         class_name="StoffeigenschaftenLuftPlugin",
     ),
+    PluginSpec(
+        identifier="elektrik",
+        name="Elektrik",
+        module="Elektrik.plugin",
+        class_name="ElektrikPlugin",
+    ),
 )
 
 
