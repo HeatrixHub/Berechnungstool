@@ -5,7 +5,9 @@ sowie die Interpolation der Wärmeleitfähigkeit.
 """
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
+
+import csv
 
 import numpy as np
 
@@ -116,3 +118,109 @@ def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):
         k_fit = np.full_like(x_range, ks_u[0], dtype=float)
 
     return k_fit
+
+
+CSV_HEADERS = [
+    "name",
+    "classification_temp",
+    "density",
+    "length",
+    "width",
+    "height",
+    "price",
+    "temps",
+    "ks",
+]
+
+
+def export_insulations_to_csv(names: List[str], file_path: str) -> Tuple[int, List[str]]:
+    """Exportiert ausgewählte Isolierungen nach CSV.
+
+    Returns:
+        Tuple[int, List[str]]: Anzahl erfolgreich exportierter Datensätze und Namen,
+        die nicht geladen werden konnten.
+    """
+
+    failed: List[str] = []
+    exported = 0
+    with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
+        writer.writeheader()
+        for name in names:
+            data = load_insulation(name)
+            if not data:
+                failed.append(name)
+                continue
+            writer.writerow(
+                {
+                    "name": data.get("name", ""),
+                    "classification_temp": data.get("classification_temp"),
+                    "density": data.get("density"),
+                    "length": data.get("length"),
+                    "width": data.get("width"),
+                    "height": data.get("height"),
+                    "price": data.get("price"),
+                    "temps": ";".join(map(str, data.get("temps", []))),
+                    "ks": ";".join(map(str, data.get("ks", []))),
+                }
+            )
+            exported += 1
+    return exported, failed
+
+
+def import_insulations_from_csv(file_path: str) -> Tuple[int, List[str]]:
+    """Importiert Isolierungen aus einer CSV-Datei.
+
+    Returns:
+        Tuple[int, List[str]]: Anzahl erfolgreich importierter Datensätze und
+        Zeilen, die fehlschlugen (nach Name gekennzeichnet).
+    """
+
+    imported = 0
+    errors: List[str] = []
+    with open(file_path, newline="", encoding="utf-8") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            name = (row.get("name") or "").strip()
+            try:
+                class_temp = _parse_optional_float(row.get("classification_temp"))
+                density = _parse_optional_float(row.get("density"))
+                length = _parse_optional_float(row.get("length"))
+                width = _parse_optional_float(row.get("width"))
+                height = _parse_optional_float(row.get("height"))
+                price = _parse_optional_float(row.get("price"))
+                temps = _parse_numeric_list(row.get("temps", ""))
+                ks = _parse_numeric_list(row.get("ks", ""))
+                if len(temps) != len(ks):
+                    raise ValueError("Temperatur- und k-Liste müssen gleich lang sein.")
+                save_insulation(
+                    name,
+                    class_temp if class_temp is not None else 0.0,
+                    density if density is not None else 0.0,
+                    length,
+                    width,
+                    height,
+                    price,
+                    temps,
+                    ks,
+                )
+                imported += 1
+            except Exception:
+                errors.append(name or "<unbenannt>")
+    return imported, errors
+
+
+def _parse_optional_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+    return float(cleaned)
+
+
+def _parse_numeric_list(value: str) -> List[float]:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return []
+    return [float(item.strip()) for item in cleaned.split(";") if item.strip()]

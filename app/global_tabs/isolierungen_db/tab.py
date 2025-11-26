@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,8 +10,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from Isolierung.tabs.scrollable import ScrollableFrame
 from app.global_tabs.isolierungen_db.logic import (
     delete_insulation,
+    export_insulations_to_csv,
     get_all_insulations,
     interpolate_k,
+    import_insulations_from_csv,
     load_insulation,
     save_insulation,
 )
@@ -79,7 +81,7 @@ class IsolierungenTab:
 
         action_bar = ttk.Frame(table_section)
         action_bar.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 4))
-        for i in range(3):
+        for i in range(5):
             action_bar.columnconfigure(i, weight=1)
 
         ttk.Button(action_bar, text="Neu", command=self.new_entry).grid(
@@ -90,6 +92,12 @@ class IsolierungenTab:
         )
         ttk.Button(action_bar, text="Löschen", command=self.delete_entry).grid(
             row=0, column=2, sticky="ew", padx=4
+        )
+        ttk.Button(
+            action_bar, text="Exportieren (CSV)", command=self.export_selected
+        ).grid(row=0, column=3, sticky="ew", padx=4)
+        ttk.Button(action_bar, text="Importieren (CSV)", command=self.import_from_csv).grid(
+            row=0, column=4, sticky="ew", padx=4
         )
 
         form = ttk.LabelFrame(
@@ -246,6 +254,41 @@ class IsolierungenTab:
                     "Löschen nicht möglich",
                     "Die Isolierung konnte nicht gelöscht werden (wird vermutlich von Projekten verwendet).",
                 )
+
+    def export_selected(self) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo(
+                "Hinweis", "Bitte mindestens eine Isolierung zum Export auswählen."
+            )
+            return
+        names = [self.tree.item(item)["values"][0] for item in selection]
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV Dateien", "*.csv"), ("Alle Dateien", "*.*")],
+            title="Isolierungen exportieren",
+        )
+        if not file_path:
+            return
+        exported, failed = export_insulations_to_csv(names, file_path)
+        message = f"{exported} Isolierung(en) exportiert."
+        if failed:
+            message += "\nNicht exportiert: " + ", ".join(failed)
+        messagebox.showinfo("Export abgeschlossen", message)
+
+    def import_from_csv(self) -> None:
+        file_path = filedialog.askopenfilename(
+            filetypes=[("CSV Dateien", "*.csv"), ("Alle Dateien", "*.*")],
+            title="Isolierungen importieren",
+        )
+        if not file_path:
+            return
+        imported, errors = import_insulations_from_csv(file_path)
+        self.refresh_table()
+        message = f"{imported} Isolierung(en) importiert."
+        if errors:
+            message += "\nFehlgeschlagen: " + ", ".join(errors)
+        messagebox.showinfo("Import abgeschlossen", message)
 
     def on_select(self, event: tk.Event | None = None) -> None:
         selection = self.tree.selection()
