@@ -8,6 +8,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
+    HRFlowable,
     Image,
     ListFlowable,
     ListItem,
@@ -25,6 +26,7 @@ from .models import (
     ReportHeading,
     ReportImage,
     ReportPageBreak,
+    ReportSeparator,
     ReportParagraph,
     ReportSpacer,
     ReportTable,
@@ -111,9 +113,16 @@ class ReportBuilder:
         self._story.append(table)
         self.add_spacer(8)
 
-    def add_image(self, path: Path, *, width: float | None = None, height: float | None = None) -> None:
+    def add_image(
+        self,
+        path: Path,
+        *,
+        width: float | None = None,
+        height: float | None = None,
+        h_align: str | None = None,
+    ) -> None:
         image = Image(str(path), width=width, height=height)
-        image.hAlign = "LEFT"
+        image.hAlign = h_align or "LEFT"
         self._story.append(image)
         self.add_spacer(6)
 
@@ -141,9 +150,24 @@ class ReportBuilder:
                     column_widths=element.column_widths,
                 )
             elif isinstance(element, ReportImage):
-                self.add_image(element.path, width=element.width, height=element.height)
+                self.add_image(
+                    element.path,
+                    width=element.width,
+                    height=element.height,
+                    h_align=element.h_align,
+                )
             elif isinstance(element, ReportSpacer):
                 self.add_spacer(element.size)
+            elif isinstance(element, ReportSeparator):
+                self._story.append(
+                    HRFlowable(
+                        width=element.width,
+                        thickness=element.thickness,
+                        color=element.color,
+                        spaceBefore=4,
+                        spaceAfter=4,
+                    )
+                )
             elif isinstance(element, ReportPageBreak):
                 self.add_page_break()
             else:  # pragma: no cover - defensive

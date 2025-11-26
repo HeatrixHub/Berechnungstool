@@ -53,11 +53,21 @@ class ReportImage:
     path: Path
     width: float | None = None
     height: float | None = None
+    h_align: str | None = None
 
 
 @dataclass(slots=True)
 class ReportSpacer:
     size: float = 12.0
+
+
+@dataclass(slots=True)
+class ReportSeparator:
+    """Einfache horizontale Linie als Trenner."""
+
+    thickness: float = 0.8
+    color: str = "#9e9e9e"
+    width: str = "100%"
 
 
 @dataclass(slots=True)
@@ -72,6 +82,7 @@ ReportElement = Union[
     ReportTable,
     ReportImage,
     ReportSpacer,
+    ReportSeparator,
     ReportPageBreak,
 ]
 
@@ -108,7 +119,16 @@ def _as_text(value: Any) -> str:
 def _parse_report_element(raw: Any) -> ReportElement:
     if isinstance(
         raw,
-        (ReportHeading, ReportParagraph, ReportBulletList, ReportTable, ReportImage, ReportSpacer, ReportPageBreak),
+        (
+            ReportHeading,
+            ReportParagraph,
+            ReportBulletList,
+            ReportTable,
+            ReportImage,
+            ReportSpacer,
+            ReportSeparator,
+            ReportPageBreak,
+        ),
     ):
         return raw
     if not isinstance(raw, dict) or "type" not in raw:
@@ -141,9 +161,20 @@ def _parse_report_element(raw: Any) -> ReportElement:
         return ReportTable(rows=parsed_rows, headers=parsed_headers, column_widths=parsed_widths)
     if kind == "image":
         path_value = raw.get("path")
-        return ReportImage(path=Path(str(path_value)), width=raw.get("width"), height=raw.get("height"))
+        return ReportImage(
+            path=Path(str(path_value)),
+            width=raw.get("width"),
+            height=raw.get("height"),
+            h_align=raw.get("h_align"),
+        )
     if kind == "spacer":
         return ReportSpacer(size=float(raw.get("size", 12.0)))
+    if kind == "separator":
+        return ReportSeparator(
+            thickness=float(raw.get("thickness", 0.8)),
+            color=_as_text(raw.get("color", "#9e9e9e")),
+            width=_as_text(raw.get("width", "100%")),
+        )
     if kind == "page_break":
         return ReportPageBreak()
     raise ValueError(f"Unbekannter Report-Element-Typ: {kind}")
