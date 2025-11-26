@@ -62,16 +62,6 @@ class ProjectsTab:
             text="Projektverwaltung",  # Titel
             style="Title.TLabel",
         ).grid(row=0, column=0, sticky="w")
-        ttk.Label(
-            header_frame,
-            text=(
-                "Projekte speichern Plugin-Zustände dauerhaft. Organisiere deine Arbeit, "
-                "lade fertige Berechnungen erneut und halte alle Ergebnisse synchron."
-            ),
-            wraplength=920,
-            foreground="#6b7280",
-            justify="left",
-        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
 
         meta_frame = ttk.LabelFrame(
             self.frame, text="Projekt-Metadaten", style="Section.TLabelframe"

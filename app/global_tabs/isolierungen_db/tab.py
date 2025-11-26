@@ -37,14 +37,6 @@ class IsolierungenTab:
             text="Isolierungen verwalten",
             style="Title.TLabel",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        ttk.Label(
-            self.frame,
-            text=(
-                "Pflege die Materialdatenbank, erfasse Messwerte und prüfe die "
-                "Interpolationen direkt in der Vorschau."
-            ),
-            foreground="#6b7280",
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         table_section = ttk.LabelFrame(
             self.frame, text="Isolierungen", padding=8, style="Section.TLabelframe"
