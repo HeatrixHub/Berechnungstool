@@ -1,0 +1,121 @@
+<%!
+from datetime import datetime
+from pathlib import Path
+from app.reporting.models import (
+    ReportHeading,
+    ReportImage,
+    ReportParagraph,
+    ReportSeparator,
+    ReportSpacer,
+    ReportTable,
+    StructuredReport,
+)
+
+
+TITLE = "Stationäre Wärmedurchgansrechnung durch ebene Wand"
+
+
+def _format_number(value, digits=2):
+    if value is None:
+        return "–"
+    try:
+        return f"{float(value):.{digits}f}"
+    except Exception:
+        return str(value)
+
+
+def _boundary_rows(boundaries):
+    return [
+        ("T_innen", _format_number(boundaries.get("T_left"), 1), "°C"),
+        ("T_∞", _format_number(boundaries.get("T_inf"), 1), "°C"),
+        ("h", _format_number(boundaries.get("h"), 3), "W/m²K"),
+    ]
+
+
+def _summary_rows(summary):
+    return [
+        ("Wärmestromdichte q", _format_number(summary.get("q"), 3), "W/m²"),
+        ("Gesamtwiderstand R_total", _format_number(summary.get("R_total"), 5), "m²K/W"),
+        ("Iterationen", summary.get("iterations", "–"), "–"),
+    ]
+
+
+def _layer_rows(layers):
+    rows = []
+    for layer in layers:
+        rows.append(
+            (
+                layer.get("label", "–"),
+                _format_number(layer.get("thickness"), 1),
+                _format_number(layer.get("T_left"), 2),
+                _format_number(layer.get("T_right"), 2),
+                _format_number(layer.get("T_mean"), 2),
+                _format_number(layer.get("k_mean"), 4),
+            )
+        )
+    return rows
+
+
+def getOutput(ctx):
+    author = ctx.get("author") or "Unbekannt"
+    date_text = ctx.get("date") or datetime.now().strftime("%d.%m.%Y")
+    project_name = ctx.get("project_name") or "Projekt ohne Namen"
+    boundaries = ctx.get("boundaries") or {}
+    summary = ctx.get("summary") or {}
+    layers = ctx.get("layers") or []
+    plot_path = ctx.get("plot_path")
+
+    elements = [
+        ReportParagraph(f"<para align='center'><b>{TITLE}</b></para>"),
+        ReportSpacer(4),
+        ReportSeparator(),
+        ReportSpacer(6),
+        ReportParagraph(
+            f"<para align='right'><b>Autor:</b> {author}<br/><b>Datum:</b> {date_text}</para>"
+        ),
+        ReportParagraph(f"<b>Projekt:</b> {project_name}"),
+        ReportSeparator(),
+        ReportSpacer(6),
+        ReportHeading("Randbedingungen", level=3),
+        ReportTable(
+            _boundary_rows(boundaries),
+            headers=["Größe", "Wert", "Einheit"],
+            column_widths=[150, 120, 120],
+        ),
+        ReportHeading("Berechnungsergebnisse", level=3),
+        ReportTable(
+            _summary_rows(summary),
+            headers=["Größe", "Wert", "Einheit"],
+            column_widths=[200, 140, 120],
+        ),
+    ]
+
+    if layers:
+        elements.extend(
+            [
+                ReportHeading("Schichtenübersicht", level=3),
+                ReportTable(
+                    _layer_rows(layers),
+                    headers=[
+                        "Schicht",
+                        "Dicke [mm]",
+                        "T_links [°C]",
+                        "T_rechts [°C]",
+                        "T_mittel [°C]",
+                        "k_mittel [W/mK]",
+                    ],
+                    column_widths=[160, 80, 90, 90, 100, 110],
+                ),
+            ]
+        )
+
+    if plot_path:
+        elements.extend(
+            [
+                ReportSpacer(10),
+                ReportHeading("Temperaturverlauf", level=3),
+                ReportImage(path=Path(plot_path), width=440, h_align="CENTER"),
+            ]
+        )
+
+    return StructuredReport(elements=elements, title=TITLE)
