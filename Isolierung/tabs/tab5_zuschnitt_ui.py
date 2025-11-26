@@ -50,6 +50,7 @@ class ZuschnittTab:
         self.placements: List[Placement] = []
         self.material_summary: List[dict] = []
         self.total_cost: float | None = None
+        self.total_bin_count: int | None = None
 
         self._build_ui()
 
@@ -80,13 +81,8 @@ class ZuschnittTab:
         ttk.Button(btn_frame, text="Platten übernehmen", command=self.import_plates).pack(
             side=tk.LEFT, padx=3
         )
-        ttk.Button(btn_frame, text="Optimieren", command=self.run_optimization).pack(
+        ttk.Button(btn_frame, text="Berechnen", command=self.run_optimization).pack(
             side=tk.LEFT, padx=3
-        )
-
-        self.summary_var = tk.StringVar(value="Noch keine Berechnung durchgeführt.")
-        ttk.Label(self.frame, textvariable=self.summary_var).grid(
-            row=2, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 6)
         )
 
         overview_frame = ttk.LabelFrame(self.frame, text="Rohlingübersicht")
@@ -95,7 +91,7 @@ class ZuschnittTab:
 
         overview_columns = ("material", "count", "price", "cost")
         self.overview_tree = ttk.Treeview(
-            overview_frame, columns=overview_columns, show="headings", height=5
+            overview_frame, columns=overview_columns, show="headings", height=6
         )
         headings = {
             "material": "Material",
@@ -111,10 +107,6 @@ class ZuschnittTab:
         self.overview_tree.column("cost", width=110, anchor="center")
         self.overview_tree.grid(row=0, column=0, sticky="ew")
 
-        self.total_cost_var = tk.StringVar(value="Gesamtkosten: -")
-        ttk.Label(overview_frame, textvariable=self.total_cost_var).grid(
-            row=1, column=0, sticky="w", pady=4
-        )
 
         columns = (
             "material",
@@ -249,6 +241,7 @@ class ZuschnittTab:
         placements: List[Placement] = []
         self.material_summary = []
         self.total_cost = None
+        self.total_bin_count = None
         total_bins = 0
         for material, items in grouped.items():
             raw_data = self._load_raw_data(material)
@@ -324,11 +317,9 @@ class ZuschnittTab:
         if not placements:
             raise ValueError("Keine Platzierungen erstellt.")
 
-        self.summary_var.set(
-            f"Minimal benötigte Rohlingplatten: {total_bins} (über alle Materialien)"
-        )
         known_costs = [entry["cost"] for entry in self.material_summary if entry["cost"] is not None]
         self.total_cost = sum(known_costs) if known_costs else None
+        self.total_bin_count = total_bins
         return placements
 
     def _load_raw_data(self, material: str) -> Dict[str, float | None]:
@@ -387,17 +378,31 @@ class ZuschnittTab:
                 ),
             )
 
-        missing_prices = any(entry.get("price") is None for entry in self.material_summary)
         if not self.material_summary:
-            self.total_cost_var.set("Gesamtkosten: -")
-        elif missing_prices and self.total_cost is not None:
-            self.total_cost_var.set(
-                f"Gesamtkosten (ohne fehlende Preise): {self.total_cost:.2f} €"
-            )
+            return
+
+        total_count = self.total_bin_count
+        missing_prices = any(entry.get("price") is None for entry in self.material_summary)
+
+        if missing_prices and self.total_cost is not None:
+            cost_text = f"{self.total_cost:.2f} (ohne fehlende Preise)"
         elif missing_prices:
-            self.total_cost_var.set("Gesamtkosten: - (fehlende Preise)")
+            cost_text = "- (fehlende Preise)"
+        elif self.total_cost is None:
+            cost_text = "-"
         else:
-            self.total_cost_var.set(f"Gesamtkosten: {self.total_cost:.2f} €")
+            cost_text = f"{self.total_cost:.2f}"
+
+        self.overview_tree.insert(
+            "",
+            "end",
+            values=(
+                "Summe",
+                "-" if total_count is None else total_count,
+                "-",
+                cost_text,
+            ),
+        )
 
     def _draw_preview(self) -> None:
         self.preview_canvas.delete("all")
