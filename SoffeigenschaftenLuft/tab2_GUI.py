@@ -128,7 +128,9 @@ def create_tab2(notebook):
             entry_flowtype.insert(0, result["flow_type"])
             entry_flowtype.config(state="readonly")
 
-    calculate_btn = ttk.Button(frame_tab2, text="Berechnen", command=calculate)
+    calculate_btn = ttk.Button(
+        frame_tab2, text="Berechnen", command=calculate, style="Success.TButton"
+    )
     calculate_btn.grid(row=10, column=1, columnspan=2, pady=15)
     ToolTip(calculate_btn, "Startet die Berechnung der Geschwindigkeit und Reynolds-Zahl")
 

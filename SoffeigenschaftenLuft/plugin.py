@@ -5,6 +5,7 @@ from __future__ import annotations
 from tkinter import ttk
 
 from app.plugins.base import AppContext, Plugin
+from app.ui_styles import apply_button_styles
 from . import tab1_GUI as tab1
 from . import tab2_GUI as tab2
 from . import tab3_GUI as tab3
@@ -59,7 +60,7 @@ class StoffeigenschaftenLuftPlugin(Plugin):
     def _configure_styles(self, root) -> None:
         """Richtet Schrifteinstellungen analog zur Stand-alone-App ein."""
 
-        style = ttk.Style()
+        style = ttk.Style(root)
         style.configure("Standard.TEntry", foreground="black")
         style.configure("Fehler.TEntry", foreground="red")
         style.configure("TLabel", font=("Arial", 12))
@@ -68,6 +69,7 @@ class StoffeigenschaftenLuftPlugin(Plugin):
         style.configure("TCheckbutton", font=("Arial", 12))
         style.configure("TCombobox", font=("Arial", 12))
         style.configure("TNotebook.Tab", font=("Arial", 12))
+        apply_button_styles(style)
 
         root.option_add("*TCombobox*Font", "Arial 12")
         root.option_add("*TEntry*Font", "Arial 12")

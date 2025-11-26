@@ -80,12 +80,18 @@ class SchichtaufbauTab:
         # Schichtdicken
         layer_frame = ttk.LabelFrame(self.frame, text="Schichtdicken [mm]")
         layer_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=5)
-        ttk.Button(layer_frame, text="+ Schicht", command=self.add_layer_row).grid(
-            row=0, column=0, padx=6, pady=4, sticky="w"
-        )
-        ttk.Button(layer_frame, text="Übernehmen", command=self._import_layers_from_other).grid(
-            row=0, column=1, padx=6, pady=4, sticky="w"
-        )
+        ttk.Button(
+            layer_frame,
+            text="+ Schicht",
+            command=self.add_layer_row,
+            style="Neutral.TButton",
+        ).grid(row=0, column=0, padx=6, pady=4, sticky="w")
+        ttk.Button(
+            layer_frame,
+            text="Übernehmen",
+            command=self._import_layers_from_other,
+            style="Warning.TButton",
+        ).grid(row=0, column=1, padx=6, pady=4, sticky="w")
         self.layer_table = ttk.Frame(layer_frame)
         self.layer_table.grid(row=1, column=0, columnspan=2, sticky="ew", padx=6, pady=4)
         for col, weight in enumerate((0, 1, 1, 0)):
@@ -101,8 +107,15 @@ class SchichtaufbauTab:
         # Buttons
         btn_frame = ttk.Frame(self.frame)
         btn_frame.grid(row=4, column=0, columnspan=2, pady=8, padx=10, sticky="ew")
-        ttk.Button(btn_frame, text="Berechnen", command=self.calculate).pack(side=tk.LEFT, padx=4)
-        ttk.Button(btn_frame, text="Felder leeren", command=self.reset_fields).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            btn_frame, text="Berechnen", command=self.calculate, style="Success.TButton"
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(
+            btn_frame,
+            text="Felder leeren",
+            command=self.reset_fields,
+            style="Danger.TButton",
+        ).pack(side=tk.LEFT, padx=4)
 
         # Ergebnisse
         self.summary_frame = ttk.LabelFrame(self.frame, text="Ergebnis")
@@ -209,11 +222,13 @@ class SchichtaufbauTab:
 
         action_frame = ttk.Frame(self.layer_table)
         action_frame.grid(row=grid_row, column=3, padx=4, pady=2, sticky="e")
-        btn_up = ttk.Button(action_frame, text="▲", width=3)
+        btn_up = ttk.Button(action_frame, text="▲", width=3, style="Neutral.TButton")
         btn_up.grid(row=0, column=0, padx=1)
-        btn_down = ttk.Button(action_frame, text="▼", width=3)
+        btn_down = ttk.Button(action_frame, text="▼", width=3, style="Neutral.TButton")
         btn_down.grid(row=0, column=1, padx=1)
-        btn_delete = ttk.Button(action_frame, text="✖", width=3)
+        btn_delete = ttk.Button(
+            action_frame, text="✖", width=3, style="Danger.TButton"
+        )
         btn_delete.grid(row=0, column=2, padx=1)
 
         self.layer_rows.append(

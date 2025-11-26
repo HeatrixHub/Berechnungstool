@@ -163,6 +163,7 @@ def create_tab1(notebook):
     calculate_button = ttk.Button(
         frame_tab1,
         text="Berechnen",
+        style="Success.TButton",
         command=lambda: starte_berechnung(entries, combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var)
     )
     calculate_button.grid(row=13, column=0, columnspan=4, pady=15)

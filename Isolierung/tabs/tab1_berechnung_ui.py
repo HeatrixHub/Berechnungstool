@@ -66,7 +66,9 @@ class BerechnungTab:
         # Buttons
         btn_frame = ttk.Frame(self.frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10, sticky='ew')
-        ttk.Button(btn_frame, text="Berechnen", command=self.calculate).pack(side=tk.LEFT, padx=3)
+        ttk.Button(
+            btn_frame, text="Berechnen", command=self.calculate, style="Success.TButton"
+        ).pack(side=tk.LEFT, padx=3)
 
         # Ergebnisse
         self.output_frame = ttk.LabelFrame(self.frame, text="Ergebnisse")
@@ -86,8 +88,18 @@ class BerechnungTab:
         control_frame.columnconfigure(0, weight=1)
 
         ttk.Label(control_frame, text="Schichten verwalten:").grid(row=0, column=0, sticky="w")
-        ttk.Button(control_frame, text="+ Schicht hinzufügen", command=self.add_layer_row).grid(row=0, column=1, padx=4)
-        ttk.Button(control_frame, text="Übernehmen", command=self._import_layers_from_other).grid(row=0, column=2, padx=4)
+        ttk.Button(
+            control_frame,
+            text="+ Schicht hinzufügen",
+            command=self.add_layer_row,
+            style="Neutral.TButton",
+        ).grid(row=0, column=1, padx=4)
+        ttk.Button(
+            control_frame,
+            text="Übernehmen",
+            command=self._import_layers_from_other,
+            style="Warning.TButton",
+        ).grid(row=0, column=2, padx=4)
 
         self.layers_table = ttk.Frame(self.layers_frame)
         self.layers_table.grid(row=1, column=0, sticky='ew', padx=6)
@@ -226,11 +238,29 @@ class BerechnungTab:
 
         action_frame = ttk.Frame(self.layers_table)
         action_frame.grid(row=grid_row, column=3, padx=4, pady=2, sticky="e")
-        btn_up = ttk.Button(action_frame, text="▲", width=3, command=lambda: self.move_layer(row_index, -1))
+        btn_up = ttk.Button(
+            action_frame,
+            text="▲",
+            width=3,
+            command=lambda: self.move_layer(row_index, -1),
+            style="Neutral.TButton",
+        )
         btn_up.grid(row=0, column=0, padx=1)
-        btn_down = ttk.Button(action_frame, text="▼", width=3, command=lambda: self.move_layer(row_index, 1))
+        btn_down = ttk.Button(
+            action_frame,
+            text="▼",
+            width=3,
+            command=lambda: self.move_layer(row_index, 1),
+            style="Neutral.TButton",
+        )
         btn_down.grid(row=0, column=1, padx=1)
-        btn_delete = ttk.Button(action_frame, text="✕", width=3, command=lambda: self.delete_layer(row_index))
+        btn_delete = ttk.Button(
+            action_frame,
+            text="✕",
+            width=3,
+            command=lambda: self.delete_layer(row_index),
+            style="Danger.TButton",
+        )
         btn_delete.grid(row=0, column=2, padx=1)
 
         self.layer_rows.append({
