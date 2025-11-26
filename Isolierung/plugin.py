@@ -88,11 +88,23 @@ class IsolierungPlugin(Plugin):
             self.zuschnitt_tab.update_theme_colors()
 
     def export_state(self) -> dict:
-        if self.berechnung_tab is None:
-            return {}
-        return self.berechnung_tab.export_state()
+        state: dict = {}
+        if self.berechnung_tab is not None:
+            state["berechnung"] = self.berechnung_tab.export_state()
+        if self.schichtaufbau_tab is not None:
+            state["schichtaufbau"] = self.schichtaufbau_tab.export_state()
+        if self.zuschnitt_tab is not None:
+            state["zuschnitt"] = self.zuschnitt_tab.export_state()
+        return state
 
     def import_state(self, state: dict) -> None:
-        if self.berechnung_tab is None:
-            return
-        self.berechnung_tab.load_project_into_ui(state)
+        # Altes Format: Projektzustand kam ausschließlich aus dem Berechnungstab.
+        if "berechnung" not in state and "schichtaufbau" not in state:
+            state = {"berechnung": state}
+
+        if self.berechnung_tab is not None and "berechnung" in state:
+            self.berechnung_tab.load_project_into_ui(state.get("berechnung", {}))
+        if self.schichtaufbau_tab is not None and "schichtaufbau" in state:
+            self.schichtaufbau_tab.import_state(state.get("schichtaufbau", {}))
+        if self.zuschnitt_tab is not None and "zuschnitt" in state:
+            self.zuschnitt_tab.import_state(state.get("zuschnitt", {}))

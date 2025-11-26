@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Callable, List, Tuple
@@ -10,7 +11,12 @@ from typing import Callable, List, Tuple
 import sv_ttk
 
 from .scrollable import ScrollableFrame
-from .tab4_schichtaufbau_logic import BuildResult, compute_plate_dimensions
+from .tab4_schichtaufbau_logic import (
+    BuildResult,
+    LayerResult,
+    Plate,
+    compute_plate_dimensions,
+)
 
 
 class SchichtaufbauTab:
@@ -396,6 +402,86 @@ class SchichtaufbauTab:
 
         self.last_result = result
         self.last_isolierungen = isolierungen
+
+    # ---------------------------------------------------------------
+    # Projektzustand
+    # ---------------------------------------------------------------
+    def _safe_float(self, value: str) -> float:
+        try:
+            return float(value.strip())
+        except (TypeError, ValueError, AttributeError):
+            return 0.0
+
+    def _serialize_result(self) -> dict | None:
+        if self.last_result is None:
+            return None
+        data = asdict(self.last_result)
+        data["isolierungen"] = list(self.last_isolierungen)
+        return data
+
+    def _deserialize_result(self, data: dict) -> BuildResult:
+        layers: List[LayerResult] = []
+        for layer in data.get("layers", []):
+            plates = [Plate(**plate) for plate in layer.get("plates", [])]
+            layers.append(
+                LayerResult(
+                    layer_index=int(layer.get("layer_index", 0)),
+                    thickness=float(layer.get("thickness", 0.0)),
+                    plates=plates,
+                )
+            )
+        return BuildResult(
+            float(data.get("la_l", 0.0)),
+            float(data.get("la_b", 0.0)),
+            float(data.get("la_h", 0.0)),
+            float(data.get("li_l", 0.0)),
+            float(data.get("li_b", 0.0)),
+            float(data.get("li_h", 0.0)),
+            layers,
+        )
+
+    def export_state(self) -> dict:
+        thicknesses, isolierungen = self.export_layer_data()
+        return {
+            "measure_type": self.measure_type.get(),
+            "dimensions": {
+                "L": self._safe_float(self.entry_L.get()),
+                "B": self._safe_float(self.entry_B.get()),
+                "H": self._safe_float(self.entry_H.get()),
+            },
+            "layers": {
+                "thicknesses": thicknesses,
+                "isolierungen": isolierungen,
+            },
+            "result": self._serialize_result(),
+        }
+
+    def import_state(self, state: dict) -> None:
+        measure_type = state.get("measure_type", "outer")
+        self.measure_type.set(measure_type if measure_type in {"outer", "inner"} else "outer")
+
+        dimensions = state.get("dimensions", {})
+        for entry, key in ((self.entry_L, "L"), (self.entry_B, "B"), (self.entry_H, "H")):
+            entry.delete(0, tk.END)
+            value = dimensions.get(key)
+            if value not in (None, ""):
+                entry.insert(0, str(value))
+
+        layers = state.get("layers", {})
+        thicknesses = layers.get("thicknesses", []) or []
+        isolierungen = layers.get("isolierungen", []) or []
+        self.apply_layers(thicknesses, isolierungen)
+
+        result_data = state.get("result")
+        if result_data:
+            try:
+                build_result = self._deserialize_result(result_data)
+                isolierungen_result = result_data.get("isolierungen", isolierungen)
+                self.display_result(build_result, isolierungen_result)
+            except Exception:
+                self.clear_results()
+        else:
+            self.clear_results()
 
     def export_plate_list(self) -> List[dict]:
         """Stellt die berechnete Plattenliste für andere Tabs bereit."""
