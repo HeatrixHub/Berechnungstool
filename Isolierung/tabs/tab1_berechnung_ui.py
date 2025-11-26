@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, List, Tuple
 from .tab1_berechnung_logic import (
     validate_inputs,
     perform_calculation,
-    save_current_project,
     get_k_values_for_layers,
 )
 from app.global_tabs.isolierungen_db import logic as insulation_logic
@@ -68,7 +67,6 @@ class BerechnungTab:
         btn_frame = ttk.Frame(self.frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=10, sticky='ew')
         ttk.Button(btn_frame, text="Berechnen", command=self.calculate).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_frame, text="Projekt speichern", command=self.save_project).pack(side=tk.LEFT, padx=3)
 
         # Ergebnisse
         self.output_frame = ttk.LabelFrame(self.frame, text="Ergebnisse")
@@ -447,43 +445,6 @@ class BerechnungTab:
             return float(value.strip())
         except (ValueError, AttributeError):
             return 0.0
-
-    # ---------------------------------------------------------------
-    # Projekt speichern
-    # ---------------------------------------------------------------
-    def save_project(self):
-        try:
-            name = self.entry_project_name.get().strip()
-            if not name:
-                messagebox.showerror("Fehler", "Bitte einen Projektnamen angeben.")
-                return
-
-            n = len(self.layer_rows)
-            thicknesses = []
-            isolierungen = []
-
-            for row in self.layer_rows:
-                entry_d = row["entry"]
-                combo = row["combo"]
-                t = float(entry_d.get()) if entry_d.get().strip() else 0.0
-                iso = combo.get().strip()
-                thicknesses.append(t)
-                isolierungen.append(iso)
-
-            T_left = float(self.entry_T_left.get())
-            T_inf = float(self.entry_T_inf.get())
-            h = float(self.entry_h.get())
-
-            validate_inputs(n, thicknesses, isolierungen, T_left, T_inf, h)
-            T_mean = 0.5 * (T_left + T_inf)
-            ks = get_k_values_for_layers(isolierungen, T_mean)
-
-            result = perform_calculation(thicknesses, isolierungen, T_left, T_inf, h)
-            save_current_project(name, thicknesses, isolierungen, T_left, T_inf, h, result)
-
-            messagebox.showinfo("Gespeichert", f"Projekt '{name}' wurde gespeichert.")
-        except Exception as e:
-            messagebox.showerror("Fehler beim Speichern", str(e))
 
     def export_state(self) -> Dict[str, Any]:
         thicknesses, isolierungen = self._collect_layer_data()

@@ -5,7 +5,6 @@ Validiert Eingaben, ruft Berechnungen auf, lädt Isolierungen aus der DB.
 """
 
 from ..core.computation import compute_multilayer
-from ..core.database import save_project
 from app.global_tabs.isolierungen_db.logic import load_insulation
 from typing import Dict, List
 
@@ -74,10 +73,3 @@ def perform_calculation(thicknesses: List[float], isolierungen: List[str], T_lef
     )
 
     return result
-
-def save_current_project(name: str, thicknesses, isolierungen, T_left, T_inf, h, result) -> bool:
-    """Speichert das aktuelle Projekt in der Datenbank."""
-    if not name:
-        raise ValueError("Projektnamen angeben, um speichern zu können.")
-    # Wir speichern jetzt die Isolierungsnamen anstelle direkter k-Werte
-    return save_project(name, thicknesses, isolierungen, T_left, T_inf, h, result)
