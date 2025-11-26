@@ -17,6 +17,7 @@ from .tab4_schichtaufbau_logic import (
     Plate,
     compute_plate_dimensions,
 )
+from app.global_tabs.isolierungen_db import logic as insulation_logic
 
 
 class SchichtaufbauTab:
@@ -34,6 +35,9 @@ class SchichtaufbauTab:
         self.last_isolierungen: List[str] = []
         self.build_ui()
         self.update_theme_colors()
+        insulation_logic.register_material_change_listener(
+            self._refresh_material_choices
+        )
 
     # ---------------------------------------------------------------
     # UI-Aufbau
@@ -175,6 +179,15 @@ class SchichtaufbauTab:
         from app.global_tabs.isolierungen_db.logic import get_all_insulations
 
         return [i["name"] for i in get_all_insulations()]
+
+    def _refresh_material_choices(self) -> None:
+        options = self._get_insulation_names()
+        for row in self.layer_rows:
+            combo = row["combo"]
+            current_value = combo.get()
+            combo.configure(values=options)
+            if current_value and current_value not in options:
+                combo.set("")
 
     def add_layer_row(self, thickness: str | float = "", material: str = ""):
         row_index = len(self.layer_rows)

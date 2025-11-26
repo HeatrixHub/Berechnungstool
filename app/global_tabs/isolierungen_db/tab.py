@@ -19,6 +19,7 @@ from app.global_tabs.isolierungen_db.logic import (
     import_insulations_from_csv_files,
     load_insulation,
     save_insulation,
+    register_material_change_listener,
 )
 
 
@@ -32,6 +33,7 @@ class IsolierungenTab:
 
         self.frame = self.scrollable.inner
         self.build_ui()
+        register_material_change_listener(self.refresh_table)
 
     def build_ui(self) -> None:
         self.frame.rowconfigure(4, weight=1)

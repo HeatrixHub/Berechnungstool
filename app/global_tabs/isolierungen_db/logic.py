@@ -5,7 +5,7 @@ sowie die Interpolation der Wärmeleitfähigkeit.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import csv
 import re
@@ -21,6 +21,34 @@ from Isolierung.core.database import (
     load_material,
     save_material,
 )
+
+
+_material_change_listeners: set[Callable[[], None]] = set()
+
+
+def register_material_change_listener(callback: Callable[[], None]) -> None:
+    """Registriert eine Callback-Funktion, die bei Materialänderungen aufgerufen wird."""
+
+    _material_change_listeners.add(callback)
+
+
+def unregister_material_change_listener(callback: Callable[[], None]) -> None:
+    """Hebt die Registrierung eines Material-Listeners auf (falls vorhanden)."""
+
+    _material_change_listeners.discard(callback)
+
+
+def _notify_material_change_listeners() -> None:
+    """Benachrichtigt alle registrierten Listener über geänderte Materialien."""
+
+    for listener in list(_material_change_listeners):
+        try:
+            listener()
+        except Exception:
+            # Wir protokollieren Fehler nur in der Konsole, um die GUI reaktionsfähig zu halten.
+            import traceback
+
+            traceback.print_exc()
 
 
 def get_all_insulations() -> List[Dict]:
@@ -56,8 +84,8 @@ def save_insulation(
     price: float | None,
     temps: List[float],
     ks: List[float],
-):
-    return save_material(
+) -> bool:
+    saved = save_material(
         name,
         classification_temp,
         density,
@@ -68,10 +96,16 @@ def save_insulation(
         temps,
         ks,
     )
+    if saved:
+        _notify_material_change_listeners()
+    return saved
 
 
 def delete_insulation(name: str):
-    return delete_material(name)
+    deleted = delete_material(name)
+    if deleted:
+        _notify_material_change_listeners()
+    return deleted
 
 
 def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):
@@ -310,6 +344,9 @@ def import_insulations_from_csv_files(
                 file_path=file_path, imported=imported, errors=errors, skipped_reason=None
             )
         )
+
+    if total_imported:
+        _notify_material_change_listeners()
 
     return total_imported, results
 
