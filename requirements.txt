@@ -5,3 +5,4 @@ reportlab
 sv-ttk
 rectpack
 openpyxl
+Jinja2
