@@ -8,6 +8,9 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 
 import csv
+import re
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 
@@ -134,7 +137,7 @@ CSV_HEADERS = [
 
 
 def export_insulations_to_csv(names: List[str], file_path: str) -> Tuple[int, List[str]]:
-    """Exportiert ausgewählte Isolierungen nach CSV.
+    """Exportiert ausgewählte Isolierungen in eine einzige CSV-Datei.
 
     Returns:
         Tuple[int, List[str]]: Anzahl erfolgreich exportierter Datensätze und Namen,
@@ -147,25 +150,51 @@ def export_insulations_to_csv(names: List[str], file_path: str) -> Tuple[int, Li
         writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
         writer.writeheader()
         for name in names:
-            data = load_insulation(name)
-            if not data:
+            row = _build_insulation_row(name)
+            if row is None:
                 failed.append(name)
                 continue
-            writer.writerow(
-                {
-                    "name": data.get("name", ""),
-                    "classification_temp": data.get("classification_temp"),
-                    "density": data.get("density"),
-                    "length": data.get("length"),
-                    "width": data.get("width"),
-                    "height": data.get("height"),
-                    "price": data.get("price"),
-                    "temps": ";".join(map(str, data.get("temps", []))),
-                    "ks": ";".join(map(str, data.get("ks", []))),
-                }
-            )
+            writer.writerow(row)
             exported += 1
     return exported, failed
+
+
+def export_insulations_to_folder(
+    names: List[str], target_directory: str
+) -> Tuple[int, List[str], str]:
+    """Exportiert mehrere Isolierungen als einzelne CSV-Dateien in einem neuen Ordner."""
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_dir = Path(target_directory)
+    export_dir = base_dir / f"isolierungen_export_{timestamp}"
+    export_dir.mkdir(parents=True, exist_ok=False)
+
+    failed: List[str] = []
+    exported = 0
+    used_names: set[str] = set()
+
+    for name in names:
+        row = _build_insulation_row(name)
+        if row is None:
+            failed.append(name)
+            continue
+
+        safe_name = _sanitize_filename(name)
+        candidate = safe_name
+        counter = 1
+        while candidate in used_names or (export_dir / f"{candidate}.csv").exists():
+            candidate = f"{safe_name}_{counter}"
+            counter += 1
+        used_names.add(candidate)
+
+        file_path = export_dir / f"{candidate}.csv"
+        with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
+            writer.writeheader()
+            writer.writerow(row)
+        exported += 1
+
+    return exported, failed, str(export_dir)
 
 
 def import_insulations_from_csv(file_path: str) -> Tuple[int, List[str]]:
@@ -224,3 +253,27 @@ def _parse_numeric_list(value: str) -> List[float]:
     if not cleaned:
         return []
     return [float(item.strip()) for item in cleaned.split(";") if item.strip()]
+
+
+def _build_insulation_row(name: str) -> Dict[str, str | float] | None:
+    data = load_insulation(name)
+    if not data:
+        return None
+    return {
+        "name": data.get("name", ""),
+        "classification_temp": data.get("classification_temp"),
+        "density": data.get("density"),
+        "length": data.get("length"),
+        "width": data.get("width"),
+        "height": data.get("height"),
+        "price": data.get("price"),
+        "temps": ";".join(map(str, data.get("temps", []))),
+        "ks": ";".join(map(str, data.get("ks", []))),
+    }
+
+
+def _sanitize_filename(name: str) -> str:
+    cleaned = re.sub(r"[\\/]+", "_", name).strip()
+    cleaned = re.sub(r"[^A-Za-z0-9 _.-]", "_", cleaned)
+    cleaned = cleaned or "isolierung"
+    return cleaned

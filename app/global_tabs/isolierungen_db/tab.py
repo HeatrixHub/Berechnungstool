@@ -11,6 +11,7 @@ from Isolierung.tabs.scrollable import ScrollableFrame
 from app.global_tabs.isolierungen_db.logic import (
     delete_insulation,
     export_insulations_to_csv,
+    export_insulations_to_folder,
     get_all_insulations,
     interpolate_k,
     import_insulations_from_csv,
@@ -256,25 +257,110 @@ class IsolierungenTab:
                 )
 
     def export_selected(self) -> None:
-        selection = self.tree.selection()
-        if not selection:
-            messagebox.showinfo(
-                "Hinweis", "Bitte mindestens eine Isolierung zum Export auswählen."
-            )
-            return
-        names = [self.tree.item(item)["values"][0] for item in selection]
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV Dateien", "*.csv"), ("Alle Dateien", "*.*")],
-            title="Isolierungen exportieren",
+        preselected = set()
+        if self.tree.selection():
+            preselected.add(self.tree.item(self.tree.selection()[0])["values"][0])
+
+        dialog = tk.Toplevel(self.frame)
+        dialog.title("Isolierungen exportieren")
+        dialog.transient(self.frame)
+        dialog.grab_set()
+
+        ttk.Label(
+            dialog,
+            text="Bitte wählen Sie ein oder mehrere Isolierungen für den Export aus:",
+        ).pack(anchor="w", padx=12, pady=(12, 6))
+
+        list_frame = ttk.Frame(dialog)
+        list_frame.pack(fill="both", expand=True, padx=12)
+
+        canvas = tk.Canvas(list_frame, borderwidth=0, highlightthickness=0, height=240)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        inner = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        selection_vars: list[tuple[str, tk.BooleanVar]] = []
+        for insulation in get_all_insulations():
+            var = tk.BooleanVar(value=insulation["name"] in preselected)
+            cb = ttk.Checkbutton(inner, text=insulation["name"], variable=var)
+            cb.pack(anchor="w", padx=6, pady=2)
+            selection_vars.append((insulation["name"], var))
+
+        def _on_configure(event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        inner.bind("<Configure>", _on_configure)
+
+        button_bar = ttk.Frame(dialog)
+        button_bar.pack(fill="x", padx=12, pady=12)
+        for i in range(3):
+            button_bar.columnconfigure(i, weight=1)
+
+        def _select_all() -> None:
+            for _, var in selection_vars:
+                var.set(True)
+
+        def _deselect_all() -> None:
+            for _, var in selection_vars:
+                var.set(False)
+
+        def _confirm() -> None:
+            chosen = [name for name, var in selection_vars if var.get()]
+            if not chosen:
+                messagebox.showinfo(
+                    "Hinweis", "Bitte mindestens eine Isolierung zum Export auswählen."
+                )
+                return
+            dialog.destroy()
+            self._export_to_files(chosen)
+
+        ttk.Button(button_bar, text="Alle auswählen", command=_select_all).grid(
+            row=0, column=0, padx=4, sticky="ew"
         )
-        if not file_path:
-            return
-        exported, failed = export_insulations_to_csv(names, file_path)
-        message = f"{exported} Isolierung(en) exportiert."
-        if failed:
-            message += "\nNicht exportiert: " + ", ".join(failed)
-        messagebox.showinfo("Export abgeschlossen", message)
+        ttk.Button(button_bar, text="Auswahl löschen", command=_deselect_all).grid(
+            row=0, column=1, padx=4, sticky="ew"
+        )
+        ttk.Button(button_bar, text="Export starten", command=_confirm).grid(
+            row=0, column=2, padx=4, sticky="ew"
+        )
+
+    def _export_to_files(self, names: list[str]) -> None:
+        try:
+            if len(names) == 1:
+                file_path = filedialog.asksaveasfilename(
+                    defaultextension=".csv",
+                    initialfile=f"{names[0]}.csv",
+                    filetypes=[("CSV Dateien", "*.csv"), ("Alle Dateien", "*.*")],
+                    title="Isolierung exportieren",
+                )
+                if not file_path:
+                    return
+                exported, failed = export_insulations_to_csv(names, file_path)
+                message = f"{exported} Isolierung exportiert nach\n{file_path}"
+            else:
+                target_dir = filedialog.askdirectory(
+                    mustexist=True,
+                    title="Zielordner für Export wählen",
+                )
+                if not target_dir:
+                    return
+                exported, failed, export_dir = export_insulations_to_folder(
+                    names, target_dir
+                )
+                message = (
+                    f"{exported} Isolierungen wurden exportiert.\n"
+                    f"Speicherort: {export_dir}"
+                )
+
+            if failed:
+                message += "\nNicht exportiert: " + ", ".join(failed)
+            messagebox.showinfo("Export abgeschlossen", message)
+        except Exception as exc:  # pragma: no cover - GUI Verarbeitung
+            messagebox.showerror("Export fehlgeschlagen", str(exc))
 
     def import_from_csv(self) -> None:
         file_path = filedialog.askopenfilename(
