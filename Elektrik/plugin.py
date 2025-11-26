@@ -58,9 +58,12 @@ class LeistungsrechnerTab(ttk.Frame):
             row=2, column=1, sticky="ew", pady=2
         )
 
-        ttk.Button(frame, text="Berechnen", command=self._calculate_single_phase).grid(
-            row=3, column=0, columnspan=2, pady=(6, 4)
-        )
+        ttk.Button(
+            frame,
+            text="Berechnen",
+            command=self._calculate_single_phase,
+            style="Success.TButton",
+        ).grid(row=3, column=0, columnspan=2, pady=(6, 4))
 
         self._single_result = tk.StringVar(value="Leistung: –")
         ttk.Label(frame, textvariable=self._single_result, font=("Segoe UI", 11, "bold")).grid(
@@ -90,9 +93,12 @@ class LeistungsrechnerTab(ttk.Frame):
             row=2, column=1, sticky="ew", pady=2
         )
 
-        ttk.Button(frame, text="Berechnen", command=self._calculate_three_phase).grid(
-            row=3, column=0, columnspan=2, pady=(6, 4)
-        )
+        ttk.Button(
+            frame,
+            text="Berechnen",
+            command=self._calculate_three_phase,
+            style="Success.TButton",
+        ).grid(row=3, column=0, columnspan=2, pady=(6, 4))
 
         self._three_result = tk.StringVar(value="Leistung: –")
         ttk.Label(frame, textvariable=self._three_result, font=("Segoe UI", 11, "bold")).grid(

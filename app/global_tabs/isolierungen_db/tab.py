@@ -89,21 +89,33 @@ class IsolierungenTab:
         for i in range(5):
             action_bar.columnconfigure(i, weight=1)
 
-        ttk.Button(action_bar, text="Neu", command=self.new_entry).grid(
-            row=0, column=0, sticky="ew", padx=4
-        )
-        ttk.Button(action_bar, text="Bearbeiten", command=self.edit_entry).grid(
-            row=0, column=1, sticky="ew", padx=4
-        )
-        ttk.Button(action_bar, text="Löschen", command=self.delete_entry).grid(
-            row=0, column=2, sticky="ew", padx=4
-        )
         ttk.Button(
-            action_bar, text="Exportieren (CSV)", command=self.export_selected
+            action_bar, text="Neu", command=self.new_entry, style="Neutral.TButton"
+        ).grid(row=0, column=0, sticky="ew", padx=4)
+        ttk.Button(
+            action_bar,
+            text="Bearbeiten",
+            command=self.edit_entry,
+            style="Neutral.TButton",
+        ).grid(row=0, column=1, sticky="ew", padx=4)
+        ttk.Button(
+            action_bar,
+            text="Löschen",
+            command=self.delete_entry,
+            style="Danger.TButton",
+        ).grid(row=0, column=2, sticky="ew", padx=4)
+        ttk.Button(
+            action_bar,
+            text="Exportieren (CSV)",
+            command=self.export_selected,
+            style="Neutral.TButton",
         ).grid(row=0, column=3, sticky="ew", padx=4)
-        ttk.Button(action_bar, text="Importieren (CSV)", command=self.import_from_csv).grid(
-            row=0, column=4, sticky="ew", padx=4
-        )
+        ttk.Button(
+            action_bar,
+            text="Importieren (CSV)",
+            command=self.import_from_csv,
+            style="Warning.TButton",
+        ).grid(row=0, column=4, sticky="ew", padx=4)
 
         form = ttk.LabelFrame(
             self.frame, text="Isolierung bearbeiten/erstellen", style="Section.TLabelframe"
@@ -152,7 +164,10 @@ class IsolierungenTab:
         self.entry_ks.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
 
         ttk.Button(
-            form, text="💾 Speichern", style="Accent.TButton", command=self.save_entry
+            form,
+            text="💾 Speichern",
+            style="Neutral.TButton",
+            command=self.save_entry,
         ).grid(row=5, column=0, columnspan=4, pady=10, sticky="e")
 
         self.plot_frame = ttk.LabelFrame(
@@ -328,15 +343,21 @@ class IsolierungenTab:
             dialog.destroy()
             self._export_to_files(chosen)
 
-        ttk.Button(button_bar, text="Alle auswählen", command=_select_all).grid(
-            row=0, column=0, padx=4, sticky="ew"
-        )
-        ttk.Button(button_bar, text="Auswahl löschen", command=_deselect_all).grid(
-            row=0, column=1, padx=4, sticky="ew"
-        )
-        ttk.Button(button_bar, text="Export starten", command=_confirm).grid(
-            row=0, column=2, padx=4, sticky="ew"
-        )
+        ttk.Button(
+            button_bar,
+            text="Alle auswählen",
+            command=_select_all,
+            style="Neutral.TButton",
+        ).grid(row=0, column=0, padx=4, sticky="ew")
+        ttk.Button(
+            button_bar,
+            text="Auswahl löschen",
+            command=_deselect_all,
+            style="Danger.TButton",
+        ).grid(row=0, column=1, padx=4, sticky="ew")
+        ttk.Button(
+            button_bar, text="Export starten", command=_confirm, style="Neutral.TButton"
+        ).grid(row=0, column=2, padx=4, sticky="ew")
 
     def _export_to_files(self, names: list[str]) -> None:
         try:

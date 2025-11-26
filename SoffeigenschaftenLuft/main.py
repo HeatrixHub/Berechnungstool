@@ -1,11 +1,16 @@
 import sys
 import os
+
+PROJECT_ROOT = os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 import tkinter as tk
 from tkinter import ttk
 import sv_ttk  # <<— Modernes Windows-Theme
 import tab1_GUI as tab1
 import tab2_GUI as tab2
 import tab3_GUI as tab3
+from app.ui_styles import apply_button_styles
 # import tab4
 
 
@@ -39,7 +44,7 @@ def main():
     root.minsize(initial_width, initial_height)
 
     # === Stil ===
-    style = ttk.Style()
+    style = ttk.Style(root)
 
     # Fonts anpassen (sv_ttk übernimmt Farb- und Theme-Design)
     style.configure("Standard.TEntry", foreground="black")
@@ -57,6 +62,7 @@ def main():
 
     style.map("TEntry", font=[("readonly", ("Arial", 12))])
     style.map("TCombobox", font=[("readonly", ("Arial", 12))])
+    apply_button_styles(style)
 
     # === sv_ttk aktivieren ===
     sv_ttk.use_dark_theme()  # Standardmäßig Dunkelmodus (alternativ use_light_theme())

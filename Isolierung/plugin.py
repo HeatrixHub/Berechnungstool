@@ -8,6 +8,7 @@ except Exception:  # pragma: no cover - Theme-Bibliothek optional
     sv_ttk = None  # type: ignore[assignment]
 
 from app.plugins.base import AppContext, Plugin
+from app.ui_styles import apply_button_styles
 from .tabs.tab1_berechnung_ui import BerechnungTab
 from .tabs.tab4_schichtaufbau_ui import SchichtaufbauTab
 from .tabs.tab5_zuschnitt_ui import ZuschnittTab
@@ -26,6 +27,7 @@ class IsolierungPlugin(Plugin):
         self.zuschnitt_tab: ZuschnittTab | None = None
 
     def attach(self, context: AppContext) -> None:
+        apply_button_styles(ttk.Style(context.root))
         container = ttk.Frame(context.notebook)
         container.columnconfigure(0, weight=1)
         container.rowconfigure(1, weight=1)

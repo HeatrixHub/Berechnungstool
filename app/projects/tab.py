@@ -87,23 +87,25 @@ class ProjectsTab:
         for i in range(4):
             actions.columnconfigure(i, weight=1)
 
-        ttk.Button(actions, text="Neu", command=self.reset_form).grid(
-            row=0, column=0, padx=6, sticky="ew"
-        )
+        ttk.Button(
+            actions, text="Neu", command=self.reset_form, style="Neutral.TButton"
+        ).grid(row=0, column=0, padx=6, sticky="ew")
         ttk.Button(
             actions,
             text="Projekt speichern",
-            style="Accent.TButton",
+            style="Neutral.TButton",
             command=self.save_project,
         ).grid(row=0, column=1, padx=6, sticky="ew")
         ttk.Button(
             actions,
             text="Projekt laden",
+            style="Neutral.TButton",
             command=self.load_selected_project,
         ).grid(row=0, column=2, padx=6, sticky="ew")
         ttk.Button(
             actions,
             text="Löschen",
+            style="Danger.TButton",
             command=self.delete_selected_project,
         ).grid(row=0, column=3, padx=6, sticky="ew")
 
