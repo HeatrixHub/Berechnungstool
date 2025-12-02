@@ -1,0 +1,42 @@
+Projekt: {{ project.name }}
+
+Berechnung – Übersicht
+Projektname im Tab: {{ plugin_states["isolierung"].get("name", "–") or "–" }}<br/>
+Randbedingungen:<br/>
+• T_links = {{ plugin_states["isolierung"].get("T_left", 0) }} °C<br/>
+• T_∞ = {{ plugin_states["isolierung"].get("T_inf", 0) }} °C<br/>
+• h = {{ plugin_states["isolierung"].get("h", 0) }} W/m²K
+
+Gesamtergebnis
+{% set result = plugin_states["isolierung"].get("result", {}) %}
+{% if result %}
+Wärmestromdichte q = {{ '%.3f'|format(result.get('q', 0)) }} W/m²<br/>
+Gesamtwiderstand R_total = {{ '%.5f'|format(result.get('R_total', 0)) }} m²K/W<br/>
+Iterationen bis zur Konvergenz: {{ result.get('iterations', '–') }}
+{% else %}
+Keine Berechnungsergebnisse vorhanden.
+{% endif %}
+
+Schichtübersicht
+{% set layers = plugin_states["isolierung"].get("report", {}).get("layers", []) %}
+{% if layers %}
+{% for layer in layers %}
+Schicht {{ layer.index }} ({{ layer.name or '–' }})<br/>
+• Dicke: {{ layer.thickness_mm }} mm<br/>
+• T_links: {{ layer.T_left if layer.T_left is not none else '–' }} °C<br/>
+• T_rechts: {{ layer.T_right if layer.T_right is not none else '–' }} °C<br/>
+• T_mittel: {{ '%.2f'|format(layer.T_mean) if layer.T_mean is not none else '–' }} °C<br/>
+• k_mittel: {{ '%.4f'|format(layer.k_mean) if layer.k_mean is not none else '–' }} W/mK
+
+{% endfor %}
+{% else %}
+Keine Schichten definiert.
+{% endif %}
+
+Temperaturverlauf
+{% set plot_path = plugin_states["isolierung"].get("report", {}).get("temperature_plot") %}
+{% if plot_path %}
+[[image:{{ plot_path }}|width=480]]
+{% else %}
+Kein Diagramm verfügbar.
+{% endif %}
