@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from pathlib import Path
+import re
+import tempfile
 from typing import Dict, Iterable, List, Sequence, Tuple
 
 import tkinter as tk
@@ -11,7 +13,9 @@ from tkinter import filedialog, messagebox, ttk
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
 from app.plugins.base import Plugin
 from app.projects.store import ProjectRecord, ProjectStore
@@ -198,19 +202,23 @@ class ReportTab:
         if project_info is None:
             return
 
-        sections: List[Tuple[str, str]] = []
-        for item in selected:
-            spec = self._spec_from_tree_id(item)
-            if not spec:
-                continue
-            rendered = self._render_template(spec, project_info, plugin_states)
-            sections.append((f"{spec.plugin.name} – {spec.name}", rendered))
+        with tempfile.TemporaryDirectory(prefix="report-assets-") as tmp_dir:
+            resource_dir = Path(tmp_dir)
+            sections: List[Tuple[str, str]] = []
+            for item in selected:
+                spec = self._spec_from_tree_id(item)
+                if not spec:
+                    continue
+                rendered = self._render_template(
+                    spec, project_info, plugin_states, resource_dir
+                )
+                sections.append((f"{spec.plugin.name} – {spec.name}", rendered))
 
-        if not sections:
-            messagebox.showerror("Fehler", "Keine Inhalte zum Rendern gefunden.")
-            return
+            if not sections:
+                messagebox.showerror("Fehler", "Keine Inhalte zum Rendern gefunden.")
+                return
 
-        self._write_pdf(Path(save_path), sections)
+            self._write_pdf(Path(save_path), sections)
         self._set_status(f"Bericht gespeichert unter {save_path}.")
         messagebox.showinfo("Fertig", "Der Bericht wurde erstellt.")
 
@@ -261,7 +269,11 @@ class ReportTab:
         return meta, record.plugin_states
 
     def _render_template(
-        self, spec: TemplateSpec, project: Dict[str, str], plugin_states: Dict[str, Dict]
+        self,
+        spec: TemplateSpec,
+        project: Dict[str, str],
+        plugin_states: Dict[str, Dict],
+        resource_dir: Path,
     ) -> str:
         env = Environment(
             loader=FileSystemLoader(spec.path.parent),
@@ -273,6 +285,7 @@ class ReportTab:
             "project": project,
             "plugin_states": plugin_states,
         }
+        context |= self._augment_context(spec, plugin_states, resource_dir)
         try:
             rendered = template.render(context)
         except Exception as exc:  # pragma: no cover - GUI Feedback
@@ -291,19 +304,138 @@ class ReportTab:
         for title, content in sections:
             story.append(Paragraph(title, styles["Heading1"]))
             story.append(Spacer(1, 12))
-            for block in self._to_blocks(content):
-                story.append(Paragraph(block, styles["Normal"]))
-                story.append(Spacer(1, 8))
+            for block in self._to_flowables(content, styles):
+                story.append(block)
         doc.build(story)
 
-    def _to_blocks(self, content: str) -> List[str]:
+    def _to_flowables(self, content: str, styles) -> List:
         sanitized = content.strip()
         if not sanitized:
-            return ["(keine Daten)"]
-        paragraphs: List[str] = []
-        for raw_block in sanitized.split("\n\n"):
-            paragraphs.append(raw_block.replace("\n", "<br/>"))
-        return paragraphs
+            return [Paragraph("(keine Daten)", styles["Normal"])]
+
+        elements: List = []
+        blocks = sanitized.split("\n\n")
+        for index, raw_block in enumerate(blocks):
+            block = raw_block.strip()
+            image = self._parse_image_block(block)
+            if image:
+                elements.append(image)
+            else:
+                elements.append(Paragraph(block.replace("\n", "<br/>"), styles["Normal"]))
+
+            if index < len(blocks) - 1:
+                elements.append(Spacer(1, 8))
+        return elements
+
+    def _parse_image_block(self, block: str) -> Image | None:
+        align = None
+        para_match = re.fullmatch(r"<para([^>]*)>(.*)</para>", block, flags=re.IGNORECASE | re.DOTALL)
+        if para_match:
+            attr_text = para_match.group(1)
+            align_match = re.search(r"align=\"?([a-zA-Z]+)\"?", attr_text or "")
+            if align_match:
+                align = align_match.group(1).upper()
+            block = para_match.group(2).strip()
+
+        img_match = re.fullmatch(r"<img\s+[^>]*src=\"([^\"]+)\"[^>]*>", block, flags=re.IGNORECASE)
+        if not img_match:
+            return None
+
+        src = img_match.group(1)
+        width = self._extract_dimension(block, "width")
+        height = self._extract_dimension(block, "height")
+
+        try:
+            image = Image(src, width=width, height=height)
+        except Exception:
+            return None
+
+        if align in {"LEFT", "CENTER", "RIGHT"}:
+            image.hAlign = align
+        return image
+
+    def _extract_dimension(self, block: str, name: str) -> float | None:
+        match = re.search(rf"{name}=\"?([0-9.]+)\"?", block, flags=re.IGNORECASE)
+        if not match:
+            return None
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+
+    def _augment_context(
+        self, spec: TemplateSpec, plugin_states: Dict[str, Dict], resource_dir: Path
+    ) -> Dict[str, Dict[str, str]]:
+        if spec.identifier != "isolierung":
+            return {}
+
+        iso_state = plugin_states.get("isolierung", {})
+        berechnung = iso_state.get("berechnung", {})
+        result = berechnung.get("result")
+        if not berechnung or not result:
+            return {}
+
+        thicknesses = berechnung.get("thicknesses") or []
+        temperatures = result.get("interface_temperatures") or []
+        if not thicknesses or len(temperatures) != len(thicknesses) + 1:
+            return {}
+
+        plot_path = resource_dir / "isolierung_temperature_plot.png"
+        try:
+            self._make_temperature_plot(thicknesses, temperatures, plot_path)
+        except Exception:
+            return {}
+
+        enriched_berechnung = dict(berechnung)
+        enriched_berechnung["temperature_plot"] = str(plot_path)
+
+        updated_plugin_states = dict(plugin_states)
+        updated_iso_state = dict(iso_state)
+        updated_iso_state["berechnung"] = enriched_berechnung
+        updated_plugin_states["isolierung"] = updated_iso_state
+        return {"plugin_states": updated_plugin_states}
+
+    def _make_temperature_plot(
+        self, thicknesses: Sequence[float], temperatures: Sequence[float], target: Path
+    ) -> None:
+        plt.switch_backend("Agg")
+        fig, ax = plt.subplots(figsize=(6.4, 4.0), dpi=150, facecolor="#ffffff")
+        ax.set_facecolor("#ffffff")
+
+        total_x = [0]
+        for t in thicknesses:
+            total_x.append(total_x[-1] + t)
+
+        colors = ["#e81919", "#fce6e6"]
+        cmap = LinearSegmentedColormap.from_list("report_cmap", colors, N=256)
+        ax.plot(total_x, temperatures, linewidth=2, marker="o", color="#111827")
+
+        x_pos = 0
+        for i, t in enumerate(thicknesses):
+            color_value = i / max(len(thicknesses) - 1, 1)
+            ax.axvspan(x_pos, x_pos + t, color=cmap(color_value), alpha=0.35)
+            x_pos += t
+
+        for x, temp in zip(total_x, temperatures):
+            ax.text(
+                x,
+                temp + 5,
+                f"{temp:.0f}°C",
+                ha="center",
+                fontsize=8,
+                bbox=dict(facecolor="#ffffff", alpha=0.8, edgecolor="none"),
+                color="#111827",
+            )
+
+        ax.set_xlabel("Dicke [mm]", color="#111827")
+        ax.set_ylabel("Temperatur [°C]", color="#111827")
+        ax.set_title("Temperaturverlauf durch die Isolierung", fontsize=11, color="#111827")
+        ax.grid(True, linestyle="--", alpha=0.5, color="#9ca3af")
+        ax.tick_params(axis="x", colors="#111827", labelsize=8)
+        ax.tick_params(axis="y", colors="#111827", labelsize=8)
+        fig.tight_layout()
+        fig.savefig(target, bbox_inches="tight")
+        plt.close(fig)
 
     # ------------------------------------------------------------------
     # Hilfen
