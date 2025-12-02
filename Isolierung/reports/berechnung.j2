@@ -1,0 +1,69 @@
+{# --------------------------------------------------
+  Kontext:
+  project       -> Projekt-Metadaten (name, author, created_at, updated_at)
+  plugin_states -> Zustände aller Plugins, hier brauchen wir "isolierung"
+-------------------------------------------------- #}
+{% set iso = plugin_states.get("isolierung") %}
+{% if not iso %}
+Keine Isolierungsdaten vorhanden.
+{% else %}
+{% set berechnung = iso.get("berechnung") %}
+{% if not berechnung or not berechnung.get("result") %}
+Keine Berechnungsergebnisse vorhanden.
+{% else %}
+{% set result = berechnung.result %}
+
+<para align="center">
+  <b>Stationäre Wärmedurchgangsrechnung durch ebene Wand</b>
+</para>
+
+--------------------------------------------------------------------
+
+<para align="right">
+Autor: {{ project.author or "–" }}<br/>
+Datum: {{ project.updated_at or project.created_at or "–" }}
+</para>
+
+Projekt: {{ berechnung.name or project.name or "–" }}
+
+--------------------------------------------------------------------
+
+Randbedingungen
+
+T_innen (T_links): {{ "%.1f"|format(berechnung.T_left) }} °C  
+T_∞: {{ "%.1f"|format(berechnung.T_inf) }} °C  
+Wärmeübergangskoeffizient h: {{ "%.2f"|format(berechnung.h) }} W/(m²K)
+
+Ergebnisse (gesamt)
+
+Wärmestromdichte q: {{ "%.2f"|format(result.q) }} W/m²  
+Gesamtwiderstand R_total: {{ "%.5f"|format(result.R_total) }} m²K/W  
+Iterationen: {{ result.iterations }}
+
+Temperaturen und Materialkennwerte pro Schicht
+
+<font face="Courier">
+Schicht  Dicke [mm]  Material              T_links [°C]  T_rechts [°C]  T_mittel [°C]  k_mittel [W/mK]
+------------------------------------------------------------------------------------------------------
+
+{% set T_if = result.interface_temperatures %}
+{% set T_avg = result.T_avg %}
+{% set k_fin = result.k_final %}
+
+{% for i in range(berechnung.layer_count) %}
+{{ "%6d"|format(i + 1) }}
+{{ "%11.1f"|format(berechnung.thicknesses[i]) }}
+  {{ "%-20s"|format(berechnung.isolierungen[i]) }}
+  {{ "%12.1f"|format(T_if[i]) }}
+  {{ "%13.1f"|format(T_if[i + 1]) }}
+  {{ "%14.1f"|format(T_avg[i]) }}
+  {{ "%16.4f"|format(k_fin[i]) }}
+{% endfor %}
+</font>
+
+<para align="center">
+  <img src="{{ berechnung.temperature_plot }}" width="480" height="320" />
+</para>
+
+{% endif %}
+{% endif %}
