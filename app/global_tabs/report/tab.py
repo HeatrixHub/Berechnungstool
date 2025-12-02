@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from app.plugins.base import Plugin
 from app.projects.store import ProjectRecord, ProjectStore
@@ -224,8 +224,7 @@ class ReportTab:
                 if not identifier:
                     continue
                 try:
-                    raw_state = plugin.export_state()
-                    plugin_states[identifier] = plugin.prepare_report_state(raw_state)
+                    plugin_states[identifier] = plugin.export_state()
                 except Exception as exc:  # pragma: no cover - GUI Feedback
                     errors.append(f"{plugin.name}: {exc}")
             if errors:
@@ -259,12 +258,7 @@ class ReportTab:
             "created_at": record.created_at,
             "updated_at": record.updated_at,
         }
-        plugin_states, errors = self._augment_plugin_states(record.plugin_states)
-        if errors:
-            self._set_status(
-                "Warnung: Einige Plugin-Daten konnten nicht für den Bericht aufbereitet werden."
-            )
-        return meta, plugin_states
+        return meta, record.plugin_states
 
     def _render_template(
         self, spec: TemplateSpec, project: Dict[str, str], plugin_states: Dict[str, Dict]
@@ -297,68 +291,19 @@ class ReportTab:
         for title, content in sections:
             story.append(Paragraph(title, styles["Heading1"]))
             story.append(Spacer(1, 12))
-            for block in self._to_flowables(content, styles):
-                story.append(block)
+            for block in self._to_blocks(content):
+                story.append(Paragraph(block, styles["Normal"]))
                 story.append(Spacer(1, 8))
         doc.build(story)
 
-    def _to_flowables(self, content: str, styles) -> List:
+    def _to_blocks(self, content: str) -> List[str]:
         sanitized = content.strip()
         if not sanitized:
-            return [Paragraph("(keine Daten)", styles["Normal"])]
-
-        flowables: List = []
+            return ["(keine Daten)"]
+        paragraphs: List[str] = []
         for raw_block in sanitized.split("\n\n"):
-            block = raw_block.strip()
-            if not block:
-                continue
-            if block.startswith("[[image:") and block.endswith("]]"):
-                flowables.append(self._image_from_block(block, styles))
-            else:
-                flowables.append(
-                    Paragraph(block.replace("\n", "<br/>"), styles["Normal"])
-                )
-        return flowables
-
-    def _image_from_block(self, block: str, styles) -> Paragraph | Image:
-        payload = block[len("[[image:") : -2]
-        segments = payload.split("|")
-        path = segments[0].strip()
-
-        width = height = None
-        for segment in segments[1:]:
-            if segment.startswith("width="):
-                try:
-                    width = float(segment.split("=", 1)[1])
-                except ValueError:
-                    width = None
-            elif segment.startswith("height="):
-                try:
-                    height = float(segment.split("=", 1)[1])
-                except ValueError:
-                    height = None
-
-        if not path or not Path(path).exists():
-            return Paragraph(f"(Bild nicht gefunden: {path})", styles["Normal"])
-
-        return Image(path, width=width, height=height)
-
-    def _augment_plugin_states(
-        self, plugin_states: Dict[str, Dict]
-    ) -> Tuple[Dict[str, Dict], List[str]]:
-        enriched = dict(plugin_states)
-        errors: List[str] = []
-        for plugin in self.plugins:
-            identifier = getattr(plugin, "identifier", None)
-            if not identifier or identifier not in plugin_states:
-                continue
-            try:
-                enriched[identifier] = plugin.prepare_report_state(
-                    plugin_states[identifier]
-                )
-            except Exception as exc:  # pragma: no cover - GUI Feedback
-                errors.append(f"{plugin.name}: {exc}")
-        return enriched, errors
+            paragraphs.append(raw_block.replace("\n", "<br/>"))
+        return paragraphs
 
     # ------------------------------------------------------------------
     # Hilfen

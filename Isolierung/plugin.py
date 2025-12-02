@@ -11,7 +11,6 @@ from app.plugins.base import AppContext, Plugin
 from .tabs.tab1_berechnung_ui import BerechnungTab
 from .tabs.tab4_schichtaufbau_ui import SchichtaufbauTab
 from .tabs.tab5_zuschnitt_ui import ZuschnittTab
-from .reports.helpers import enrich_report_state
 
 
 class IsolierungPlugin(Plugin):
@@ -109,8 +108,3 @@ class IsolierungPlugin(Plugin):
             self.schichtaufbau_tab.import_state(state.get("schichtaufbau", {}))
         if self.zuschnitt_tab is not None and "zuschnitt" in state:
             self.zuschnitt_tab.import_state(state.get("zuschnitt", {}))
-
-    def prepare_report_state(self, state: dict) -> dict:
-        """Erweitert den Plugin-Zustand um report-spezifische Daten."""
-
-        return enrich_report_state(state)
