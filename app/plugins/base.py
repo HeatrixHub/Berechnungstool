@@ -53,6 +53,11 @@ class Plugin(ABC):
 
         return {}
 
+    def prepare_report_state(self, state: Dict[str, Any]) -> Dict[str, Any]:  # pragma: no cover - optionaler Hook
+        """Optionaler Hook, um den Zustands-Export für Berichte anzureichern."""
+
+        return state
+
     def import_state(self, state: Dict[str, Any]) -> None:  # pragma: no cover
         """Stellt einen zuvor gespeicherten Zustand wieder her."""
 
