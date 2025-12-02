@@ -4,3 +4,4 @@ heatrix.db
 projects.db
 heatrix_data.db
 *.sqlite3
+app/projects/projects.json
