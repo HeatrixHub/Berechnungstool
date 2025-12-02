@@ -71,9 +71,9 @@ class IsolierungenTab:
         self.tree.heading("name", text="Name")
         self.tree.heading("classification_temp", text="Klass.-Temp [°C]")
         self.tree.heading("density", text="Dichte [kg/m³]")
-        self.tree.heading("length", text="Länge [m]")
-        self.tree.heading("width", text="Breite [m]")
-        self.tree.heading("height", text="Höhe [m]")
+        self.tree.heading("length", text="Länge [mm]")
+        self.tree.heading("width", text="Breite [mm]")
+        self.tree.heading("height", text="Höhe [mm]")
         self.tree.heading("price", text="Preis [€]")
         for column in columns:
             self.tree.column(column, anchor="center", width=120)
@@ -126,15 +126,15 @@ class IsolierungenTab:
         self.entry_density.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
 
         # Abmessungen & Preis
-        ttk.Label(form, text="Länge [m]:").grid(row=0, column=2, sticky="w")
+        ttk.Label(form, text="Länge [mm]:").grid(row=0, column=2, sticky="w")
         self.entry_length = ttk.Entry(form)
         self.entry_length.grid(row=0, column=3, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Breite [m]:").grid(row=1, column=2, sticky="w")
+        ttk.Label(form, text="Breite [mm]:").grid(row=1, column=2, sticky="w")
         self.entry_width = ttk.Entry(form)
         self.entry_width.grid(row=1, column=3, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Höhe [m]:").grid(row=2, column=2, sticky="w")
+        ttk.Label(form, text="Höhe [mm]:").grid(row=2, column=2, sticky="w")
         self.entry_height = ttk.Entry(form)
         self.entry_height.grid(row=2, column=3, sticky="ew", padx=5, pady=2)
 
