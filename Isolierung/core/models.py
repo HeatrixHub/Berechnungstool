@@ -8,6 +8,28 @@ from typing import Dict, List, Optional
 
 
 @dataclass
+class MaterialVariant:
+    """Eine konkrete Ausführung einer Isolierung innerhalb einer Materialfamilie."""
+
+    name: str
+    thickness: float
+    length: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    price: Optional[float] = None
+
+    def to_dict(self) -> Dict:
+        return {
+            "name": self.name,
+            "thickness": self.thickness,
+            "length": self.length,
+            "width": self.width,
+            "height": self.height,
+            "price": self.price,
+        }
+
+
+@dataclass
 class MaterialMeasurement:
     """Ein einzelner Messpunkt für eine Isolierung (Temperatur vs. k)."""
 
@@ -27,6 +49,7 @@ class Material:
     height: Optional[float] = None
     price: Optional[float] = None
     measurements: List[MaterialMeasurement] = field(default_factory=list)
+    variants: List[MaterialVariant] = field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -45,6 +68,7 @@ class Material:
         if include_measurements:
             data["temps"] = [m.temperature for m in self.measurements]
             data["ks"] = [m.conductivity for m in self.measurements]
+        data["variants"] = [variant.to_dict() for variant in self.variants]
         return data
 
 
