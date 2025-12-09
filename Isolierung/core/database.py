@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from .models import (
     Material,
     MaterialMeasurement,
+    MaterialVariant,
     Project,
     ProjectLayer,
     ProjectResult,
@@ -20,7 +21,6 @@ from .models import (
 
 DB_PATH = "heatrix.db"
 LEGACY_PROJECT_DB = "projects.db"
-LEGACY_MATERIAL_DB = "heatrix_data.db"
 
 
 def _get_connection() -> sqlite3.Connection:
@@ -44,7 +44,19 @@ def _ensure_schema_meta(conn: sqlite3.Connection) -> int:
         conn.execute("INSERT INTO schema_meta (id, version) VALUES (1, 0)")
         conn.commit()
         return 0
-    return int(row["version"])
+
+    version = int(row["version"])
+
+    if version >= 4:
+        has_variants = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='material_variants'"
+        ).fetchone()
+        if not has_variants:
+            version = 3
+            conn.execute("UPDATE schema_meta SET version = ? WHERE id = 1", (version,))
+            conn.commit()
+
+    return version
 
 
 def _migration_1(conn: sqlite3.Connection) -> None:
@@ -157,10 +169,54 @@ def _migration_3(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_4(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS material_variants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            thickness REAL NOT NULL,
+            length REAL,
+            width REAL,
+            height REAL,
+            price REAL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE,
+            UNIQUE(material_id, name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_material_variants_material ON material_variants(material_id);
+        """
+    )
+
+    rows = conn.execute(
+        "SELECT id, name, length, width, height, price FROM materials"
+    ).fetchall()
+    for row in rows:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO material_variants (
+                material_id, name, thickness, length, width, price
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row["id"],
+                "Standard",
+                row["height"] if row["height"] is not None else 0.0,
+                row["length"],
+                row["width"],
+                row["price"],
+            ),
+        )
+
+
 MIGRATIONS: Sequence[Tuple[int, Any]] = [
     (1, _migration_1),
     (2, _migration_2),
     (3, _migration_3),
+    (4, _migration_4),
 ]
 
 
@@ -178,7 +234,6 @@ def _run_migrations() -> None:
 def _migrate_legacy_data() -> None:
     with _get_connection() as conn:
         _migrate_legacy_projects(conn)
-        _migrate_legacy_materials(conn)
 
 
 def _migrate_legacy_projects(conn: sqlite3.Connection) -> None:
@@ -229,49 +284,6 @@ def _migrate_legacy_projects(conn: sqlite3.Connection) -> None:
             version_label="legacy",
         )
     legacy_conn.close()
-
-
-def _migrate_legacy_materials(conn: sqlite3.Connection) -> None:
-    legacy_path = Path(LEGACY_MATERIAL_DB)
-    if not legacy_path.exists():
-        return
-    existing = conn.execute("SELECT COUNT(1) FROM materials").fetchone()[0]
-    if existing:
-        return
-    legacy_conn = sqlite3.connect(str(legacy_path))
-    legacy_conn.row_factory = sqlite3.Row
-    try:
-        rows = legacy_conn.execute(
-            "SELECT name, classification_temp, density, temps, ks FROM insulations"
-        ).fetchall()
-    except sqlite3.OperationalError:
-        rows = []
-    for row in rows:
-        temps = _safe_load_json(row["temps"]) if row["temps"] else []
-        ks = _safe_load_json(row["ks"]) if row["ks"] else []
-        _persist_material(
-            conn,
-            name=row["name"],
-            classification_temp=row["classification_temp"],
-            density=row["density"],
-            length=None,
-            width=None,
-            height=None,
-            price=None,
-            temps=temps,
-            ks=ks,
-        )
-    legacy_conn.close()
-
-
-def _safe_load_json(payload: str) -> List[float]:
-    try:
-        data = json.loads(payload)
-        if isinstance(data, list):
-            return data
-    except json.JSONDecodeError:
-        pass
-    return []
 
 
 def _normalize_material_name(name: str, fallback_index: int | None = None) -> str:
@@ -367,28 +379,20 @@ def _persist_material(
     name: str,
     classification_temp: Optional[float],
     density: Optional[float],
-    length: Optional[float],
-    width: Optional[float],
-    height: Optional[float],
-    price: Optional[float],
     temps: Sequence[float],
     ks: Sequence[float],
 ) -> bool:
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO materials (name, classification_temp, density, length, width, height, price)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO materials (name, classification_temp, density)
+        VALUES (?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             classification_temp = excluded.classification_temp,
             density = excluded.density,
-            length = excluded.length,
-            width = excluded.width,
-            height = excluded.height,
-            price = excluded.price,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (name, classification_temp, density, length, width, height, price),
+        (name, classification_temp, density),
     )
     material_id = cursor.execute("SELECT id FROM materials WHERE name = ?", (name,)).fetchone()["id"]
     cursor.execute("DELETE FROM material_measurements WHERE material_id = ?", (material_id,))
@@ -563,34 +567,58 @@ def list_projects_overview() -> List[Dict[str, Any]]:
         return []
 
 
+def _load_variants_for_materials(
+    conn: sqlite3.Connection, material_ids: Sequence[int]
+) -> Dict[int, List[MaterialVariant]]:
+    if not material_ids:
+        return {}
+    placeholders = ",".join(["?"] * len(material_ids))
+    rows = conn.execute(
+        f"""
+        SELECT material_id, name, thickness, length, width, price
+        FROM material_variants
+        WHERE material_id IN ({placeholders})
+        ORDER BY thickness ASC
+        """,
+        list(material_ids),
+    ).fetchall()
+    variants: Dict[int, List[MaterialVariant]] = {}
+    for row in rows:
+        variants.setdefault(row["material_id"], []).append(
+            MaterialVariant(
+                name=row["name"],
+                thickness=row["thickness"],
+                length=row["length"],
+                width=row["width"],
+                price=row["price"],
+            )
+        )
+    return variants
+
+
 def list_materials() -> List[Material]:
     try:
         with _get_connection() as conn:
             rows = conn.execute(
                 """
                 SELECT
-                    name,
-                    classification_temp,
-                    density,
-                    length,
-                    width,
-                    height,
-                    price,
-                    created_at,
-                    updated_at
-                FROM materials
-                ORDER BY name COLLATE NOCASE
+                    m.id,
+                    m.name,
+                    m.classification_temp,
+                    m.density,
+                    m.created_at,
+                    m.updated_at
+                FROM materials m
+                ORDER BY m.name COLLATE NOCASE
                 """
             ).fetchall()
+            variants = _load_variants_for_materials(conn, [row["id"] for row in rows])
             return [
                 Material(
                     name=row["name"],
                     classification_temp=row["classification_temp"],
                     density=row["density"],
-                    length=row["length"],
-                    width=row["width"],
-                    height=row["height"],
-                    price=row["price"],
+                    variants=variants.get(row["id"], []),
                     created_at=row["created_at"],
                     updated_at=row["updated_at"],
                 )
@@ -610,6 +638,9 @@ def load_material(name: str) -> Optional[Material]:
             ).fetchone()
             if not row:
                 return None
+            variants = _load_variants_for_materials(conn, [row["id"]]).get(
+                row["id"], []
+            )
             measurement_rows = conn.execute(
                 "SELECT temperature, conductivity FROM material_measurements WHERE material_id = ? ORDER BY temperature ASC",
                 (row["id"],),
@@ -622,10 +653,7 @@ def load_material(name: str) -> Optional[Material]:
                 name=row["name"],
                 classification_temp=row["classification_temp"],
                 density=row["density"],
-                length=row["length"],
-                width=row["width"],
-                height=row["height"],
-                price=row["price"],
+                variants=variants,
                 measurements=measurements,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
@@ -635,14 +663,10 @@ def load_material(name: str) -> Optional[Material]:
         return None
 
 
-def save_material(
+def save_material_family(
     name: str,
     classification_temp: Optional[float],
     density: Optional[float],
-    length: Optional[float],
-    width: Optional[float],
-    height: Optional[float],
-    price: Optional[float],
     temps: Sequence[float],
     ks: Sequence[float],
 ) -> bool:
@@ -653,15 +677,53 @@ def save_material(
                 name=name,
                 classification_temp=classification_temp,
                 density=density,
-                length=length,
-                width=width,
-                height=height,
-                price=price,
                 temps=temps,
                 ks=ks,
             )
     except Exception as exc:
-        print(f"[DB] Fehler beim Speichern der Isolierung '{name}': {exc}")
+        print(f"[DB] Fehler beim Speichern der Materialfamilie '{name}': {exc}")
+        return False
+
+
+def save_material_variant(
+    material_name: str,
+    variant_name: str,
+    thickness: float,
+    length: Optional[float],
+    width: Optional[float],
+    price: Optional[float],
+) -> bool:
+    try:
+        with _get_connection() as conn:
+            cursor = conn.execute("SELECT id FROM materials WHERE name = ?", (material_name,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+            conn.execute(
+                """
+                INSERT INTO material_variants (
+                    material_id, name, thickness, length, width, price
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(material_id, name) DO UPDATE SET
+                    thickness=excluded.thickness,
+                    length=excluded.length,
+                    width=excluded.width,
+                    price=excluded.price,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    row["id"],
+                    variant_name,
+                    thickness,
+                    length,
+                    width,
+                    price,
+                ),
+            )
+            conn.commit()
+            return True
+    except Exception as exc:
+        print(f"[DB] Fehler beim Speichern der Variante '{variant_name}': {exc}")
         return False
 
 
@@ -680,6 +742,25 @@ def delete_material(name: str) -> bool:
             return cursor.rowcount > 0
     except Exception as exc:
         print(f"[DB] Fehler beim Löschen der Isolierung '{name}': {exc}")
+        return False
+
+
+def delete_material_variant(material_name: str, variant_name: str) -> bool:
+    try:
+        with _get_connection() as conn:
+            material_row = conn.execute(
+                "SELECT id FROM materials WHERE name = ?", (material_name,)
+            ).fetchone()
+            if not material_row:
+                return False
+            cursor = conn.execute(
+                "DELETE FROM material_variants WHERE material_id = ? AND name = ?",
+                (material_row["id"], variant_name),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as exc:
+        print(f"[DB] Fehler beim Löschen der Variante '{variant_name}': {exc}")
         return False
 
 
