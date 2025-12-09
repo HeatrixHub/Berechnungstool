@@ -152,7 +152,7 @@ def toggle_normkubikmenge(entries, aktiv, normkubik_aktiv, heatrix_aktiv):
         elif heatrix_aktiv:
             toggle_normbedingungen(entries, "HEATRIX", False)
 
-def starte_berechnung(entries, combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var):
+def starte_berechnung(entries, combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var, heat_priority_var):
     try:
         fehler = False
 
@@ -173,22 +173,35 @@ def starte_berechnung(entries, combo_var, normkubik_var, heatrix_normal_var, nor
         Q_kW = None
         T2_raw = entries["Temperatur 2 (°C):"].get().strip()
         Q_raw = entries["Wärmeleistung (kW):"].get().strip()
+        heat_priority = heat_priority_var.get()
 
-        if T2_raw and T2_raw != "Bitte eintragen!":
-            try:
-                T2_C = float(T2_raw)
-            except ValueError:
-                zeige_fehlermeldung(entries["Temperatur 2 (°C):"])
-                fehler = True
-        elif Q_raw and Q_raw != "Bitte eintragen!":
-            try:
-                Q_kW = float(Q_raw)
-            except ValueError:
+        if heat_priority:
+            T2_C = None
+            if Q_raw and Q_raw != "Bitte eintragen!":
+                try:
+                    Q_kW = float(Q_raw)
+                except ValueError:
+                    zeige_fehlermeldung(entries["Wärmeleistung (kW):"])
+                    fehler = True
+            else:
                 zeige_fehlermeldung(entries["Wärmeleistung (kW):"])
                 fehler = True
         else:
-            zeige_fehlermeldung(entries["Temperatur 2 (°C):"])
-            fehler = True
+            if T2_raw and T2_raw != "Bitte eintragen!":
+                try:
+                    T2_C = float(T2_raw)
+                except ValueError:
+                    zeige_fehlermeldung(entries["Temperatur 2 (°C):"])
+                    fehler = True
+            elif Q_raw and Q_raw != "Bitte eintragen!":
+                try:
+                    Q_kW = float(Q_raw)
+                except ValueError:
+                    zeige_fehlermeldung(entries["Wärmeleistung (kW):"])
+                    fehler = True
+            else:
+                zeige_fehlermeldung(entries["Temperatur 2 (°C):"])
+                fehler = True
 
         # Volumenstrom prüfen
         V1 = None
