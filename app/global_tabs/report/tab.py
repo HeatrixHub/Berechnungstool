@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -29,6 +30,10 @@ class TemplateSpec:
     path: Path
 
 
+class ReportBuildError(Exception):
+    """Signalisiert Fehler beim Erstellen des PDF-Berichts."""
+
+
 class ReportTab:
     """Erzeugt PDF-Berichte aus Plugin-Zuständen mittels Jinja2-Templates."""
 
@@ -42,6 +47,7 @@ class ReportTab:
         self.project_store = project_store
         self.plugins: List[Plugin] = list(plugins)
         self.templates: List[TemplateSpec] = []
+        self.logger = logging.getLogger(__name__)
 
         self.frame = ttk.Frame(notebook, padding=(18, 16, 18, 16))
         notebook.add(self.frame, text=tab_name)
@@ -218,7 +224,17 @@ class ReportTab:
                 messagebox.showerror("Fehler", "Keine Inhalte zum Rendern gefunden.")
                 return
 
-            self._write_pdf(Path(save_path), sections)
+            try:
+                self._write_pdf(Path(save_path), sections)
+            except ReportBuildError:
+                return
+            except Exception as exc:  # pragma: no cover - GUI Feedback
+                messagebox.showerror(
+                    "Fehler",
+                    f"Der Bericht konnte nicht erstellt werden:\n{exc}",
+                )
+                return
+
         self._set_status(f"Bericht gespeichert unter {save_path}.")
         messagebox.showinfo("Fertig", "Der Bericht wurde erstellt.")
 
@@ -306,7 +322,14 @@ class ReportTab:
             story.append(Spacer(1, 12))
             for block in self._to_flowables(content, styles):
                 story.append(block)
-        doc.build(story)
+        try:
+            doc.build(story)
+        except Exception as exc:
+            messagebox.showerror(
+                "PDF-Fehler",
+                f"Beim Erstellen des PDFs ist ein Fehler aufgetreten:\n{exc}",
+            )
+            raise ReportBuildError(exc) from exc
 
     def _to_flowables(self, content: str, styles) -> List:
         sanitized = content.strip()
@@ -321,7 +344,11 @@ class ReportTab:
             if image:
                 elements.append(image)
             else:
-                elements.append(Paragraph(block.replace("\n", "<br/>"), styles["Normal"]))
+                try:
+                    elements.append(Paragraph(block.replace("\n", "<br/>"), styles["Normal"]))
+                except Exception as exc:
+                    self.logger.warning("Ungültiger Absatz im Bericht: %s", block, exc_info=exc)
+                    elements.append(Paragraph("(keine Daten)", styles["Normal"]))
 
             if index < len(blocks) - 1:
                 elements.append(Spacer(1, 8))
@@ -347,7 +374,8 @@ class ReportTab:
 
         try:
             image = Image(src, width=width, height=height)
-        except Exception:
+        except Exception as exc:
+            self.logger.warning("Bild konnte nicht geladen werden: %s", src, exc_info=exc)
             return None
 
         if align in {"LEFT", "CENTER", "RIGHT"}:
