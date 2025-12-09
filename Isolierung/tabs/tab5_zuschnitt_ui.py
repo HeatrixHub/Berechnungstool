@@ -327,7 +327,7 @@ class ZuschnittTab:
         data = load_insulation(material)
         length = data.get("length")
         width = data.get("width")
-        price = self._select_price_for_thickness(data, thickness)
+        price = self._select_price_for_thickness(data, thickness, material)
         if length is None or width is None:
             raise ValueError(
                 f"Für {material} sind keine Rohlingmaße in der Isolierung DB hinterlegt."
@@ -335,7 +335,9 @@ class ZuschnittTab:
         parsed_price = None if price is None else float(price)
         return {"length": float(length), "width": float(width), "price": parsed_price}
 
-    def _select_price_for_thickness(self, data: dict, thickness: float) -> float | None:
+    def _select_price_for_thickness(
+        self, data: dict, thickness: float, material: str
+    ) -> float | None:
         layers = data.get("layers") or []
         for layer in layers:
             if math.isclose(float(layer.get("thickness_mm", 0.0)), float(thickness), rel_tol=1e-3):
