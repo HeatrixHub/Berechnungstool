@@ -345,7 +345,10 @@ class ReportTab:
                 elements.append(image)
             else:
                 try:
-                    elements.append(Paragraph(block.replace("\n", "<br/>"), styles["Normal"]))
+                    clean_block = self._sanitize_block(block)
+                    elements.append(
+                        Paragraph(clean_block.replace("\n", "<br/>"), styles["Normal"])
+                    )
                 except Exception as exc:
                     self.logger.warning("Ungültiger Absatz im Bericht: %s", block, exc_info=exc)
                     elements.append(Paragraph("(keine Daten)", styles["Normal"]))
@@ -381,6 +384,23 @@ class ReportTab:
         if align in {"LEFT", "CENTER", "RIGHT"}:
             image.hAlign = align
         return image
+
+    def _sanitize_block(self, block: str) -> str:
+        """Entfernt problematische ReportLab-Tags aus Absatz-Blöcken.
+
+        Manche Templates benutzen z. B. ``<font>``-Tags, um Monospace-Tabellen zu
+        erzeugen. Da die Blöcke hier anhand leerer Zeilen getrennt werden, können
+        öffnende und schließende Tags in unterschiedlichen Blöcken landen und die
+        Paragraph-Parsing-Logik von ReportLab auslösen. Um dennoch ein PDF zu
+        erzeugen, werden diese Tags entfernt.
+        """
+
+        # Entferne <font ...> und </font>, falls sie separat oder unausgewogen auftreten
+        without_font = re.sub(r"</?font[^>]*>", "", block, flags=re.IGNORECASE)
+        # Entferne ggf. Para-Tags, die nicht für Bilder gedacht sind
+        without_para = re.sub(r"</?para[^>]*>", "", without_font, flags=re.IGNORECASE)
+        cleaned = without_para.strip()
+        return cleaned or "(keine Daten)"
 
     def _extract_dimension(self, block: str, name: str) -> float | None:
         match = re.search(rf"{name}=\"?([0-9.]+)\"?", block, flags=re.IGNORECASE)
