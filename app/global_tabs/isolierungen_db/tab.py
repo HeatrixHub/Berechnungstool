@@ -138,22 +138,26 @@ class IsolierungenTab:
         self.entry_height = ttk.Entry(form)
         self.entry_height.grid(row=2, column=3, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Preis [€/Platte]:").grid(row=3, column=2, sticky="w")
-        self.entry_price = ttk.Entry(form)
-        self.entry_price.grid(row=3, column=3, sticky="ew", padx=5, pady=2)
+        price_header = ttk.Label(form, text="Preisstaffeln (Dicke [mm] / Preis [€]):")
+        price_header.grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 2))
+        self.price_table = ttk.Frame(form)
+        self.price_table.grid(row=4, column=0, columnspan=4, sticky="ew")
+        self.price_add_button: ttk.Button | None = None
+        self.price_rows: list[tuple[ttk.Entry, ttk.Entry, ttk.Button]] = []
+        self._add_price_row()
 
         # Messwerte
-        ttk.Label(form, text="Temperaturen [°C]:").grid(row=3, column=0, sticky="w")
+        ttk.Label(form, text="Temperaturen [°C]:").grid(row=5, column=0, sticky="w")
         self.entry_temps = ttk.Entry(form)
-        self.entry_temps.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
+        self.entry_temps.grid(row=5, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Wärmeleitfähigkeiten [W/mK]:").grid(row=4, column=0, sticky="w")
+        ttk.Label(form, text="Wärmeleitfähigkeiten [W/mK]:").grid(row=6, column=0, sticky="w")
         self.entry_ks = ttk.Entry(form)
-        self.entry_ks.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
+        self.entry_ks.grid(row=6, column=1, sticky="ew", padx=5, pady=2)
 
         ttk.Button(
             form, text="💾 Speichern", style="Accent.TButton", command=self.save_entry
-        ).grid(row=5, column=0, columnspan=4, pady=10, sticky="e")
+        ).grid(row=7, column=0, columnspan=4, pady=10, sticky="e")
 
         self.plot_frame = ttk.LabelFrame(
             self.frame,
@@ -210,9 +214,7 @@ class IsolierungenTab:
         self.entry_height.delete(0, tk.END)
         if data.get("height") is not None:
             self.entry_height.insert(0, str(data["height"]))
-        self.entry_price.delete(0, tk.END)
-        if data.get("price") is not None:
-            self.entry_price.insert(0, str(data["price"]))
+        self._reset_price_rows_from_data(data)
         self.entry_temps.delete(0, tk.END)
         self.entry_temps.insert(0, ", ".join(map(str, data["temps"])))
         self.entry_ks.delete(0, tk.END)
@@ -230,7 +232,8 @@ class IsolierungenTab:
             length = self._parse_optional_float(self.entry_length.get())
             width = self._parse_optional_float(self.entry_width.get())
             height = self._parse_optional_float(self.entry_height.get())
-            price = self._parse_optional_float(self.entry_price.get())
+            price_layers = self._collect_price_layers()
+            price = price_layers[0][1] if price_layers else None
             temps = [float(x.strip()) for x in self.entry_temps.get().split(",") if x.strip()]
             ks = [float(x.strip()) for x in self.entry_ks.get().split(",") if x.strip()]
             if len(temps) != len(ks):
@@ -238,7 +241,9 @@ class IsolierungenTab:
                     "Fehler", "Temperatur- und k-Werte müssen gleich viele Einträge haben."
                 )
                 return
-            save_insulation(name, class_temp, density, length, width, height, price, temps, ks)
+            save_insulation(
+                name, class_temp, density, length, width, height, price, price_layers, temps, ks
+            )
             messagebox.showinfo("Gespeichert", f"Isolierung '{name}' wurde gespeichert.")
             self.refresh_table()
         except Exception as exc:  # pragma: no cover - GUI Verarbeitung
@@ -424,11 +429,11 @@ class IsolierungenTab:
             self.entry_length,
             self.entry_width,
             self.entry_height,
-            self.entry_price,
             self.entry_temps,
             self.entry_ks,
         ]:
             entry.delete(0, tk.END)
+        self._reset_price_rows([])
 
     def _parse_required_float(self, value: str, label: str) -> float:
         cleaned = value.strip()
@@ -447,6 +452,89 @@ class IsolierungenTab:
             return float(cleaned)
         except ValueError:
             raise ValueError("Numerischer Wert erwartet (optional).")
+
+    def _reset_price_rows_from_data(self, data: dict) -> None:
+        layers = data.get("layers") or []
+        if not layers and data.get("price") is not None:
+            layers = [{"thickness_mm": data.get("height", 0.0), "price": data.get("price")}] 
+        rows = [
+            (
+                "" if layer.get("thickness_mm") is None else str(layer.get("thickness_mm")),
+                "" if layer.get("price") is None else str(layer.get("price")),
+            )
+            for layer in layers
+        ]
+        self._reset_price_rows(rows)
+
+    def _reset_price_rows(self, rows: list[tuple[str, str]]):
+        if self.price_add_button is not None:
+            self.price_add_button.destroy()
+            self.price_add_button = None
+        for thickness_entry, price_entry, remove_btn in self.price_rows:
+            thickness_entry.destroy()
+            price_entry.destroy()
+            remove_btn.destroy()
+        self.price_rows.clear()
+        if not rows:
+            rows = [("", "")]
+        for thickness, price in rows:
+            self._add_price_row(thickness, price)
+
+    def _add_price_row(self, thickness: str | float = "", price: str | float = "") -> None:
+        row_index = len(self.price_rows)
+        thickness_entry = ttk.Entry(self.price_table, width=12)
+        thickness_entry.grid(row=row_index, column=0, padx=2, pady=2, sticky="ew")
+        if thickness != "":
+            thickness_entry.insert(0, str(thickness))
+        price_entry = ttk.Entry(self.price_table, width=12)
+        price_entry.grid(row=row_index, column=1, padx=2, pady=2, sticky="ew")
+        if price != "":
+            price_entry.insert(0, str(price))
+        remove_btn = ttk.Button(
+            self.price_table,
+            text="✕",
+            width=3,
+            command=lambda idx=row_index: self._remove_price_row(idx),
+        )
+        remove_btn.grid(row=row_index, column=2, padx=2, pady=2)
+        if row_index == 0 and self.price_add_button is None:
+            self.price_add_button = ttk.Button(
+                self.price_table, text="+", width=3, command=self._add_price_row
+            )
+            self.price_add_button.grid(row=0, column=3, padx=2, pady=2)
+        self.price_rows.append((thickness_entry, price_entry, remove_btn))
+        self._refresh_price_row_commands()
+
+    def _refresh_price_row_commands(self) -> None:
+        if not self.price_rows:
+            return
+        for idx, (_, _, remove_btn) in enumerate(self.price_rows):
+            remove_btn.configure(command=lambda i=idx: self._remove_price_row(i))
+            remove_btn.state(["!disabled"])
+        if len(self.price_rows) == 1:
+            self.price_rows[0][2].state(["disabled"])
+
+    def _remove_price_row(self, index: int) -> None:
+        if index < 0 or index >= len(self.price_rows):
+            return
+        current_rows = []
+        for i, (thickness_entry, price_entry, _) in enumerate(self.price_rows):
+            if i == index:
+                continue
+            current_rows.append((thickness_entry.get(), price_entry.get()))
+        self._reset_price_rows(current_rows)
+
+    def _collect_price_layers(self) -> list[tuple[float, float]]:
+        layers: list[tuple[float, float]] = []
+        for thickness_entry, price_entry, _ in self.price_rows:
+            thickness = thickness_entry.get().strip()
+            price = price_entry.get().strip()
+            if not thickness and not price:
+                continue
+            if not thickness or not price:
+                raise ValueError("Preisstaffeln benötigen sowohl Dicke als auch Preis.")
+            layers.append((float(thickness), float(price)))
+        return layers
 
     def update_plot(self, temps, ks, class_temp) -> None:
         try:

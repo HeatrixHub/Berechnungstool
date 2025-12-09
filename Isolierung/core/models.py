@@ -8,6 +8,14 @@ from typing import Dict, List, Optional
 
 
 @dataclass
+class LayerPrice:
+    """Preisstaffel für eine bestimmte Plattendicke."""
+
+    thickness_mm: float
+    price: float
+
+
+@dataclass
 class MaterialMeasurement:
     """Ein einzelner Messpunkt für eine Isolierung (Temperatur vs. k)."""
 
@@ -26,9 +34,18 @@ class Material:
     width: Optional[float] = None
     height: Optional[float] = None
     price: Optional[float] = None
+    layers: List[LayerPrice] = field(default_factory=list)
     measurements: List[MaterialMeasurement] = field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+    def __post_init__(self):
+        # Für Abwärtskompatibilität: Einzelpreis in eine Preisstaffel überführen
+        if not self.layers and self.price is not None:
+            self.layers = [LayerPrice(thickness_mm=0.0, price=float(self.price))]
+        if self.layers and self.price is None:
+            # Ersten Staffelpreis als Legacy-Preis bereitstellen
+            self.price = self.layers[0].price
 
     def to_dict(self, include_measurements: bool = True) -> Dict:
         data = {
@@ -39,6 +56,10 @@ class Material:
             "width": self.width,
             "height": self.height,
             "price": self.price,
+            "layers": [
+                {"thickness_mm": layer.thickness_mm, "price": layer.price}
+                for layer in self.layers
+            ],
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

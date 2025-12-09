@@ -15,12 +15,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from Isolierung.core.database import (
-    delete_material,
-    list_materials,
-    load_material,
-    save_material,
-)
+from Isolierung.core.database import delete_material, list_materials, load_material, save_material
+from Isolierung.core.models import LayerPrice
 
 
 _material_change_listeners: set[Callable[[], None]] = set()
@@ -62,6 +58,10 @@ def get_all_insulations() -> List[Dict]:
             "width": material.width,
             "height": material.height,
             "price": material.price,
+            "layers": [
+                {"thickness_mm": layer.thickness_mm, "price": layer.price}
+                for layer in material.layers
+            ],
         }
         for material in materials
     ]
@@ -82,6 +82,7 @@ def save_insulation(
     width: float | None,
     height: float | None,
     price: float | None,
+    price_layers: List[Tuple[float, float]] | None,
     temps: List[float],
     ks: List[float],
 ) -> bool:
@@ -93,6 +94,7 @@ def save_insulation(
         width,
         height,
         price,
+        price_layers,
         temps,
         ks,
     )
@@ -166,6 +168,8 @@ CSV_HEADERS = [
     "width",
     "height",
     "price",
+    "price_thicknesses",
+    "price_values",
     "temps",
     "ks",
 ]
@@ -291,12 +295,21 @@ def import_insulations_from_csv_files(
                         width = _parse_optional_float(row.get("width"))
                         height = _parse_optional_float(row.get("height"))
                         price = _parse_optional_float(row.get("price"))
+                        price_layers = _parse_price_layers(
+                            row.get("price_thicknesses", ""), row.get("price_values", "")
+                        )
                         temps = _parse_numeric_list(row.get("temps", ""))
                         ks = _parse_numeric_list(row.get("ks", ""))
                         if len(temps) != len(ks):
                             raise ValueError(
                                 "Temperatur- und k-Liste müssen gleich lang sein."
                             )
+
+                        if price_layers and price is not None:
+                            # Einzelpreis als zusätzliche Staffel für Rückwärtskompatibilität
+                            price_layers.append((height if height is not None else 0.0, price))
+                        elif price is not None and not price_layers:
+                            price_layers = [(height if height is not None else 0.0, price)]
 
                         name = _generate_unique_name(base_name, existing_names)
                         saved = save_insulation(
@@ -307,6 +320,7 @@ def import_insulations_from_csv_files(
                             width,
                             height,
                             price,
+                            price_layers,
                             temps,
                             ks,
                         )
@@ -367,6 +381,16 @@ def _parse_numeric_list(value: str) -> List[float]:
     return [float(item.strip()) for item in cleaned.split(";") if item.strip()]
 
 
+def _parse_price_layers(thicknesses_raw: str, prices_raw: str) -> List[Tuple[float, float]]:
+    thicknesses = _parse_numeric_list(thicknesses_raw)
+    prices = _parse_numeric_list(prices_raw)
+    if not thicknesses and not prices:
+        return []
+    if len(thicknesses) != len(prices):
+        raise ValueError("Preisstaffeln benötigen gleich viele Dicken- und Preiswerte.")
+    return list(zip(thicknesses, prices))
+
+
 def _ensure_required_fields(name: str) -> None:
     if not name:
         raise ValueError("Pflichtfeld 'name' fehlt.")
@@ -398,6 +422,7 @@ def _build_insulation_row(name: str) -> Dict[str, str | float] | None:
     data = load_insulation(name)
     if not data:
         return None
+    price_layers = data.get("layers", []) or []
     return {
         "name": data.get("name", ""),
         "classification_temp": data.get("classification_temp"),
@@ -406,6 +431,10 @@ def _build_insulation_row(name: str) -> Dict[str, str | float] | None:
         "width": data.get("width"),
         "height": data.get("height"),
         "price": data.get("price"),
+        "price_thicknesses": ";".join(
+            map(lambda l: str(l.get("thickness_mm", "")), price_layers)
+        ),
+        "price_values": ";".join(map(lambda l: str(l.get("price", "")), price_layers)),
         "temps": ";".join(map(str, data.get("temps", []))),
         "ks": ";".join(map(str, data.get("ks", []))),
     }
