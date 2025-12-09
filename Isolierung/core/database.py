@@ -48,6 +48,16 @@ def _ensure_schema_meta(conn: sqlite3.Connection) -> int:
     return int(row["version"])
 
 
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
 def _migration_1(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -219,6 +229,14 @@ def _run_migrations() -> None:
                 conn.execute("UPDATE schema_meta SET version = ? WHERE id = 1", (version,))
                 conn.commit()
                 current_version = version
+
+        if not _table_exists(conn, "material_variants"):
+            _migration_4(conn)
+            conn.execute(
+                "UPDATE schema_meta SET version = MAX(version, ?) WHERE id = 1",
+                (4,),
+            )
+            conn.commit()
 
 
 def _migrate_legacy_data() -> None:
