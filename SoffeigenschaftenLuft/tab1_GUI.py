@@ -17,12 +17,13 @@ combo_var = None
 normkubik_var = None
 heatrix_normal_var = None
 normkubikmenge_var = None
+heat_priority_var = None
 
 def get_entries():
     return entries_global
 
 def create_tab1(notebook):
-    global combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var
+    global combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var, heat_priority_var
 
     frame_tab1 = tk.Frame(notebook, padx=20, pady=10)
     notebook.add(frame_tab1, text="Zustandsgrößen")
@@ -45,6 +46,7 @@ def create_tab1(notebook):
     normkubik_var = tk.BooleanVar()
     heatrix_normal_var = tk.BooleanVar()
     normkubikmenge_var = tk.BooleanVar()
+    heat_priority_var = tk.BooleanVar()
 
     def handle_toggle_din():
         if normkubik_var.get():
@@ -160,10 +162,28 @@ def create_tab1(notebook):
         elif "Wärmeleistung" in text:
             ToolTip(entry, "Gib eine bekannte Wärmeleistung ein oder lasse sie aus Temperaturdaten berechnen.")
 
+            heat_priority_check = ttk.Checkbutton(
+                frame_tab1,
+                text="Wärmeleistung priorisieren",
+                variable=heat_priority_var,
+            )
+            heat_priority_check.grid(row=row, column=col + 2, padx=10, pady=5, sticky=tk.W)
+            ToolTip(
+                heat_priority_check,
+                "Wenn aktiviert, wird Temperatur 2 immer aus der Wärmeleistung berechnet.",
+            )
+
     calculate_button = ttk.Button(
         frame_tab1,
         text="Berechnen",
-        command=lambda: starte_berechnung(entries, combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var)
+        command=lambda: starte_berechnung(
+            entries,
+            combo_var,
+            normkubik_var,
+            heatrix_normal_var,
+            normkubikmenge_var,
+            heat_priority_var,
+        )
     )
     calculate_button.grid(row=13, column=0, columnspan=4, pady=15)
     ToolTip(calculate_button, "Startet die Berechnung basierend auf den eingegebenen Werten.")
