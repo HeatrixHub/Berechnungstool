@@ -229,22 +229,23 @@ class ZuschnittTab:
             messagebox.showerror("Optimierung fehlgeschlagen", str(exc))
 
     def _pack_plates(self, plates: List[dict], kerf: float) -> List[Placement]:
-        grouped: Dict[str, List[dict]] = {}
+        grouped: Dict[Tuple[str, float], List[dict]] = {}
         for plate in plates:
             material = plate.get("material", "")
             if not material:
                 raise ValueError(
                     "Material in der Plattenliste fehlt. Bitte Material im Schichtaufbau setzen."
                 )
-            grouped.setdefault(material, []).append(plate)
+            thickness = float(plate.get("thickness", 0))
+            grouped.setdefault((material, thickness), []).append(plate)
 
         placements: List[Placement] = []
         self.material_summary = []
         self.total_cost = None
         self.total_bin_count = None
         total_bins = 0
-        for material, items in grouped.items():
-            raw_data = self._load_raw_data(material)
+        for (material, thickness), items in grouped.items():
+            raw_data = self._load_raw_data(material, thickness)
             bin_width, bin_height = raw_data["length"], raw_data["width"]
             if bin_width <= 0 or bin_height <= 0:
                 raise ValueError(
@@ -307,7 +308,7 @@ class ZuschnittTab:
             cost = None if price is None else price * len(packer)
             self.material_summary.append(
                 {
-                    "material": material,
+                    "material": f"{material} ({thickness:.1f} mm)",
                     "count": len(packer),
                     "price": price,
                     "cost": cost,
@@ -322,17 +323,30 @@ class ZuschnittTab:
         self.total_bin_count = total_bins
         return placements
 
-    def _load_raw_data(self, material: str) -> Dict[str, float | None]:
+    def _load_raw_data(self, material: str, thickness: float) -> Dict[str, float | None]:
         data = load_insulation(material)
         length = data.get("length")
         width = data.get("width")
-        price = data.get("price")
+        price = self._select_price_for_thickness(data, thickness)
         if length is None or width is None:
             raise ValueError(
                 f"Für {material} sind keine Rohlingmaße in der Isolierung DB hinterlegt."
             )
         parsed_price = None if price is None else float(price)
         return {"length": float(length), "width": float(width), "price": parsed_price}
+
+    def _select_price_for_thickness(self, data: dict, thickness: float) -> float | None:
+        layers = data.get("layers") or []
+        for layer in layers:
+            if math.isclose(float(layer.get("thickness_mm", 0.0)), float(thickness), rel_tol=1e-3):
+                return float(layer.get("price"))
+        if len(layers) == 1:
+            return float(layers[0].get("price"))
+        if not layers and data.get("price") is not None:
+            return float(data.get("price"))
+        raise ValueError(
+            f"Keine Preisstaffel für {material} mit Dicke {thickness} mm gefunden."
+        )
 
     # ---------------------------------------------------------------
     # Projektzustand

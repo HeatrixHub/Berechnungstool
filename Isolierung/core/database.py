@@ -10,13 +10,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .models import (
-    Material,
-    MaterialMeasurement,
-    Project,
-    ProjectLayer,
-    ProjectResult,
-)
+from .models import LayerPrice, Material, MaterialMeasurement, Project, ProjectLayer, ProjectResult
 
 DB_PATH = "heatrix.db"
 LEGACY_PROJECT_DB = "projects.db"
@@ -157,10 +151,42 @@ def _migration_3(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_4(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS material_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_id INTEGER NOT NULL,
+            thickness_mm REAL NOT NULL,
+            price REAL NOT NULL,
+            FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE,
+            UNIQUE(material_id, thickness_mm)
+        );
+        CREATE INDEX IF NOT EXISTS idx_prices_material ON material_prices(material_id);
+        """
+    )
+
+    # Bestehende Einzelpreise in Preisstaffeln überführen (ein Eintrag pro Material)
+    rows = conn.execute("SELECT id, height, price FROM materials WHERE price IS NOT NULL").fetchall()
+    for row in rows:
+        material_id = row["id"]
+        existing = conn.execute(
+            "SELECT 1 FROM material_prices WHERE material_id = ?", (material_id,)
+        ).fetchone()
+        if existing:
+            continue
+        thickness = row["height"] if row["height"] is not None else 0.0
+        conn.execute(
+            "INSERT INTO material_prices (material_id, thickness_mm, price) VALUES (?, ?, ?)",
+            (material_id, float(thickness), float(row["price"])),
+        )
+
+
 MIGRATIONS: Sequence[Tuple[int, Any]] = [
     (1, _migration_1),
     (2, _migration_2),
     (3, _migration_3),
+    (4, _migration_4),
 ]
 
 
@@ -258,6 +284,7 @@ def _migrate_legacy_materials(conn: sqlite3.Connection) -> None:
             width=None,
             height=None,
             price=None,
+            price_layers=None,
             temps=temps,
             ks=ks,
         )
@@ -272,6 +299,55 @@ def _safe_load_json(payload: str) -> List[float]:
     except json.JSONDecodeError:
         pass
     return []
+
+
+def _normalize_price_layers(
+    price_layers: Sequence[LayerPrice] | Sequence[Tuple[float, float]] | None,
+    price: Optional[float],
+    height: Optional[float],
+) -> List[LayerPrice]:
+    layers: List[LayerPrice] = []
+    for layer in price_layers or []:
+        if isinstance(layer, LayerPrice):
+            layers.append(layer)
+        elif isinstance(layer, (tuple, list)) and len(layer) == 2:
+            layers.append(LayerPrice(float(layer[0]), float(layer[1])))
+    if not layers and price is not None:
+        layers.append(LayerPrice(thickness_mm=height if height is not None else 0.0, price=float(price)))
+    return sorted(layers, key=lambda l: l.thickness_mm)
+
+
+def _load_price_layers(conn: sqlite3.Connection, material_id: int) -> List[LayerPrice]:
+    rows = conn.execute(
+        "SELECT thickness_mm, price FROM material_prices WHERE material_id = ? ORDER BY thickness_mm ASC",
+        (material_id,),
+    ).fetchall()
+    return [LayerPrice(thickness_mm=row["thickness_mm"], price=row["price"]) for row in rows]
+
+
+def _build_material_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Material:
+    measurement_rows = conn.execute(
+        "SELECT temperature, conductivity FROM material_measurements WHERE material_id = ? ORDER BY temperature ASC",
+        (row["id"],),
+    ).fetchall()
+    measurements = [
+        MaterialMeasurement(temperature=m["temperature"], conductivity=m["conductivity"])
+        for m in measurement_rows
+    ]
+    layers = _load_price_layers(conn, row["id"])
+    return Material(
+        name=row["name"],
+        classification_temp=row["classification_temp"],
+        density=row["density"],
+        length=row["length"],
+        width=row["width"],
+        height=row["height"],
+        price=row["price"],
+        layers=layers,
+        measurements=measurements,
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
 
 
 def _normalize_material_name(name: str, fallback_index: int | None = None) -> str:
@@ -371,10 +447,13 @@ def _persist_material(
     width: Optional[float],
     height: Optional[float],
     price: Optional[float],
+    price_layers: Sequence[LayerPrice] | Sequence[Tuple[float, float]] | None,
     temps: Sequence[float],
     ks: Sequence[float],
 ) -> bool:
     cursor = conn.cursor()
+    layers = _normalize_price_layers(price_layers, price, height)
+    legacy_price = layers[0].price if layers else price
     cursor.execute(
         """
         INSERT INTO materials (name, classification_temp, density, length, width, height, price)
@@ -388,15 +467,21 @@ def _persist_material(
             price = excluded.price,
             updated_at = CURRENT_TIMESTAMP
         """,
-        (name, classification_temp, density, length, width, height, price),
+        (name, classification_temp, density, length, width, height, legacy_price),
     )
     material_id = cursor.execute("SELECT id FROM materials WHERE name = ?", (name,)).fetchone()["id"]
     cursor.execute("DELETE FROM material_measurements WHERE material_id = ?", (material_id,))
+    cursor.execute("DELETE FROM material_prices WHERE material_id = ?", (material_id,))
     ordered_pairs = sorted(zip(temps, ks), key=lambda pair: pair[0])
     for temp, k_val in ordered_pairs:
         cursor.execute(
             "INSERT INTO material_measurements (material_id, temperature, conductivity) VALUES (?, ?, ?)",
             (material_id, float(temp), float(k_val)),
+        )
+    for layer in layers:
+        cursor.execute(
+            "INSERT INTO material_prices (material_id, thickness_mm, price) VALUES (?, ?, ?)",
+            (material_id, float(layer.thickness_mm), float(layer.price)),
         )
     conn.commit()
     return True
@@ -569,6 +654,7 @@ def list_materials() -> List[Material]:
             rows = conn.execute(
                 """
                 SELECT
+                    id,
                     name,
                     classification_temp,
                     density,
@@ -583,17 +669,7 @@ def list_materials() -> List[Material]:
                 """
             ).fetchall()
             return [
-                Material(
-                    name=row["name"],
-                    classification_temp=row["classification_temp"],
-                    density=row["density"],
-                    length=row["length"],
-                    width=row["width"],
-                    height=row["height"],
-                    price=row["price"],
-                    created_at=row["created_at"],
-                    updated_at=row["updated_at"],
-                )
+                _build_material_from_row(conn, row)
                 for row in rows
             ]
     except Exception as exc:
@@ -610,26 +686,7 @@ def load_material(name: str) -> Optional[Material]:
             ).fetchone()
             if not row:
                 return None
-            measurement_rows = conn.execute(
-                "SELECT temperature, conductivity FROM material_measurements WHERE material_id = ? ORDER BY temperature ASC",
-                (row["id"],),
-            ).fetchall()
-            measurements = [
-                MaterialMeasurement(temperature=m["temperature"], conductivity=m["conductivity"])
-                for m in measurement_rows
-            ]
-            return Material(
-                name=row["name"],
-                classification_temp=row["classification_temp"],
-                density=row["density"],
-                length=row["length"],
-                width=row["width"],
-                height=row["height"],
-                price=row["price"],
-                measurements=measurements,
-                created_at=row["created_at"],
-                updated_at=row["updated_at"],
-            )
+            return _build_material_from_row(conn, row)
     except Exception as exc:
         print(f"[DB] Fehler beim Laden des Materials '{name}': {exc}")
         return None
@@ -643,6 +700,7 @@ def save_material(
     width: Optional[float],
     height: Optional[float],
     price: Optional[float],
+    price_layers: Sequence[LayerPrice] | Sequence[Tuple[float, float]] | None,
     temps: Sequence[float],
     ks: Sequence[float],
 ) -> bool:
@@ -657,6 +715,7 @@ def save_material(
                 width=width,
                 height=height,
                 price=price,
+                price_layers=price_layers,
                 temps=temps,
                 ks=ks,
             )
