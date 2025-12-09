@@ -17,9 +17,11 @@ import numpy as np
 
 from Isolierung.core.database import (
     delete_material,
+    delete_material_variant,
     list_materials,
     load_material,
-    save_material,
+    save_material_family,
+    save_material_variant,
 )
 
 
@@ -58,10 +60,7 @@ def get_all_insulations() -> List[Dict]:
             "name": material.name,
             "classification_temp": material.classification_temp,
             "density": material.density,
-            "length": material.length,
-            "width": material.width,
-            "height": material.height,
-            "price": material.price,
+            "variant_count": len(material.variants),
         }
         for material in materials
     ]
@@ -74,27 +73,36 @@ def load_insulation(name: str) -> Dict:
     return material.to_dict(include_measurements=True)
 
 
-def save_insulation(
+def save_family(
     name: str,
-    classification_temp: float,
-    density: float,
+    classification_temp: float | None,
+    density: float | None,
+    temps: List[float],
+    ks: List[float],
+) -> bool:
+    saved = save_material_family(name, classification_temp, density, temps, ks)
+    if saved:
+        _notify_material_change_listeners()
+    return saved
+
+
+def save_variant(
+    material_name: str,
+    variant_name: str,
+    thickness: float,
     length: float | None,
     width: float | None,
     height: float | None,
     price: float | None,
-    temps: List[float],
-    ks: List[float],
 ) -> bool:
-    saved = save_material(
-        name,
-        classification_temp,
-        density,
+    saved = save_material_variant(
+        material_name,
+        variant_name,
+        thickness,
         length,
         width,
         height,
         price,
-        temps,
-        ks,
     )
     if saved:
         _notify_material_change_listeners()
@@ -103,6 +111,13 @@ def save_insulation(
 
 def delete_insulation(name: str):
     deleted = delete_material(name)
+    if deleted:
+        _notify_material_change_listeners()
+    return deleted
+
+
+def delete_variant(material_name: str, variant_name: str) -> bool:
+    deleted = delete_material_variant(material_name, variant_name)
     if deleted:
         _notify_material_change_listeners()
     return deleted
@@ -162,15 +177,17 @@ CSV_HEADERS = [
     "name",
     "classification_temp",
     "density",
+    "temps",
+    "ks",
+    "variant_name",
+    "thickness",
     "length",
     "width",
     "height",
     "price",
-    "temps",
-    "ks",
 ]
 
-REQUIRED_HEADERS = {"name", "temps", "ks"}
+REQUIRED_HEADERS = {"name", "variant_name", "thickness", "temps", "ks"}
 
 
 @dataclass
@@ -195,12 +212,13 @@ def export_insulations_to_csv(names: List[str], file_path: str) -> Tuple[int, Li
         writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
         writer.writeheader()
         for name in names:
-            row = _build_insulation_row(name)
-            if row is None:
+            rows = _build_insulation_rows(name)
+            if rows is None:
                 failed.append(name)
                 continue
-            writer.writerow(row)
-            exported += 1
+            for row in rows:
+                writer.writerow(row)
+                exported += 1
     return exported, failed
 
 
@@ -219,8 +237,8 @@ def export_insulations_to_folder(
     used_names: set[str] = set()
 
     for name in names:
-        row = _build_insulation_row(name)
-        if row is None:
+        rows = _build_insulation_rows(name)
+        if rows is None:
             failed.append(name)
             continue
 
@@ -236,8 +254,9 @@ def export_insulations_to_folder(
         with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
             writer.writeheader()
-            writer.writerow(row)
-        exported += 1
+            for row in rows:
+                writer.writerow(row)
+        exported += len(rows)
 
     return exported, failed, str(export_dir)
 
@@ -257,6 +276,7 @@ def import_insulations_from_csv_files(
     """
 
     existing_names = {material.name for material in list_materials()}
+    canonical_names: dict[str, str] = {}
     results: List[FileImportResult] = []
     total_imported = 0
 
@@ -281,8 +301,9 @@ def import_insulations_from_csv_files(
 
                 for idx, row in enumerate(reader, start=2):
                     base_name = (row.get("name") or "").strip()
+                    variant_name = (row.get("variant_name") or "").strip() or "Standard"
                     try:
-                        _ensure_required_fields(base_name)
+                        _ensure_required_fields(base_name, variant_name)
                         class_temp = _parse_optional_float(
                             row.get("classification_temp")
                         )
@@ -291,6 +312,9 @@ def import_insulations_from_csv_files(
                         width = _parse_optional_float(row.get("width"))
                         height = _parse_optional_float(row.get("height"))
                         price = _parse_optional_float(row.get("price"))
+                        thickness = _parse_optional_float(row.get("thickness"))
+                        if thickness is None:
+                            raise ValueError("Pflichtfeld 'thickness' fehlt oder ist leer.")
                         temps = _parse_numeric_list(row.get("temps", ""))
                         ks = _parse_numeric_list(row.get("ks", ""))
                         if len(temps) != len(ks):
@@ -298,20 +322,18 @@ def import_insulations_from_csv_files(
                                 "Temperatur- und k-Liste müssen gleich lang sein."
                             )
 
-                        name = _generate_unique_name(base_name, existing_names)
-                        saved = save_insulation(
-                            name,
-                            class_temp if class_temp is not None else 0.0,
-                            density if density is not None else 0.0,
-                            length,
-                            width,
-                            height,
-                            price,
-                            temps,
-                            ks,
-                        )
-                        if not saved:
-                            raise ValueError("Speichern fehlgeschlagen.")
+                        if base_name not in canonical_names:
+                            canonical_names[base_name] = _generate_unique_name(
+                                base_name, existing_names
+                            )
+                        name = canonical_names[base_name]
+
+                        if not save_family(name, class_temp, density, temps, ks):
+                            raise ValueError("Stammdaten konnten nicht gespeichert werden.")
+                        if not save_variant(
+                            name, variant_name, thickness, length, width, height, price
+                        ):
+                            raise ValueError("Variante konnte nicht gespeichert werden.")
                         imported += 1
                     except Exception as exc:  # pragma: no cover - Laufzeitvalidierung
                         display_name = base_name or "<unbenannt>"
@@ -367,9 +389,11 @@ def _parse_numeric_list(value: str) -> List[float]:
     return [float(item.strip()) for item in cleaned.split(";") if item.strip()]
 
 
-def _ensure_required_fields(name: str) -> None:
+def _ensure_required_fields(name: str, variant_name: str) -> None:
     if not name:
         raise ValueError("Pflichtfeld 'name' fehlt.")
+    if not variant_name:
+        raise ValueError("Pflichtfeld 'variant_name' fehlt.")
 
 
 def _validate_csv_headers(headers: List[str] | None) -> str | None:
@@ -394,21 +418,33 @@ def _generate_unique_name(base_name: str, used_names: set[str]) -> str:
     return name
 
 
-def _build_insulation_row(name: str) -> Dict[str, str | float] | None:
+def _build_insulation_rows(name: str) -> List[Dict[str, str | float]] | None:
     data = load_insulation(name)
     if not data:
         return None
-    return {
-        "name": data.get("name", ""),
-        "classification_temp": data.get("classification_temp"),
-        "density": data.get("density"),
-        "length": data.get("length"),
-        "width": data.get("width"),
-        "height": data.get("height"),
-        "price": data.get("price"),
-        "temps": ";".join(map(str, data.get("temps", []))),
-        "ks": ";".join(map(str, data.get("ks", []))),
-    }
+    temps = data.get("temps", [])
+    ks = data.get("ks", [])
+    variants = data.get("variants", []) or [
+        {"name": "Standard", "thickness": "", "length": "", "width": "", "height": "", "price": ""}
+    ]
+    rows: List[Dict[str, str | float]] = []
+    for variant in variants:
+        rows.append(
+            {
+                "name": data.get("name", ""),
+                "classification_temp": data.get("classification_temp"),
+                "density": data.get("density"),
+                "temps": ";".join(map(str, temps)),
+                "ks": ";".join(map(str, ks)),
+                "variant_name": variant.get("name", ""),
+                "thickness": variant.get("thickness"),
+                "length": variant.get("length"),
+                "width": variant.get("width"),
+                "height": variant.get("height"),
+                "price": variant.get("price"),
+            }
+        )
+    return rows
 
 
 def _sanitize_filename(name: str) -> str:

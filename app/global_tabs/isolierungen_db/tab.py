@@ -12,13 +12,15 @@ from Isolierung.tabs.scrollable import ScrollableFrame
 from app.global_tabs.isolierungen_db.logic import (
     FileImportResult,
     delete_insulation,
+    delete_variant as delete_variant_entry,
     export_insulations_to_csv,
     export_insulations_to_folder,
     get_all_insulations,
     interpolate_k,
     import_insulations_from_csv_files,
     load_insulation,
-    save_insulation,
+    save_family,
+    save_variant as save_variant_entry,
     register_material_change_listener,
 )
 
@@ -36,7 +38,7 @@ class IsolierungenTab:
         register_material_change_listener(self.refresh_table)
 
     def build_ui(self) -> None:
-        self.frame.rowconfigure(4, weight=1)
+        self.frame.rowconfigure(6, weight=1)
         self.frame.columnconfigure(0, weight=1)
 
         ttk.Label(
@@ -46,39 +48,34 @@ class IsolierungenTab:
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
 
         table_section = ttk.LabelFrame(
-            self.frame, text="Isolierungen", padding=8, style="Section.TLabelframe"
+            self.frame, text="Materialfamilien", padding=8, style="Section.TLabelframe"
         )
-        table_section.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(0, 8))
+        table_section.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(0, 8))
         table_section.rowconfigure(1, weight=1)
         table_section.columnconfigure(0, weight=1)
 
-        columns = (
+        family_columns = (
             "name",
             "classification_temp",
             "density",
-            "length",
-            "width",
-            "height",
-            "price",
+            "variant_count",
         )
         self.tree = ttk.Treeview(
             table_section,
-            columns=columns,
+            columns=family_columns,
             show="headings",
-            height=10,
+            height=8,
             selectmode="browse",
         )
-        self.tree.heading("name", text="Name")
+        self.tree.heading("name", text="Familie")
         self.tree.heading("classification_temp", text="Klass.-Temp [°C]")
         self.tree.heading("density", text="Dichte [kg/m³]")
-        self.tree.heading("length", text="Länge [mm]")
-        self.tree.heading("width", text="Breite [mm]")
-        self.tree.heading("height", text="Höhe [mm]")
-        self.tree.heading("price", text="Preis [€]")
-        for column in columns:
-            self.tree.column(column, anchor="center", width=120)
+        self.tree.heading("variant_count", text="Varianten")
+        for column in family_columns:
+            width = 160 if column == "name" else 110
+            self.tree.column(column, anchor="center", width=width)
         self.tree.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=6, pady=4)
-        self.tree.bind("<<TreeviewSelect>>", self.on_select)
+        self.tree.bind("<<TreeviewSelect>>", self.on_family_select)
 
         scrollbar = ttk.Scrollbar(table_section, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscroll=scrollbar.set)
@@ -89,14 +86,11 @@ class IsolierungenTab:
         for i in range(5):
             action_bar.columnconfigure(i, weight=1)
 
-        ttk.Button(action_bar, text="Neu", command=self.new_entry).grid(
+        ttk.Button(action_bar, text="Neu", command=self.new_family).grid(
             row=0, column=0, sticky="ew", padx=4
         )
-        ttk.Button(action_bar, text="Bearbeiten", command=self.edit_entry).grid(
+        ttk.Button(action_bar, text="Familie löschen", command=self.delete_family).grid(
             row=0, column=1, sticky="ew", padx=4
-        )
-        ttk.Button(action_bar, text="Löschen", command=self.delete_entry).grid(
-            row=0, column=2, sticky="ew", padx=4
         )
         ttk.Button(
             action_bar, text="Exportieren (CSV)", command=self.export_selected
@@ -105,63 +99,125 @@ class IsolierungenTab:
             row=0, column=4, sticky="ew", padx=4
         )
 
-        form = ttk.LabelFrame(
-            self.frame, text="Isolierung bearbeiten/erstellen", style="Section.TLabelframe"
+        variants_section = ttk.LabelFrame(
+            self.frame, text="Varianten", padding=8, style="Section.TLabelframe"
         )
-        form.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 8))
-        form.columnconfigure(1, weight=1)
-        form.columnconfigure(3, weight=1)
+        variants_section.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(0, 8))
+        variants_section.columnconfigure(0, weight=1)
+        variants_section.rowconfigure(1, weight=1)
 
-        # Stammdaten
-        ttk.Label(form, text="Name:").grid(row=0, column=0, sticky="w")
-        self.entry_name = ttk.Entry(form)
+        variant_columns = ("variant_name", "thickness", "length", "width", "height", "price")
+        self.variant_tree = ttk.Treeview(
+            variants_section,
+            columns=variant_columns,
+            show="headings",
+            height=6,
+            selectmode="browse",
+        )
+        self.variant_tree.heading("variant_name", text="Variante")
+        self.variant_tree.heading("thickness", text="Dicke [mm]")
+        self.variant_tree.heading("length", text="Länge [mm]")
+        self.variant_tree.heading("width", text="Breite [mm]")
+        self.variant_tree.heading("height", text="Höhe [mm]")
+        self.variant_tree.heading("price", text="Preis [€]")
+        for column in variant_columns:
+            self.variant_tree.column(column, anchor="center", width=115)
+        self.variant_tree.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=6, pady=4)
+        self.variant_tree.bind("<<TreeviewSelect>>", self.on_variant_select)
+
+        variant_scroll = ttk.Scrollbar(
+            variants_section, orient="vertical", command=self.variant_tree.yview
+        )
+        self.variant_tree.configure(yscroll=variant_scroll.set)
+        variant_scroll.grid(row=1, column=2, sticky="ns")
+
+        variant_action_bar = ttk.Frame(variants_section)
+        variant_action_bar.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 4))
+        for i in range(3):
+            variant_action_bar.columnconfigure(i, weight=1)
+
+        ttk.Button(variant_action_bar, text="Neue Variante", command=self.new_variant).grid(
+            row=0, column=0, sticky="ew", padx=4
+        )
+        ttk.Button(
+            variant_action_bar, text="Variante löschen", command=self.delete_variant
+        ).grid(row=0, column=1, sticky="ew", padx=4)
+
+        family_form = ttk.LabelFrame(
+            self.frame, text="Stammdaten", style="Section.TLabelframe"
+        )
+        family_form.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        family_form.columnconfigure(1, weight=1)
+        family_form.columnconfigure(3, weight=1)
+
+        ttk.Label(family_form, text="Familienname:").grid(row=0, column=0, sticky="w")
+        self.entry_name = ttk.Entry(family_form)
         self.entry_name.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Klass.-Temp [°C]:").grid(row=1, column=0, sticky="w")
-        self.entry_class_temp = ttk.Entry(form)
+        ttk.Label(family_form, text="Klass.-Temp [°C]:").grid(row=1, column=0, sticky="w")
+        self.entry_class_temp = ttk.Entry(family_form)
         self.entry_class_temp.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Dichte [kg/m³]:").grid(row=2, column=0, sticky="w")
-        self.entry_density = ttk.Entry(form)
+        ttk.Label(family_form, text="Dichte [kg/m³]:").grid(row=2, column=0, sticky="w")
+        self.entry_density = ttk.Entry(family_form)
         self.entry_density.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
 
-        # Abmessungen & Preis
-        ttk.Label(form, text="Länge [mm]:").grid(row=0, column=2, sticky="w")
-        self.entry_length = ttk.Entry(form)
-        self.entry_length.grid(row=0, column=3, sticky="ew", padx=5, pady=2)
-
-        ttk.Label(form, text="Breite [mm]:").grid(row=1, column=2, sticky="w")
-        self.entry_width = ttk.Entry(form)
-        self.entry_width.grid(row=1, column=3, sticky="ew", padx=5, pady=2)
-
-        ttk.Label(form, text="Höhe [mm]:").grid(row=2, column=2, sticky="w")
-        self.entry_height = ttk.Entry(form)
-        self.entry_height.grid(row=2, column=3, sticky="ew", padx=5, pady=2)
-
-        ttk.Label(form, text="Preis [€/Platte]:").grid(row=3, column=2, sticky="w")
-        self.entry_price = ttk.Entry(form)
-        self.entry_price.grid(row=3, column=3, sticky="ew", padx=5, pady=2)
-
-        # Messwerte
-        ttk.Label(form, text="Temperaturen [°C]:").grid(row=3, column=0, sticky="w")
-        self.entry_temps = ttk.Entry(form)
+        ttk.Label(family_form, text="Temperaturen [°C]:").grid(row=3, column=0, sticky="w")
+        self.entry_temps = ttk.Entry(family_form)
         self.entry_temps.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(form, text="Wärmeleitfähigkeiten [W/mK]:").grid(row=4, column=0, sticky="w")
-        self.entry_ks = ttk.Entry(form)
+        ttk.Label(family_form, text="Wärmeleitfähigkeiten [W/mK]:").grid(
+            row=4, column=0, sticky="w"
+        )
+        self.entry_ks = ttk.Entry(family_form)
         self.entry_ks.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
 
         ttk.Button(
-            form, text="💾 Speichern", style="Accent.TButton", command=self.save_entry
-        ).grid(row=5, column=0, columnspan=4, pady=10, sticky="e")
+            family_form, text="Stammdaten speichern", command=self.save_family
+        ).grid(row=5, column=0, columnspan=4, pady=8, sticky="e")
+
+        variant_form = ttk.LabelFrame(
+            self.frame, text="Variante bearbeiten", style="Section.TLabelframe"
+        )
+        variant_form.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        variant_form.columnconfigure(1, weight=1)
+        variant_form.columnconfigure(3, weight=1)
+
+        ttk.Label(variant_form, text="Variante:").grid(row=0, column=0, sticky="w")
+        self.entry_variant_name = ttk.Entry(variant_form)
+        self.entry_variant_name.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(variant_form, text="Dicke [mm]:").grid(row=1, column=0, sticky="w")
+        self.entry_thickness = ttk.Entry(variant_form)
+        self.entry_thickness.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(variant_form, text="Länge [mm]:").grid(row=0, column=2, sticky="w")
+        self.entry_length = ttk.Entry(variant_form)
+        self.entry_length.grid(row=0, column=3, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(variant_form, text="Breite [mm]:").grid(row=1, column=2, sticky="w")
+        self.entry_width = ttk.Entry(variant_form)
+        self.entry_width.grid(row=1, column=3, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(variant_form, text="Höhe [mm]:").grid(row=2, column=2, sticky="w")
+        self.entry_height = ttk.Entry(variant_form)
+        self.entry_height.grid(row=2, column=3, sticky="ew", padx=5, pady=2)
+
+        ttk.Label(variant_form, text="Preis [€/Platte]:").grid(row=2, column=0, sticky="w")
+        self.entry_price = ttk.Entry(variant_form)
+        self.entry_price.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
+
+        ttk.Button(
+            variant_form, text="Variante speichern", style="Accent.TButton", command=self.save_variant
+        ).grid(row=3, column=0, columnspan=4, pady=10, sticky="e")
 
         self.plot_frame = ttk.LabelFrame(
             self.frame,
             text="Interpolierte Wärmeleitfähigkeit",
             style="Section.TLabelframe",
         )
-        self.plot_frame.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=(0, 4))
-        self.frame.rowconfigure(4, weight=1)
+        self.plot_frame.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=(0, 4))
+        self.frame.rowconfigure(5, weight=1)
         self.refresh_table()
 
     def refresh_table(self) -> None:
@@ -174,63 +230,91 @@ class IsolierungenTab:
                     insulation.get("name", ""),
                     insulation.get("classification_temp", ""),
                     insulation.get("density", ""),
-                    insulation.get("length", ""),
-                    insulation.get("width", ""),
-                    insulation.get("height", ""),
-                    insulation.get("price", ""),
+                    insulation.get("variant_count", 0),
                 ),
             )
+        self.variant_tree.delete(*self.variant_tree.get_children())
 
-    def new_entry(self) -> None:
+    def new_family(self) -> None:
         self.clear_fields()
+        self.variant_tree.delete(*self.variant_tree.get_children())
 
-    def edit_entry(self) -> None:
+    def on_family_select(self, event: tk.Event | None = None) -> None:
         selection = self.tree.selection()
         if not selection:
-            messagebox.showinfo("Hinweis", "Bitte eine Isolierung auswählen.")
             return
         name = self.tree.item(selection[0])["values"][0]
         data = load_insulation(name)
         if not data:
             return
+        self._fill_family_form(data)
+        self._populate_variants(data.get("variants", []))
+        self.update_plot(data.get("temps", []), data.get("ks", []), data.get("classification_temp"))
+
+    def _fill_family_form(self, data: dict) -> None:
         self.entry_name.delete(0, tk.END)
-        self.entry_name.insert(0, data["name"])
+        self.entry_name.insert(0, data.get("name", ""))
         self.entry_class_temp.delete(0, tk.END)
         if data.get("classification_temp") is not None:
             self.entry_class_temp.insert(0, str(data["classification_temp"]))
         self.entry_density.delete(0, tk.END)
         if data.get("density") is not None:
             self.entry_density.insert(0, str(data["density"]))
-        self.entry_length.delete(0, tk.END)
-        if data.get("length") is not None:
-            self.entry_length.insert(0, str(data["length"]))
-        self.entry_width.delete(0, tk.END)
-        if data.get("width") is not None:
-            self.entry_width.insert(0, str(data["width"]))
-        self.entry_height.delete(0, tk.END)
-        if data.get("height") is not None:
-            self.entry_height.insert(0, str(data["height"]))
-        self.entry_price.delete(0, tk.END)
-        if data.get("price") is not None:
-            self.entry_price.insert(0, str(data["price"]))
         self.entry_temps.delete(0, tk.END)
-        self.entry_temps.insert(0, ", ".join(map(str, data["temps"])))
+        self.entry_temps.insert(0, ", ".join(map(str, data.get("temps", []))))
         self.entry_ks.delete(0, tk.END)
-        self.entry_ks.insert(0, ", ".join(map(str, data["ks"])))
-        self.update_plot(data["temps"], data["ks"], data["classification_temp"])
+        self.entry_ks.insert(0, ", ".join(map(str, data.get("ks", []))))
 
-    def save_entry(self) -> None:
+    def _populate_variants(self, variants: list[dict]) -> None:
+        self.variant_tree.delete(*self.variant_tree.get_children())
+        for variant in variants:
+            self.variant_tree.insert(
+                "",
+                "end",
+                values=(
+                    variant.get("name", ""),
+                    variant.get("thickness", ""),
+                    variant.get("length", ""),
+                    variant.get("width", ""),
+                    variant.get("height", ""),
+                    variant.get("price", ""),
+                ),
+            )
+
+    def new_variant(self) -> None:
+        self.entry_variant_name.delete(0, tk.END)
+        self.entry_thickness.delete(0, tk.END)
+        self.entry_length.delete(0, tk.END)
+        self.entry_width.delete(0, tk.END)
+        self.entry_height.delete(0, tk.END)
+        self.entry_price.delete(0, tk.END)
+
+    def on_variant_select(self, event: tk.Event | None = None) -> None:
+        selection = self.variant_tree.selection()
+        if not selection:
+            return
+        values = self.variant_tree.item(selection[0])["values"]
+        fields = [
+            self.entry_variant_name,
+            self.entry_thickness,
+            self.entry_length,
+            self.entry_width,
+            self.entry_height,
+            self.entry_price,
+        ]
+        for entry, value in zip(fields, values):
+            entry.delete(0, tk.END)
+            if value not in (None, ""):
+                entry.insert(0, str(value))
+
+    def save_family(self) -> None:
         try:
             name = self.entry_name.get().strip()
             if not name:
-                messagebox.showwarning("Fehler", "Name darf nicht leer sein.")
+                messagebox.showwarning("Fehler", "Familienname darf nicht leer sein.")
                 return
             class_temp = self._parse_required_float(self.entry_class_temp.get(), "Klass.-Temp")
             density = self._parse_required_float(self.entry_density.get(), "Dichte")
-            length = self._parse_optional_float(self.entry_length.get())
-            width = self._parse_optional_float(self.entry_width.get())
-            height = self._parse_optional_float(self.entry_height.get())
-            price = self._parse_optional_float(self.entry_price.get())
             temps = [float(x.strip()) for x in self.entry_temps.get().split(",") if x.strip()]
             ks = [float(x.strip()) for x in self.entry_ks.get().split(",") if x.strip()]
             if len(temps) != len(ks):
@@ -238,13 +322,44 @@ class IsolierungenTab:
                     "Fehler", "Temperatur- und k-Werte müssen gleich viele Einträge haben."
                 )
                 return
-            save_insulation(name, class_temp, density, length, width, height, price, temps, ks)
-            messagebox.showinfo("Gespeichert", f"Isolierung '{name}' wurde gespeichert.")
+            save_family(name, class_temp, density, temps, ks)
+            messagebox.showinfo("Gespeichert", f"Familie '{name}' wurde gespeichert.")
             self.refresh_table()
         except Exception as exc:  # pragma: no cover - GUI Verarbeitung
             messagebox.showerror("Fehler", str(exc))
 
-    def delete_entry(self) -> None:
+    def save_variant(self) -> None:
+        try:
+            family_name = self.entry_name.get().strip()
+            if not family_name:
+                messagebox.showwarning("Fehler", "Bitte zuerst eine Familie auswählen.")
+                return
+            variant_name = self.entry_variant_name.get().strip() or "Standard"
+            thickness = self._parse_required_float(
+                self.entry_thickness.get(), "Dicke"
+            )
+            length = self._parse_optional_float(self.entry_length.get())
+            width = self._parse_optional_float(self.entry_width.get())
+            height = self._parse_optional_float(self.entry_height.get())
+            price = self._parse_optional_float(self.entry_price.get())
+            saved = save_variant_entry(
+                family_name, variant_name, thickness, length, width, height, price
+            )
+            if saved:
+                messagebox.showinfo(
+                    "Gespeichert",
+                    f"Variante '{variant_name}' wurde für '{family_name}' gespeichert.",
+                )
+                self.on_family_select()
+            else:
+                messagebox.showerror(
+                    "Fehler",
+                    "Variante konnte nicht gespeichert werden. Bitte Familie prüfen.",
+                )
+        except Exception as exc:  # pragma: no cover - GUI Verarbeitung
+            messagebox.showerror("Fehler", str(exc))
+
+    def delete_family(self) -> None:
         selection = self.tree.selection()
         if not selection:
             messagebox.showinfo("Hinweis", "Bitte eine Isolierung auswählen.")
@@ -264,6 +379,28 @@ class IsolierungenTab:
                 messagebox.showerror(
                     "Löschen fehlgeschlagen",
                     "Das Material konnte nicht gelöscht werden.",
+                )
+
+    def delete_variant(self) -> None:
+        family_name = self.entry_name.get().strip()
+        selection = self.variant_tree.selection()
+        if not family_name or not selection:
+            messagebox.showinfo(
+                "Hinweis", "Bitte zuerst eine Familie und Variante auswählen."
+            )
+            return
+        variant_name = self.variant_tree.item(selection[0])["values"][0]
+        if messagebox.askyesno(
+            "Variante löschen",
+            f"Soll die Variante '{variant_name}' aus '{family_name}' gelöscht werden?",
+        ):
+            if delete_variant_entry(family_name, variant_name):
+                self.on_family_select()
+                self.new_variant()
+            else:
+                messagebox.showerror(
+                    "Löschen fehlgeschlagen",
+                    "Die Variante konnte nicht gelöscht werden.",
                 )
 
     def export_selected(self) -> None:
@@ -407,15 +544,6 @@ class IsolierungenTab:
 
         return "\n".join(lines)
 
-    def on_select(self, event: tk.Event | None = None) -> None:
-        selection = self.tree.selection()
-        if not selection:
-            return
-        name = self.tree.item(selection[0])["values"][0]
-        data = load_insulation(name)
-        if data:
-            self.update_plot(data["temps"], data["ks"], data["classification_temp"])
-
     def clear_fields(self) -> None:
         for entry in [
             self.entry_name,
@@ -427,6 +555,8 @@ class IsolierungenTab:
             self.entry_price,
             self.entry_temps,
             self.entry_ks,
+            self.entry_variant_name,
+            self.entry_thickness,
         ]:
             entry.delete(0, tk.END)
 
@@ -450,6 +580,10 @@ class IsolierungenTab:
 
     def update_plot(self, temps, ks, class_temp) -> None:
         try:
+            if not temps or not ks:
+                for widget in self.plot_frame.winfo_children():
+                    widget.destroy()
+                return
             max_temp = class_temp if class_temp is not None else (max(temps) if temps else 20)
             x = np.linspace(20, max_temp, 100)
             y = interpolate_k(temps, ks, x)
