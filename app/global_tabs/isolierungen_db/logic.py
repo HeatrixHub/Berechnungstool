@@ -92,7 +92,6 @@ def save_variant(
     thickness: float,
     length: float | None,
     width: float | None,
-    height: float | None,
     price: float | None,
 ) -> bool:
     saved = save_material_variant(
@@ -101,7 +100,6 @@ def save_variant(
         thickness,
         length,
         width,
-        height,
         price,
     )
     if saved:
@@ -183,9 +181,9 @@ CSV_HEADERS = [
     "thickness",
     "length",
     "width",
-    "height",
     "price",
 ]
+LEGACY_HEADERS = {"height"}
 
 REQUIRED_HEADERS = {"name", "variant_name", "thickness", "temps", "ks"}
 
@@ -310,7 +308,6 @@ def import_insulations_from_csv_files(
                         density = _parse_optional_float(row.get("density"))
                         length = _parse_optional_float(row.get("length"))
                         width = _parse_optional_float(row.get("width"))
-                        height = _parse_optional_float(row.get("height"))
                         price = _parse_optional_float(row.get("price"))
                         thickness = _parse_optional_float(row.get("thickness"))
                         if thickness is None:
@@ -331,7 +328,7 @@ def import_insulations_from_csv_files(
                         if not save_family(name, class_temp, density, temps, ks):
                             raise ValueError("Stammdaten konnten nicht gespeichert werden.")
                         if not save_variant(
-                            name, variant_name, thickness, length, width, height, price
+                            name, variant_name, thickness, length, width, price
                         ):
                             raise ValueError("Variante konnte nicht gespeichert werden.")
                         imported += 1
@@ -402,7 +399,8 @@ def _validate_csv_headers(headers: List[str] | None) -> str | None:
     missing = REQUIRED_HEADERS.difference({header.strip() for header in headers})
     if missing:
         return f"Pflichtspalten fehlen: {', '.join(sorted(missing))}"
-    unexpected = [h for h in headers if h not in CSV_HEADERS]
+    allowed_headers = set(CSV_HEADERS).union(LEGACY_HEADERS)
+    unexpected = [h for h in headers if h not in allowed_headers]
     if unexpected:
         return "Unbekannte Spalten gefunden. Bitte Schema prüfen."
     return None
@@ -425,7 +423,7 @@ def _build_insulation_rows(name: str) -> List[Dict[str, str | float]] | None:
     temps = data.get("temps", [])
     ks = data.get("ks", [])
     variants = data.get("variants", []) or [
-        {"name": "Standard", "thickness": "", "length": "", "width": "", "height": "", "price": ""}
+        {"name": "Standard", "thickness": "", "length": "", "width": "", "price": ""}
     ]
     rows: List[Dict[str, str | float]] = []
     for variant in variants:
@@ -440,7 +438,6 @@ def _build_insulation_rows(name: str) -> List[Dict[str, str | float]] | None:
                 "thickness": variant.get("thickness"),
                 "length": variant.get("length"),
                 "width": variant.get("width"),
-                "height": variant.get("height"),
                 "price": variant.get("price"),
             }
         )

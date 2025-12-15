@@ -79,7 +79,6 @@ def _migration_1(conn: sqlite3.Connection) -> None:
             density REAL,
             length REAL,
             width REAL,
-            height REAL,
             price REAL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -137,7 +136,6 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, de
 def _migration_2(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "materials", "length", "REAL")
     _add_column_if_missing(conn, "materials", "width", "REAL")
-    _add_column_if_missing(conn, "materials", "height", "REAL")
     _add_column_if_missing(conn, "materials", "price", "REAL")
 
 
@@ -169,6 +167,10 @@ def _migration_3(conn: sqlite3.Connection) -> None:
 
 
 def _migration_4(conn: sqlite3.Connection) -> None:
+    material_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(materials)")
+    }
+    has_height_column = "height" in material_columns
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS material_variants (
@@ -178,7 +180,6 @@ def _migration_4(conn: sqlite3.Connection) -> None:
             thickness REAL NOT NULL,
             length REAL,
             width REAL,
-            height REAL,
             price REAL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -190,26 +191,67 @@ def _migration_4(conn: sqlite3.Connection) -> None:
         """
     )
 
-    rows = conn.execute(
-        "SELECT id, name, length, width, height, price FROM materials"
-    ).fetchall()
+    base_query = "SELECT id, name, length, width, price FROM materials"
+    if has_height_column:
+        base_query = "SELECT id, name, length, width, height, price FROM materials"
+    rows = conn.execute(base_query).fetchall()
     for row in rows:
+        thickness_value = (
+            row["height"] if has_height_column and row["height"] is not None else 0.0
+        )
         conn.execute(
             """
             INSERT OR IGNORE INTO material_variants (
-                material_id, name, thickness, length, width, height, price
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                material_id, name, thickness, length, width, price
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 row["id"],
                 "Standard",
-                row["height"] if row["height"] is not None else 0.0,
+                thickness_value,
                 row["length"],
                 row["width"],
-                row["height"],
                 row["price"],
             ),
         )
+
+
+def _migration_5(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS material_variants_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            material_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            thickness REAL NOT NULL,
+            length REAL,
+            width REAL,
+            price REAL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE,
+            UNIQUE(material_id, name)
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO material_variants_new (
+            id, material_id, name, thickness, length, width, price, created_at, updated_at
+        )
+        SELECT id, material_id, name, thickness, length, width, price, created_at, updated_at
+        FROM material_variants;
+        """
+    )
+
+    conn.executescript(
+        """
+        DROP TABLE material_variants;
+        ALTER TABLE material_variants_new RENAME TO material_variants;
+        CREATE INDEX IF NOT EXISTS idx_material_variants_material ON material_variants(material_id);
+        """
+    )
 
 
 MIGRATIONS: Sequence[Tuple[int, Any]] = [
@@ -217,6 +259,7 @@ MIGRATIONS: Sequence[Tuple[int, Any]] = [
     (2, _migration_2),
     (3, _migration_3),
     (4, _migration_4),
+    (5, _migration_5),
 ]
 
 
@@ -318,10 +361,6 @@ def _migrate_legacy_materials(conn: sqlite3.Connection) -> None:
             name=row["name"],
             classification_temp=row["classification_temp"],
             density=row["density"],
-            length=None,
-            width=None,
-            height=None,
-            price=None,
             temps=temps,
             ks=ks,
         )
@@ -627,7 +666,7 @@ def _load_variants_for_materials(
     placeholders = ",".join(["?"] * len(material_ids))
     rows = conn.execute(
         f"""
-        SELECT material_id, name, thickness, length, width, height, price
+        SELECT material_id, name, thickness, length, width, price
         FROM material_variants
         WHERE material_id IN ({placeholders})
         ORDER BY thickness ASC
@@ -642,7 +681,6 @@ def _load_variants_for_materials(
                 thickness=row["thickness"],
                 length=row["length"],
                 width=row["width"],
-                height=row["height"],
                 price=row["price"],
             )
         )
@@ -744,7 +782,6 @@ def save_material_variant(
     thickness: float,
     length: Optional[float],
     width: Optional[float],
-    height: Optional[float],
     price: Optional[float],
 ) -> bool:
     try:
@@ -756,13 +793,12 @@ def save_material_variant(
             conn.execute(
                 """
                 INSERT INTO material_variants (
-                    material_id, name, thickness, length, width, height, price
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    material_id, name, thickness, length, width, price
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(material_id, name) DO UPDATE SET
                     thickness=excluded.thickness,
                     length=excluded.length,
                     width=excluded.width,
-                    height=excluded.height,
                     price=excluded.price,
                     updated_at=CURRENT_TIMESTAMP
                 """,
@@ -772,7 +808,6 @@ def save_material_variant(
                     thickness,
                     length,
                     width,
-                    height,
                     price,
                 ),
             )
