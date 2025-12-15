@@ -106,7 +106,7 @@ class IsolierungenTab:
         variants_section.columnconfigure(0, weight=1)
         variants_section.rowconfigure(1, weight=1)
 
-        variant_columns = ("variant_name", "thickness", "length", "width", "height", "price")
+        variant_columns = ("variant_name", "thickness", "length", "width", "price")
         self.variant_tree = ttk.Treeview(
             variants_section,
             columns=variant_columns,
@@ -118,7 +118,6 @@ class IsolierungenTab:
         self.variant_tree.heading("thickness", text="Dicke [mm]")
         self.variant_tree.heading("length", text="Länge [mm]")
         self.variant_tree.heading("width", text="Breite [mm]")
-        self.variant_tree.heading("height", text="Höhe [mm]")
         self.variant_tree.heading("price", text="Preis [€]")
         for column in variant_columns:
             self.variant_tree.column(column, anchor="center", width=115)
@@ -199,10 +198,6 @@ class IsolierungenTab:
         self.entry_width = ttk.Entry(variant_form)
         self.entry_width.grid(row=1, column=3, sticky="ew", padx=5, pady=2)
 
-        ttk.Label(variant_form, text="Höhe [mm]:").grid(row=2, column=2, sticky="w")
-        self.entry_height = ttk.Entry(variant_form)
-        self.entry_height.grid(row=2, column=3, sticky="ew", padx=5, pady=2)
-
         ttk.Label(variant_form, text="Preis [€/Platte]:").grid(row=2, column=0, sticky="w")
         self.entry_price = ttk.Entry(variant_form)
         self.entry_price.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
@@ -276,7 +271,6 @@ class IsolierungenTab:
                     variant.get("thickness", ""),
                     variant.get("length", ""),
                     variant.get("width", ""),
-                    variant.get("height", ""),
                     variant.get("price", ""),
                 ),
             )
@@ -286,7 +280,6 @@ class IsolierungenTab:
         self.entry_thickness.delete(0, tk.END)
         self.entry_length.delete(0, tk.END)
         self.entry_width.delete(0, tk.END)
-        self.entry_height.delete(0, tk.END)
         self.entry_price.delete(0, tk.END)
 
     def on_variant_select(self, event: tk.Event | None = None) -> None:
@@ -299,7 +292,6 @@ class IsolierungenTab:
             self.entry_thickness,
             self.entry_length,
             self.entry_width,
-            self.entry_height,
             self.entry_price,
         ]
         for entry, value in zip(fields, values):
@@ -340,10 +332,9 @@ class IsolierungenTab:
             )
             length = self._parse_optional_float(self.entry_length.get())
             width = self._parse_optional_float(self.entry_width.get())
-            height = self._parse_optional_float(self.entry_height.get())
             price = self._parse_optional_float(self.entry_price.get())
             saved = save_variant_entry(
-                family_name, variant_name, thickness, length, width, height, price
+                family_name, variant_name, thickness, length, width, price
             )
             if saved:
                 messagebox.showinfo(
@@ -551,7 +542,6 @@ class IsolierungenTab:
             self.entry_density,
             self.entry_length,
             self.entry_width,
-            self.entry_height,
             self.entry_price,
             self.entry_temps,
             self.entry_ks,

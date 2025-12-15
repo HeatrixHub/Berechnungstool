@@ -15,7 +15,6 @@ class MaterialVariant:
     thickness: float
     length: Optional[float] = None
     width: Optional[float] = None
-    height: Optional[float] = None
     price: Optional[float] = None
 
     def to_dict(self) -> Dict:
@@ -24,7 +23,6 @@ class MaterialVariant:
             "thickness": self.thickness,
             "length": self.length,
             "width": self.width,
-            "height": self.height,
             "price": self.price,
         }
 
@@ -46,7 +44,6 @@ class Material:
     density: Optional[float] = None
     length: Optional[float] = None
     width: Optional[float] = None
-    height: Optional[float] = None
     price: Optional[float] = None
     measurements: List[MaterialMeasurement] = field(default_factory=list)
     variants: List[MaterialVariant] = field(default_factory=list)
@@ -60,7 +57,6 @@ class Material:
             "density": self.density,
             "length": self.length,
             "width": self.width,
-            "height": self.height,
             "price": self.price,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
