@@ -229,26 +229,35 @@ class ZuschnittTab:
             messagebox.showerror("Optimierung fehlgeschlagen", str(exc))
 
     def _pack_plates(self, plates: List[dict], kerf: float) -> List[Placement]:
-        grouped: Dict[str, List[dict]] = {}
+        grouped: Dict[Tuple[str, float], List[dict]] = {}
         for plate in plates:
             material = plate.get("material", "")
             if not material:
                 raise ValueError(
                     "Material in der Plattenliste fehlt. Bitte Material im Schichtaufbau setzen."
                 )
-            grouped.setdefault(material, []).append(plate)
+
+            try:
+                thickness = float(plate.get("thickness", 0))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Ungültige Dicke für {plate.get('name', 'Teil')} von {material}."
+                )
+
+            grouped.setdefault((material, thickness), []).append(plate)
 
         placements: List[Placement] = []
         self.material_summary = []
         self.total_cost = None
         self.total_bin_count = None
         total_bins = 0
-        for material, items in grouped.items():
-            raw_data = self._load_raw_data(material)
-            bin_width, bin_height = raw_data["length"], raw_data["width"]
+        for (material, required_thickness), items in grouped.items():
+            variant_data = self._resolve_variant_data(material, required_thickness)
+            material_label = self._format_material_label(material, variant_data)
+            bin_width, bin_height = variant_data["length"], variant_data["width"]
             if bin_width <= 0 or bin_height <= 0:
                 raise ValueError(
-                    f"Ungültige Rohlingmaße für {material}. Bitte Länge/Breite in der Isolierung DB pflegen."
+                    f"Ungültige Rohlingmaße für {material}. Bitte Länge/Breite in der Variante pflegen."
                 )
 
             packer = newPacker(
@@ -288,7 +297,7 @@ class ZuschnittTab:
                     )
                     placements.append(
                         Placement(
-                            material=material,
+                            material=material_label,
                             bin_index=bin_index,
                             part_label=rect_data["part_label"],
                             x=float(rect.x),
@@ -303,11 +312,11 @@ class ZuschnittTab:
                         )
                     )
             total_bins += len(packer)
-            price = raw_data["price"]
+            price = variant_data["price"]
             cost = None if price is None else price * len(packer)
             self.material_summary.append(
                 {
-                    "material": material,
+                    "material": material_label,
                     "count": len(packer),
                     "price": price,
                     "cost": cost,
@@ -322,17 +331,53 @@ class ZuschnittTab:
         self.total_bin_count = total_bins
         return placements
 
-    def _load_raw_data(self, material: str) -> Dict[str, float | None]:
+    def _format_material_label(self, material: str, variant: Dict[str, object]) -> str:
+        variant_name = variant.get("name") or f"{variant.get('thickness')} mm"
+        return f"{material} ({variant_name})"
+
+    def _resolve_variant_data(
+        self, material: str, required_thickness: float
+    ) -> Dict[str, float | str | None]:
         data = load_insulation(material)
-        length = data.get("length")
-        width = data.get("width")
-        price = data.get("price")
-        if length is None or width is None:
+        variants = data.get("variants") or []
+        if not variants:
             raise ValueError(
-                f"Für {material} sind keine Rohlingmaße in der Isolierung DB hinterlegt."
+                f"Für {material} sind keine Varianten in der Isolierung DB hinterlegt."
             )
-        parsed_price = None if price is None else float(price)
-        return {"length": float(length), "width": float(width), "price": parsed_price}
+
+        selectable = [
+            variant
+            for variant in variants
+            if variant.get("thickness") is not None
+        ]
+        if not selectable:
+            raise ValueError(
+                f"Für {material} sind keine Variantendicken hinterlegt. Bitte Varianten prüfen."
+            )
+
+        best_variant = min(
+            selectable,
+            key=lambda variant: abs(float(variant.get("thickness", 0)) - required_thickness),
+        )
+
+        try:
+            length = float(best_variant["length"])
+            width = float(best_variant["width"])
+        except (TypeError, ValueError, KeyError):
+            raise ValueError(
+                f"Für {material} konnte keine Variante mit Rohlingmaßen gefunden werden."
+            )
+
+        price_raw = best_variant.get("price")
+        price = None if price_raw in (None, "") else float(price_raw)
+
+        return {
+            "name": best_variant.get("name"),
+            "thickness": float(best_variant.get("thickness", required_thickness)),
+            "length": length,
+            "width": width,
+            "price": price,
+        }
 
     # ---------------------------------------------------------------
     # Projektzustand
