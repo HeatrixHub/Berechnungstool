@@ -19,6 +19,38 @@ heatrix_normal_var = None
 normkubikmenge_var = None
 heat_priority_var = None
 
+
+def update_cp_labels():
+    if not labels:
+        return
+    if combo_var and combo_var.get() == "Isochor":
+        labels["Spezifische Wärmekapazität Cp 1 (J/kg*K):"].config(
+            text="Spezifische Wärmekapazität Cv 1 (J/kg*K):"
+        )
+        labels["Spezifische Wärmekapazität Cp 2 (J/kg*K):"].config(
+            text="Spezifische Wärmekapazität Cv 2 (J/kg*K):"
+        )
+    else:
+        labels["Spezifische Wärmekapazität Cp 1 (J/kg*K):"].config(
+            text="Spezifische Wärmekapazität Cp 1 (J/kg*K):"
+        )
+        labels["Spezifische Wärmekapazität Cp 2 (J/kg*K):"].config(
+            text="Spezifische Wärmekapazität Cp 2 (J/kg*K):"
+        )
+
+
+def update_normkubik_label():
+    if not labels:
+        return
+
+    if normkubik_var and normkubik_var.get():
+        labels["Normkubikmeter (m³/h):"].config(text="Normkubikmeter (Nm³/h):")
+    elif heatrix_normal_var and heatrix_normal_var.get():
+        labels["Normkubikmeter (m³/h):"].config(text="Normkubikmeter (HNm³/h):")
+    else:
+        labels["Normkubikmeter (m³/h):"].config(text="Normkubikmeter (m³/h):")
+
+
 def get_entries():
     return entries_global
 
@@ -33,15 +65,7 @@ def create_tab1(notebook):
     combo_box.grid(row=0, column=1, columnspan=2, pady=10, padx=(10, 0), sticky=tk.W)
     ToolTip(combo_box, "Wähle die Art der Zustandsänderung: isobar (konstanter Druck) oder isochor (konstantes Volumen).")
 
-    def update_cp_labels(*args):
-        if combo_var.get() == "Isochor":
-            labels["Spezifische Wärmekapazität Cp 1 (J/kg*K):"].config(text="Spezifische Wärmekapazität Cv 1 (J/kg*K):")
-            labels["Spezifische Wärmekapazität Cp 2 (J/kg*K):"].config(text="Spezifische Wärmekapazität Cv 2 (J/kg*K):")
-        else:
-            labels["Spezifische Wärmekapazität Cp 1 (J/kg*K):"].config(text="Spezifische Wärmekapazität Cp 1 (J/kg*K):")
-            labels["Spezifische Wärmekapazität Cp 2 (J/kg*K):"].config(text="Spezifische Wärmekapazität Cp 2 (J/kg*K):")
-
-    combo_var.trace_add("write", update_cp_labels)
+    combo_var.trace_add("write", lambda *args: update_cp_labels())
 
     normkubik_var = tk.BooleanVar()
     heatrix_normal_var = tk.BooleanVar()
@@ -192,12 +216,89 @@ def create_tab1(notebook):
         for key in ["Druck 1 (Pa):", "Dichte 1 (kg/m³):", "Temperatur 1 (°C):"]:
             entries[key].config(state="normal")
 
-    def update_normkubik_label():
-        if normkubik_var.get():
-            labels["Normkubikmeter (m³/h):"].config(text="Normkubikmeter (Nm³/h):")
-        elif heatrix_normal_var.get():
-            labels["Normkubikmeter (m³/h):"].config(text="Normkubikmeter (HNm³/h):")
-        else:
-            labels["Normkubikmeter (m³/h):"].config(text="Normkubikmeter (m³/h):")
-
     return frame_tab1
+
+
+def _apply_norm_state():
+    if not entries:
+        return
+
+    if (
+        normkubikmenge_var
+        and normkubikmenge_var.get()
+        and normkubik_var
+        and heatrix_normal_var
+        and not normkubik_var.get()
+        and not heatrix_normal_var.get()
+    ):
+        heatrix_normal_var.set(True)
+
+    if normkubik_var and normkubik_var.get():
+        if heatrix_normal_var:
+            heatrix_normal_var.set(False)
+        toggle_normbedingungen(entries, "DIN", normkubikmenge_var.get())
+    elif heatrix_normal_var and heatrix_normal_var.get():
+        if normkubik_var:
+            normkubik_var.set(False)
+        toggle_normbedingungen(entries, "HEATRIX", normkubikmenge_var.get())
+    elif normkubikmenge_var and not normkubikmenge_var.get():
+        for key in ["Temperatur 1 (°C):", "Druck 1 (Pa):", "Dichte 1 (kg/m³):"]:
+            entries[key].config(state="normal")
+
+    if normkubikmenge_var:
+        toggle_normkubikmenge(
+            entries,
+            normkubikmenge_var.get(),
+            normkubik_var.get() if normkubik_var else False,
+            heatrix_normal_var.get() if heatrix_normal_var else False,
+        )
+
+    update_normkubik_label()
+
+
+def _write_entry_preserve_state(entry, value):
+    current_state = entry.cget("state")
+    entry.config(state="normal")
+    entry.delete(0, "end")
+    entry.insert(0, "" if value is None else value)
+    entry.config(state=current_state)
+
+
+def export_state_tab1():
+    return {
+        "combo": combo_var.get() if combo_var else None,
+        "normkubik": normkubik_var.get() if normkubik_var else False,
+        "heatrix_normal": heatrix_normal_var.get() if heatrix_normal_var else False,
+        "normkubikmenge": normkubikmenge_var.get() if normkubikmenge_var else False,
+        "heat_priority": heat_priority_var.get() if heat_priority_var else False,
+        "entries": {key: entry.get() for key, entry in entries.items()},
+    }
+
+
+def import_state_tab1(state):
+    if not entries or combo_var is None:
+        return
+
+    combo_value = state.get("combo")
+    if combo_value:
+        combo_var.set(combo_value)
+    update_cp_labels()
+
+    if normkubik_var:
+        normkubik_var.set(bool(state.get("normkubik", False)))
+    if heatrix_normal_var:
+        heatrix_normal_var.set(bool(state.get("heatrix_normal", False)))
+    if normkubikmenge_var:
+        normkubikmenge_var.set(bool(state.get("normkubikmenge", False)))
+    if heat_priority_var:
+        heat_priority_var.set(bool(state.get("heat_priority", False)))
+
+    _apply_norm_state()
+
+    for key, value in state.get("entries", {}).items():
+        entry = entries.get(key)
+        if entry is None:
+            continue
+        _write_entry_preserve_state(entry, value)
+
+    update_normkubik_label()

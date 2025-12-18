@@ -4,7 +4,14 @@ from tkinter import ttk
 from .gui_utils import ToolTip
 from .tab3_logik import berechne_heizerleistung
 
+entries: dict[str, tk.Entry] = {}
+use_tab1_power: tk.BooleanVar | None = None
+_apply_thermal_power_fn = None
+
+
 def create_tab3(notebook, get_thermal_power_from_tab1):
+    global entries, use_tab1_power, _apply_thermal_power_fn
+
     frame_tab3 = tk.Frame(notebook, padx=20, pady=10)
     notebook.add(frame_tab3, text="Heizer Leistung")
 
@@ -40,6 +47,8 @@ def create_tab3(notebook, get_thermal_power_from_tab1):
                 entries["Wärmeleistung (kW):"].config(state="readonly")
         else:
             entries["Wärmeleistung (kW):"].config(state="normal")
+
+    _apply_thermal_power_fn = apply_thermal_power
 
     fields = [
         ("Elektrische Leistung (kW):", ""),
@@ -85,3 +94,33 @@ def create_tab3(notebook, get_thermal_power_from_tab1):
     ToolTip(power_check, "Wenn aktiviert, wird die Wärmeleistung aus Tab1 übernommen und gesperrt.")
 
     return frame_tab3
+
+
+def _write_entry_preserve_state(entry: tk.Entry, value: str | None) -> None:
+    current_state = entry.cget("state")
+    entry.config(state="normal")
+    entry.delete(0, tk.END)
+    entry.insert(0, "" if value is None else value)
+    entry.config(state=current_state)
+
+
+def export_state_tab3() -> dict[str, object]:
+    return {
+        "use_tab1_power": use_tab1_power.get() if use_tab1_power else False,
+        "entries": {key: entry.get() for key, entry in entries.items()},
+    }
+
+
+def import_state_tab3(state: dict[str, object]) -> None:
+    if use_tab1_power is None:
+        return
+
+    use_tab1_power.set(bool(state.get("use_tab1_power", False)))
+    if _apply_thermal_power_fn:
+        _apply_thermal_power_fn()
+
+    for key, value in state.get("entries", {}).items():
+        entry = entries.get(key)
+        if entry is None:
+            continue
+        _write_entry_preserve_state(entry, value)

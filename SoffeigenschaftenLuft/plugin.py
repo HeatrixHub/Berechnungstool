@@ -56,6 +56,18 @@ class StoffeigenschaftenLuftPlugin(Plugin):
             font=("Segoe UI", 9),
         ).pack(side="left")
 
+    def export_state(self) -> dict[str, object]:
+        return {
+            "tab1": tab1.export_state_tab1(),
+            "tab2": tab2.export_state_tab2(),
+            "tab3": tab3.export_state_tab3(),
+        }
+
+    def import_state(self, state: dict[str, object]) -> None:
+        tab1.import_state_tab1(state.get("tab1", {}))
+        tab2.import_state_tab2(state.get("tab2", {}))
+        tab3.import_state_tab3(state.get("tab3", {}))
+
     def _configure_styles(self, root) -> None:
         """Richtet Schrifteinstellungen analog zur Stand-alone-App ein."""
 

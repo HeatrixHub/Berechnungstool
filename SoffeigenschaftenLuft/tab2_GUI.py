@@ -4,7 +4,20 @@ from tkinter import ttk
 from .gui_utils import ToolTip, set_entry_value
 from .tab2_logik import berechne_tab2_werte
 
+entries: dict[str, tk.Entry] = {}
+shape_var: tk.StringVar | None = None
+flow_unit_var: tk.StringVar | None = None
+normkubik_var: tk.BooleanVar | None = None
+entry_velocity: tk.Entry | None = None
+entry_reynolds: tk.Entry | None = None
+entry_flowtype: tk.Entry | None = None
+_update_fields_fn = None
+_toggle_norm_fn = None
+
+
 def create_tab2(notebook):
+    global entries, shape_var, flow_unit_var, normkubik_var, entry_velocity, entry_reynolds, entry_flowtype, _update_fields_fn, _toggle_norm_fn
+
     frame_tab2 = tk.Frame(notebook, padx=20, pady=10)
     notebook.add(frame_tab2, text="Geschwindigkeitsberechnung & Reynolds-Zahl")
 
@@ -53,7 +66,8 @@ def create_tab2(notebook):
             label_b.grid(row=2, column=0, sticky=tk.W, padx=10, pady=5)
             entry_b.grid(row=2, column=1, padx=10, pady=5)
 
-    shape_var.trace_add("write", update_fields)
+    shape_var.trace_add("write", lambda *args: update_fields())
+    _update_fields_fn = update_fields
     update_fields()
 
     # Volumenstrom + Einheit
@@ -79,16 +93,19 @@ def create_tab2(notebook):
     ttk.Label(frame_tab2, text="Strömungsgeschwindigkeit (m/s):").grid(row=6, column=0, sticky=tk.W, padx=10, pady=5)
     entry_velocity = ttk.Entry(frame_tab2, state="readonly")
     entry_velocity.grid(row=6, column=1, padx=10, pady=5)
+    entries["Strömungsgeschwindigkeit (m/s):"] = entry_velocity
     ToolTip(entry_velocity, "Geschwindigkeit des Fluids am Inlet")
 
     ttk.Label(frame_tab2, text="Reynolds-Zahl:").grid(row=7, column=0, sticky=tk.W, padx=10, pady=5)
     entry_reynolds = ttk.Entry(frame_tab2, state="readonly")
     entry_reynolds.grid(row=7, column=1, padx=10, pady=5)
+    entries["Reynolds-Zahl:"] = entry_reynolds
     ToolTip(entry_reynolds, "Reynolds-Zahl des Fluids am Inlet")
 
     ttk.Label(frame_tab2, text="Strömungsart:").grid(row=7, column=2, sticky=tk.W, padx=10, pady=5)
     entry_flowtype = ttk.Entry(frame_tab2, state="readonly")
     entry_flowtype.grid(row=7, column=3, padx=10, pady=5)
+    entries["Strömungsart:"] = entry_flowtype
     ToolTip(entry_flowtype, "Strömungsart des Fluids am Inlet (Laminar <2300, Übergang >2300 <11000, Turbulent >11000)")
 
     # Checkbox für Normbedingungen
@@ -105,6 +122,8 @@ def create_tab2(notebook):
         else:
             entries["Temperatur (°C):"].config(state="normal")
             entries["Dichte (kg/m³):"].config(state="normal")
+
+    _toggle_norm_fn = toggle_norm
 
     norm_check = ttk.Checkbutton(
         frame_tab2,
@@ -133,3 +152,45 @@ def create_tab2(notebook):
     ToolTip(calculate_btn, "Startet die Berechnung der Geschwindigkeit und Reynolds-Zahl")
 
     return frame_tab2
+
+
+def _write_entry_preserve_state(entry: tk.Entry, value: str | None) -> None:
+    current_state = entry.cget("state")
+    entry.config(state="normal")
+    entry.delete(0, tk.END)
+    entry.insert(0, "" if value is None else value)
+    entry.config(state=current_state)
+
+
+def export_state_tab2() -> dict[str, object]:
+    return {
+        "shape": shape_var.get() if shape_var else None,
+        "flow_unit": flow_unit_var.get() if flow_unit_var else None,
+        "normkubik": normkubik_var.get() if normkubik_var else False,
+        "entries": {key: entry.get() for key, entry in entries.items()},
+    }
+
+
+def import_state_tab2(state: dict[str, object]) -> None:
+    if shape_var is None or flow_unit_var is None or normkubik_var is None:
+        return
+
+    shape_value = state.get("shape")
+    if isinstance(shape_value, str) and shape_value:
+        shape_var.set(shape_value)
+    if _update_fields_fn:
+        _update_fields_fn()
+
+    flow_unit_value = state.get("flow_unit")
+    if isinstance(flow_unit_value, str) and flow_unit_value:
+        flow_unit_var.set(flow_unit_value)
+
+    normkubik_var.set(bool(state.get("normkubik", False)))
+    if _toggle_norm_fn:
+        _toggle_norm_fn()
+
+    for key, value in state.get("entries", {}).items():
+        entry = entries.get(key)
+        if entry is None:
+            continue
+        _write_entry_preserve_state(entry, value)
