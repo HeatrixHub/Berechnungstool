@@ -4,12 +4,15 @@ from __future__ import annotations
 import math
 import tkinter as tk
 from tkinter import ttk
+from typing import Mapping
 
 from app.plugins.base import AppContext, Plugin
 
 
 class LeistungsrechnerTab(ttk.Frame):
     """Tab für Leistungsberechnungen von ein- und dreiphasigen Systemen."""
+
+    _DEFAULT_RESULT = "Leistung: –"
 
     def __init__(self, notebook: ttk.Notebook) -> None:
         super().__init__(notebook, padding=(10, 8))
@@ -48,13 +51,15 @@ class LeistungsrechnerTab(ttk.Frame):
 
         ttk.Label(frame, text="Spannung U [V]").grid(row=1, column=0, sticky="w", pady=2)
         self._single_voltage = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._single_voltage).grid(
+        self._single_voltage_entry = ttk.Entry(frame, textvariable=self._single_voltage)
+        self._single_voltage_entry.grid(
             row=1, column=1, sticky="ew", pady=2
         )
 
         ttk.Label(frame, text="Strom I [A]").grid(row=2, column=0, sticky="w", pady=2)
         self._single_current = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._single_current).grid(
+        self._single_current_entry = ttk.Entry(frame, textvariable=self._single_current)
+        self._single_current_entry.grid(
             row=2, column=1, sticky="ew", pady=2
         )
 
@@ -62,7 +67,7 @@ class LeistungsrechnerTab(ttk.Frame):
             row=3, column=0, columnspan=2, pady=(6, 4)
         )
 
-        self._single_result = tk.StringVar(value="Leistung: –")
+        self._single_result = tk.StringVar(value=self._DEFAULT_RESULT)
         ttk.Label(frame, textvariable=self._single_result, font=("Segoe UI", 11, "bold")).grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(2, 0)
         )
@@ -80,13 +85,15 @@ class LeistungsrechnerTab(ttk.Frame):
             row=1, column=0, sticky="w", pady=2
         )
         self._three_voltage = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._three_voltage).grid(
+        self._three_voltage_entry = ttk.Entry(frame, textvariable=self._three_voltage)
+        self._three_voltage_entry.grid(
             row=1, column=1, sticky="ew", pady=2
         )
 
         ttk.Label(frame, text="Strom I [A]").grid(row=2, column=0, sticky="w", pady=2)
         self._three_current = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._three_current).grid(
+        self._three_current_entry = ttk.Entry(frame, textvariable=self._three_current)
+        self._three_current_entry.grid(
             row=2, column=1, sticky="ew", pady=2
         )
 
@@ -94,7 +101,7 @@ class LeistungsrechnerTab(ttk.Frame):
             row=3, column=0, columnspan=2, pady=(6, 4)
         )
 
-        self._three_result = tk.StringVar(value="Leistung: –")
+        self._three_result = tk.StringVar(value=self._DEFAULT_RESULT)
         ttk.Label(frame, textvariable=self._three_result, font=("Segoe UI", 11, "bold")).grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(2, 0)
         )
@@ -124,6 +131,42 @@ class LeistungsrechnerTab(ttk.Frame):
         except (ValueError, TypeError):
             return None
 
+    def export_state(self) -> dict[str, str]:
+        return {
+            "single_voltage": self._single_voltage.get(),
+            "single_current": self._single_current.get(),
+            "single_result": self._single_result.get(),
+            "three_voltage": self._three_voltage.get(),
+            "three_current": self._three_current.get(),
+            "three_result": self._three_result.get(),
+        }
+
+    def import_state(self, state: Mapping[str, str]) -> None:
+        self.set_single_values(
+            voltage=state.get("single_voltage", ""),
+            current=state.get("single_current", ""),
+        )
+        self.set_three_values(
+            voltage=state.get("three_voltage", ""),
+            current=state.get("three_current", ""),
+        )
+        self.set_single_result(state.get("single_result", self._DEFAULT_RESULT))
+        self.set_three_result(state.get("three_result", self._DEFAULT_RESULT))
+
+    def set_single_values(self, voltage: str, current: str) -> None:
+        self._single_voltage.set(voltage)
+        self._single_current.set(current)
+
+    def set_three_values(self, voltage: str, current: str) -> None:
+        self._three_voltage.set(voltage)
+        self._three_current.set(current)
+
+    def set_single_result(self, result: str | None) -> None:
+        self._single_result.set(result or self._DEFAULT_RESULT)
+
+    def set_three_result(self, result: str | None) -> None:
+        self._three_result.set(result or self._DEFAULT_RESULT)
+
 
 class ElektrikPlugin(Plugin):
     """Plugin für grundlegende elektrische Berechnungen."""
@@ -134,6 +177,7 @@ class ElektrikPlugin(Plugin):
     def __init__(self) -> None:
         super().__init__()
         self._inner_notebook: ttk.Notebook | None = None
+        self._leistungsrechner_tab: LeistungsrechnerTab | None = None
 
     def attach(self, context: AppContext) -> None:
         container = ttk.Frame(context.notebook)
@@ -155,7 +199,7 @@ class ElektrikPlugin(Plugin):
         notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
         self._inner_notebook = notebook
 
-        LeistungsrechnerTab(notebook)
+        self._leistungsrechner_tab = LeistungsrechnerTab(notebook)
 
         footer = ttk.Frame(container, padding=(10, 5))
         footer.grid(row=2, column=0, sticky="ew")
@@ -164,3 +208,13 @@ class ElektrikPlugin(Plugin):
             text="© 2025 Heatrix GmbH", 
             font=("Segoe UI", 9),
         ).pack(side="left")
+
+    def export_state(self) -> dict[str, str]:
+        if self._leistungsrechner_tab is None:
+            return {}
+        return self._leistungsrechner_tab.export_state()
+
+    def import_state(self, state: Mapping[str, str]) -> None:
+        if self._leistungsrechner_tab is None:
+            return
+        self._leistungsrechner_tab.import_state(state or {})
