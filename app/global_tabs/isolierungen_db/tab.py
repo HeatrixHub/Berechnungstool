@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +9,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from Isolierung.tabs.scrollable import ScrollableFrame
 from app.global_tabs.isolierungen_db.logic import (
-    FileImportResult,
     delete_insulation,
     delete_variant as delete_variant_entry,
     export_insulations_to_csv,
@@ -22,6 +20,11 @@ from app.global_tabs.isolierungen_db.logic import (
     save_family,
     save_variant as save_variant_entry,
     register_material_change_listener,
+)
+from app.global_tabs.isolierungen_db.services import (
+    build_import_summary,
+    parse_optional_float,
+    parse_required_float,
 )
 
 
@@ -305,8 +308,8 @@ class IsolierungenTab:
             if not name:
                 messagebox.showwarning("Fehler", "Familienname darf nicht leer sein.")
                 return
-            class_temp = self._parse_required_float(self.entry_class_temp.get(), "Klass.-Temp")
-            density = self._parse_required_float(self.entry_density.get(), "Dichte")
+            class_temp = parse_required_float(self.entry_class_temp.get(), "Klass.-Temp")
+            density = parse_required_float(self.entry_density.get(), "Dichte")
             temps = [float(x.strip()) for x in self.entry_temps.get().split(",") if x.strip()]
             ks = [float(x.strip()) for x in self.entry_ks.get().split(",") if x.strip()]
             if len(temps) != len(ks):
@@ -327,12 +330,12 @@ class IsolierungenTab:
                 messagebox.showwarning("Fehler", "Bitte zuerst eine Familie auswählen.")
                 return
             variant_name = self.entry_variant_name.get().strip() or "Standard"
-            thickness = self._parse_required_float(
+            thickness = parse_required_float(
                 self.entry_thickness.get(), "Dicke"
             )
-            length = self._parse_optional_float(self.entry_length.get())
-            width = self._parse_optional_float(self.entry_width.get())
-            price = self._parse_optional_float(self.entry_price.get())
+            length = parse_optional_float(self.entry_length.get())
+            width = parse_optional_float(self.entry_width.get())
+            price = parse_optional_float(self.entry_price.get())
             saved = save_variant_entry(
                 family_name, variant_name, thickness, length, width, price
             )
@@ -510,30 +513,10 @@ class IsolierungenTab:
         try:
             imported, results = import_insulations_from_csv_files(list(file_paths))
             self.refresh_table()
-            message = self._build_import_summary(imported, results)
+            message = build_import_summary(imported, results)
             messagebox.showinfo("Import abgeschlossen", message)
         except Exception as exc:  # pragma: no cover - GUI Verarbeitung
             messagebox.showerror("Import fehlgeschlagen", str(exc))
-
-    def _build_import_summary(
-        self, imported: int, results: list[FileImportResult]
-    ) -> str:
-        lines = [f"{imported} Isolierung(en) importiert."]
-        skipped = [r for r in results if r.skipped_reason]
-        per_file_errors = [r for r in results if r.errors]
-
-        if skipped:
-            lines.append("Übersprungene Dateien:")
-            for result in skipped:
-                lines.append(f"- {Path(result.file_path).name}: {result.skipped_reason}")
-
-        if per_file_errors:
-            lines.append("Fehlerhafte Zeilen:")
-            for result in per_file_errors:
-                lines.append(f"- {Path(result.file_path).name}:")
-                lines.extend([f"    * {err}" for err in result.errors])
-
-        return "\n".join(lines)
 
     def clear_fields(self) -> None:
         for entry in [
@@ -550,23 +533,6 @@ class IsolierungenTab:
         ]:
             entry.delete(0, tk.END)
 
-    def _parse_required_float(self, value: str, label: str) -> float:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError(f"{label} darf nicht leer sein.")
-        try:
-            return float(cleaned)
-        except ValueError:
-            raise ValueError(f"{label} muss eine Zahl sein.")
-
-    def _parse_optional_float(self, value: str) -> float | None:
-        cleaned = value.strip()
-        if not cleaned:
-            return None
-        try:
-            return float(cleaned)
-        except ValueError:
-            raise ValueError("Numerischer Wert erwartet (optional).")
 
     def update_plot(self, temps, ks, class_temp) -> None:
         try:

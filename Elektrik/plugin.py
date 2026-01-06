@@ -1,12 +1,12 @@
 """Plugin-Integration für elektrische Leistungsberechnungen."""
 from __future__ import annotations
 
-import math
 import tkinter as tk
 from tkinter import ttk
 from typing import Mapping
 
 from app.plugins.base import AppContext, Plugin
+from .logic import calculate_single_phase, calculate_three_phase, parse_float
 
 
 class LeistungsrechnerTab(ttk.Frame):
@@ -107,29 +107,22 @@ class LeistungsrechnerTab(ttk.Frame):
         )
 
     def _calculate_single_phase(self) -> None:
-        voltage = self._parse_value(self._single_voltage)
-        current = self._parse_value(self._single_current)
+        voltage = parse_float(self._single_voltage.get())
+        current = parse_float(self._single_current.get())
         if voltage is None or current is None:
             self._single_result.set("Leistung: Bitte gültige Zahlen angeben.")
             return
-        power = voltage * current
+        power = calculate_single_phase(voltage, current)
         self._single_result.set(f"Leistung: {power:,.2f} W")
 
     def _calculate_three_phase(self) -> None:
-        voltage = self._parse_value(self._three_voltage)
-        current = self._parse_value(self._three_current)
+        voltage = parse_float(self._three_voltage.get())
+        current = parse_float(self._three_current.get())
         if voltage is None or current is None:
             self._three_result.set("Leistung: Bitte gültige Zahlen angeben.")
             return
-        power = voltage * current * math.sqrt(3)
+        power = calculate_three_phase(voltage, current)
         self._three_result.set(f"Leistung: {power:,.2f} W")
-
-    @staticmethod
-    def _parse_value(value: tk.StringVar) -> float | None:
-        try:
-            return float(value.get())
-        except (ValueError, TypeError):
-            return None
 
     def export_state(self) -> dict[str, str]:
         return {
