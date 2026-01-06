@@ -5,6 +5,9 @@ import importlib.util
 import sys
 from typing import Tuple, Type
 
+from app.ui_qt.plugins.base import QtAppContext
+from app.ui_qt.plugins.registry import get_plugins
+
 
 class _StubApplication:
     def __init__(self, argv: list[str]) -> None:
@@ -14,10 +17,19 @@ class _StubApplication:
         return 0
 
 
+class _StubTabWidget:
+    def __init__(self) -> None:
+        self.tabs: list[tuple[object, str]] = []
+
+    def addTab(self, widget: object, title: str) -> None:
+        self.tabs.append((widget, title))
+
+
 class _StubMainWindow:
     def __init__(self) -> None:
         self._title = ""
         self._size = (0, 0)
+        self._central_widget: object | None = None
 
     def setWindowTitle(self, title: str) -> None:
         self._title = title
@@ -25,27 +37,56 @@ class _StubMainWindow:
     def resize(self, width: int, height: int) -> None:
         self._size = (width, height)
 
+    def setCentralWidget(self, widget: object) -> None:
+        self._central_widget = widget
+
     def show(self) -> None:
         return None
 
 
-def _resolve_qt_widgets() -> Tuple[Type[object], Type[object]]:
+def _resolve_qt_widgets() -> Tuple[Type[object], Type[object], Type[object]]:
     if importlib.util.find_spec("PyQt6") is not None:
-        from PyQt6.QtWidgets import QApplication, QMainWindow
+        from PyQt6.QtWidgets import QApplication, QMainWindow, QTabWidget
 
-        return QApplication, QMainWindow
+        return QApplication, QMainWindow, QTabWidget
     if importlib.util.find_spec("PySide6") is not None:
-        from PySide6.QtWidgets import QApplication, QMainWindow
+        from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget
 
-        return QApplication, QMainWindow
-    return _StubApplication, _StubMainWindow
+        return QApplication, QMainWindow, QTabWidget
+    return _StubApplication, _StubMainWindow, _StubTabWidget
+
+
+def _apply_identifier(plugin: object, identifier: str) -> None:
+    if hasattr(plugin, "_identifier"):
+        setattr(plugin, "_identifier", identifier)
+        return
+    if hasattr(plugin, "identifier"):
+        try:
+            setattr(plugin, "identifier", identifier)
+        except AttributeError:
+            setattr(plugin, "_identifier", identifier)
+        return
+    setattr(plugin, "_identifier", identifier)
 
 
 def main() -> int:
-    QApplication, QMainWindow = _resolve_qt_widgets()
+    QApplication, QMainWindow, QTabWidget = _resolve_qt_widgets()
 
     app = QApplication(sys.argv)
     window = QMainWindow()
+    tab_widget = QTabWidget()
+    if hasattr(window, "setCentralWidget"):
+        window.setCentralWidget(tab_widget)
+    context = QtAppContext(main_window=window, tab_widget=tab_widget)
+
+    for plugin_spec in get_plugins():
+        plugin = plugin_spec.plugin_cls()
+        _apply_identifier(plugin, plugin_spec.identifier)
+        plugin.attach(context)
+        widget = getattr(plugin, "widget", None)
+        if widget is not None and hasattr(tab_widget, "addTab"):
+            tab_widget.addTab(widget, plugin.name)
+
     if hasattr(window, "setWindowTitle"):
         window.setWindowTitle("Heatrix Berechnungstools")
     if hasattr(window, "resize"):
