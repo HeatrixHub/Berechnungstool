@@ -15,6 +15,9 @@ normkubik_var: tk.BooleanVar | None = None
 heatrix_normal_var: tk.BooleanVar | None = None
 normkubikmenge_var: tk.BooleanVar | None = None
 heat_priority_var: tk.BooleanVar | None = None
+_handle_toggle_din_fn = None
+_handle_toggle_heatrix_fn = None
+_handle_toggle_normkubikmenge_fn = None
 
 
 def update_cp_labels():
@@ -298,7 +301,14 @@ def start_calculation(
 
 
 def create_tab1(notebook):
-    global combo_var, normkubik_var, heatrix_normal_var, normkubikmenge_var, heat_priority_var
+    global combo_var
+    global normkubik_var
+    global heatrix_normal_var
+    global normkubikmenge_var
+    global heat_priority_var
+    global _handle_toggle_din_fn
+    global _handle_toggle_heatrix_fn
+    global _handle_toggle_normkubikmenge_fn
 
     frame_tab1 = tk.Frame(notebook, padx=20, pady=10)
     notebook.add(frame_tab1, text="Zustandsgrößen")
@@ -362,6 +372,10 @@ def create_tab1(notebook):
             normkubik_var.get(),
             heatrix_normal_var.get(),
         )
+
+    _handle_toggle_din_fn = handle_toggle_din
+    _handle_toggle_heatrix_fn = handle_toggle_heatrix
+    _handle_toggle_normkubikmenge_fn = handle_toggle_normkubikmenge
 
     din_check = ttk.Checkbutton(
         frame_tab1,
@@ -497,3 +511,56 @@ def create_tab1(notebook):
             entries[key].config(state="normal")
 
     return frame_tab1
+
+
+def _write_entry_preserve_state(entry: tk.Entry, value: str | None) -> None:
+    current_state = entry.cget("state")
+    entry.config(state="normal")
+    entry.delete(0, tk.END)
+    entry.insert(0, "" if value is None else value)
+    entry.config(state=current_state)
+
+
+def export_state_tab1() -> dict[str, object]:
+    return {
+        "zustand": combo_var.get() if combo_var else None,
+        "normkubik": normkubik_var.get() if normkubik_var else False,
+        "heatrix": heatrix_normal_var.get() if heatrix_normal_var else False,
+        "normkubikmenge": normkubikmenge_var.get() if normkubikmenge_var else False,
+        "heat_priority": heat_priority_var.get() if heat_priority_var else False,
+        "entries": {key: entry.get() for key, entry in entries.items()},
+    }
+
+
+def import_state_tab1(state: dict[str, object]) -> None:
+    if (
+        combo_var is None
+        or normkubik_var is None
+        or heatrix_normal_var is None
+        or normkubikmenge_var is None
+        or heat_priority_var is None
+    ):
+        return
+
+    zustand_value = state.get("zustand")
+    if isinstance(zustand_value, str) and zustand_value:
+        combo_var.set(zustand_value)
+        update_cp_labels()
+
+    normkubik_var.set(bool(state.get("normkubik", False)))
+    heatrix_normal_var.set(bool(state.get("heatrix", False)))
+    normkubikmenge_var.set(bool(state.get("normkubikmenge", False)))
+    heat_priority_var.set(bool(state.get("heat_priority", False)))
+
+    if normkubik_var.get() and _handle_toggle_din_fn:
+        _handle_toggle_din_fn()
+    if heatrix_normal_var.get() and _handle_toggle_heatrix_fn:
+        _handle_toggle_heatrix_fn()
+    if _handle_toggle_normkubikmenge_fn:
+        _handle_toggle_normkubikmenge_fn()
+
+    for key, value in state.get("entries", {}).items():
+        entry = entries.get(key)
+        if entry is None:
+            continue
+        _write_entry_preserve_state(entry, value)
