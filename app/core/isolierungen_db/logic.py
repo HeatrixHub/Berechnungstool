@@ -370,6 +370,14 @@ def import_insulations_from_csv_files(
     return total_imported, results
 
 
+def import_insulations_from_csv(
+    file_path: str,
+) -> Tuple[int, List[FileImportResult]]:
+    """Importiert Isolierungen aus einer einzelnen CSV-Datei."""
+
+    return import_insulations_from_csv_files([file_path])
+
+
 def _parse_optional_float(value: str | None) -> float | None:
     if value is None:
         return None
