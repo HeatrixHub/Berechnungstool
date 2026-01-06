@@ -1,5 +1,5 @@
 """Isolierungstool als Plugin."""
 
-from .plugin import IsolierungPlugin
+from .ui.plugin import IsolierungPlugin
 
 __all__ = ["IsolierungPlugin"]
