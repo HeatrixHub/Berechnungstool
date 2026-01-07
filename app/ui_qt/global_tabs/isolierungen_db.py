@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from typing import Iterable, Sequence
-import re
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -41,6 +40,7 @@ from app.core.isolierungen_db.logic import (
     interpolate_k,
     load_insulation,
     register_material_change_listener,
+    unregister_material_change_listener,
     rename_family,
     rename_variant,
     save_family,
@@ -60,6 +60,8 @@ class IsolierungenDbTab:
         self._tab_widget = tab_widget
         self._selected_family: str | None = None
         self._selected_variant: str | None = None
+        self._material_change_handler = self.refresh_table
+        self._listener_registered = False
 
         self.widget = QWidget()
         self._layout = QVBoxLayout()
@@ -75,7 +77,11 @@ class IsolierungenDbTab:
         self._layout.addStretch()
 
         self.refresh_table(preserve_selection=False)
-        register_material_change_listener(self.refresh_table)
+        if not self._listener_registered:
+            register_material_change_listener(self._material_change_handler)
+            self._listener_registered = True
+        if hasattr(self.widget, "destroyed"):
+            self.widget.destroyed.connect(self._on_widget_destroyed)
 
         if hasattr(self._tab_widget, "addTab"):
             self._tab_widget.addTab(self.widget, title)
@@ -272,10 +278,13 @@ class IsolierungenDbTab:
         self.update_plot([], [], None)
 
     def on_family_select(self) -> None:
-        selected_items = self._family_table.selectedItems()
-        if not selected_items:
+        row = self._family_table.currentRow()
+        if row < 0:
             return
-        name = selected_items[0].text()
+        item = self._family_table.item(row, 0)
+        if item is None:
+            return
+        name = item.text()
         self._selected_family = name
         self._load_family(name)
 
@@ -319,12 +328,16 @@ class IsolierungenDbTab:
         self._clear_variant_form()
 
     def on_variant_select(self) -> None:
-        selected_items = self._variant_table.selectedItems()
-        if not selected_items:
+        row = self._variant_table.currentRow()
+        if row < 0:
             return
-        values = [item.text() for item in selected_items]
-        if not values:
+        name_item = self._variant_table.item(row, 0)
+        if name_item is None:
             return
+        values = [
+            self._variant_table.item(row, col).text() if self._variant_table.item(row, col) else ""
+            for col in range(self._variant_table.columnCount())
+        ]
         self._selected_variant = values[0]
         self._variant_name_input.setText(values[0])
         self._variant_thickness_input.setText(values[1] if len(values) > 1 else "")
@@ -644,8 +657,9 @@ class IsolierungenDbTab:
         if not cleaned:
             return []
         try:
-            parts = [item.strip() for item in re.split(r"[;,]", cleaned) if item.strip()]
-            return [float(item) for item in parts]
+            separator = ";" if ";" in cleaned else ","
+            parts = [item.strip() for item in cleaned.split(separator) if item.strip()]
+            return [float(item.replace(",", ".")) for item in parts]
         except ValueError as exc:
             raise ValueError("Temperatur- und k-Werte müssen numerisch sein.") from exc
 
@@ -670,3 +684,8 @@ class IsolierungenDbTab:
             widget = item.widget() if item else None
             if widget is not None:
                 widget.deleteLater()
+
+    def _on_widget_destroyed(self, _obj: object | None = None) -> None:
+        if self._listener_registered:
+            unregister_material_change_listener(self._material_change_handler)
+            self._listener_registered = False
