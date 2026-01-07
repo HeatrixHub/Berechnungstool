@@ -181,6 +181,7 @@ class ProjectsTab:
         self._spec_lookup = {spec.identifier: spec.name for spec in self._plugin_specs}
         self._selected_project_id: str | None = None
         self._project_cache: dict[str, ProjectRecord] = {}
+        self._is_new_mode = False
 
         self.widget = self._QWidget()
         self._build_ui()
@@ -238,7 +239,7 @@ class ProjectsTab:
         actions_layout.addWidget(self._delete_button)
 
         if hasattr(self._new_button, "clicked"):
-            self._new_button.clicked.connect(self.reset_form)
+            self._new_button.clicked.connect(self._enter_new_mode)
         if hasattr(self._save_button, "clicked"):
             self._save_button.clicked.connect(self.save_project)
         if hasattr(self._load_button, "clicked"):
@@ -279,6 +280,8 @@ class ProjectsTab:
             )
         if hasattr(self._table, "itemSelectionChanged"):
             self._table.itemSelectionChanged.connect(self.on_project_select)
+        if hasattr(self._table, "itemClicked"):
+            self._table.itemClicked.connect(self.on_project_select)
         if hasattr(self._table, "horizontalHeader"):
             header = self._table.horizontalHeader()
             if hasattr(header, "setStretchLastSection"):
@@ -299,18 +302,29 @@ class ProjectsTab:
             splitter.addWidget(list_container)
             splitter.addWidget(details_container)
 
-    def reset_form(self) -> None:
+    def reset_form(self, *, new_mode: bool = True) -> None:
         if hasattr(self._name_input, "setText"):
             self._name_input.setText("")
         if hasattr(self._author_input, "setText"):
             self._author_input.setText(self._author)
         self._selected_project_id = None
+        self._is_new_mode = new_mode
         if hasattr(self._table, "clearSelection"):
             self._table.clearSelection()
         self._show_details(None)
-        self._set_status("Neues Projekt vorbereitet. Gib Name und Autor ein.")
+        if new_mode:
+            self._set_action_buttons(can_save=True, can_load=False, can_delete=False)
+            self._set_status("Neues Projekt vorbereitet. Gib Name und Autor ein.")
+        else:
+            self._set_action_buttons(can_save=False, can_load=False, can_delete=False)
+            self._set_status("Kein Projekt ausgewählt.")
+
+    def _enter_new_mode(self) -> None:
+        self.reset_form(new_mode=True)
 
     def refresh_projects(self) -> None:
+        previous_selection = self._selected_project_id
+        was_new_mode = self._is_new_mode
         self._project_cache.clear()
         if hasattr(self._table, "setRowCount"):
             self._table.setRowCount(0)
@@ -330,28 +344,40 @@ class ProjectsTab:
                 self._table.setItem(row, 0, name_item)
                 self._table.setItem(row, 1, author_item)
                 self._table.setItem(row, 2, updated_item)
-        if self._selected_project_id and self._selected_project_id in self._project_cache:
-            self._select_project_row(self._selected_project_id)
+        if was_new_mode:
+            self._set_action_buttons(can_save=True, can_load=False, can_delete=False)
+        elif previous_selection and previous_selection in self._project_cache:
+            self._select_project_row(previous_selection)
+            self.on_project_select()
+        elif self._project_cache:
+            first_id = next(iter(self._project_cache))
+            self._select_project_row(first_id)
             self.on_project_select()
         else:
-            self.reset_form()
+            self.reset_form(new_mode=False)
         self._set_status("Liste aktualisiert. Wähle ein Projekt oder speichere ein neues.")
 
-    def on_project_select(self) -> None:
+    def on_project_select(self, *_args: object) -> None:
         project_id = self._current_selection_id()
         if not project_id:
-            self._selected_project_id = None
-            self._show_details(None)
+            if not self._is_new_mode:
+                self._selected_project_id = None
+                self._show_details(None)
+                self._set_action_buttons(
+                    can_save=False, can_load=False, can_delete=False
+                )
             return
         record = self._project_cache.get(project_id)
         if not record:
             return
+        self._is_new_mode = False
         self._selected_project_id = project_id
         if hasattr(self._name_input, "setText"):
             self._name_input.setText(record.name)
         if hasattr(self._author_input, "setText"):
             self._author_input.setText(record.author)
         self._show_details(record)
+        self._set_action_buttons(can_save=True, can_load=True, can_delete=True)
         self._set_status(f"Projekt '{record.name}' ausgewählt.")
 
     def save_project(self) -> bool:
@@ -363,19 +389,21 @@ class ProjectsTab:
             return False
         states = self._plugin_manager.export_all_states()
         ui_state = self._capture_ui_state()
+        project_id = None if self._is_new_mode else self._selected_project_id
         try:
             record = self._store.save_project(
                 name=name,
                 author=author,
                 plugin_states=states,
                 ui_state=ui_state,
-                project_id=self._selected_project_id,
+                project_id=project_id,
             )
         except ValueError as exc:
             self._show_error("Fehler", str(exc))
             return False
         self._project_cache[record.id] = record
         self._selected_project_id = record.id
+        self._is_new_mode = False
         self.refresh_projects()
         self._show_info("Gespeichert", f"Projekt '{record.name}' wurde gespeichert.")
         self._set_status("Aktueller Plugin-Stand wurde erfolgreich im Projekt abgelegt.")
@@ -431,6 +459,7 @@ class ProjectsTab:
         if self._store.delete_project(record.id):
             self._show_info("Gelöscht", f"Projekt '{record.name}' wurde entfernt.")
             self._selected_project_id = None
+            self._is_new_mode = False
             self.refresh_projects()
             self._set_status("Projekt gelöscht. Wähle einen anderen Eintrag oder speichere neu.")
         else:
@@ -469,15 +498,30 @@ class ProjectsTab:
                 return
 
     def _current_selection_id(self) -> str | None:
-        if not hasattr(self._table, "selectedItems"):
-            return None
-        selected = self._table.selectedItems()
-        if not selected:
-            return None
-        item = selected[0]
-        if hasattr(item, "data"):
-            return item.data(self._Qt.UserRole)
+        if hasattr(self._table, "currentRow") and hasattr(self._table, "item"):
+            row = self._table.currentRow()
+            if row is not None and row >= 0:
+                item = self._table.item(row, 0)
+                if item and hasattr(item, "data"):
+                    return item.data(self._Qt.UserRole)
+        if hasattr(self._table, "selectedItems"):
+            selected = self._table.selectedItems()
+            if not selected:
+                return None
+            item = selected[0]
+            if hasattr(item, "data"):
+                return item.data(self._Qt.UserRole)
         return None
+
+    def _set_action_buttons(
+        self, *, can_save: bool, can_load: bool, can_delete: bool
+    ) -> None:
+        if hasattr(self._save_button, "setEnabled"):
+            self._save_button.setEnabled(can_save)
+        if hasattr(self._load_button, "setEnabled"):
+            self._load_button.setEnabled(can_load)
+        if hasattr(self._delete_button, "setEnabled"):
+            self._delete_button.setEnabled(can_delete)
 
     def _show_details(self, record: ProjectRecord | None) -> None:
         if record is None:
