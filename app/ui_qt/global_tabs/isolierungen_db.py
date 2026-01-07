@@ -380,6 +380,8 @@ class IsolierungenDbTab:
                         f"Die Familie '{name}' existiert bereits. "
                         "Möchten Sie die Stammdaten überschreiben?"
                     ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
                 )
                 if response != QMessageBox.Yes:
                     return
@@ -430,6 +432,8 @@ class IsolierungenDbTab:
                         f"Die Variante '{variant_name}' existiert bereits. "
                         "Möchten Sie sie überschreiben?"
                     ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
                 )
                 if response != QMessageBox.Yes:
                     return
@@ -474,6 +478,8 @@ class IsolierungenDbTab:
                 f"Soll das Material '{name}' endgültig gelöscht werden?\n"
                 "Dieser Vorgang kann nicht rückgängig gemacht werden."
             ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
         if response != QMessageBox.Yes:
             return
@@ -497,6 +503,8 @@ class IsolierungenDbTab:
             self.widget,
             "Variante löschen",
             f"Soll die Variante '{variant_name}' aus '{family_name}' gelöscht werden?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
         if response != QMessageBox.Yes:
             return
