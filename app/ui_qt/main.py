@@ -78,7 +78,11 @@ def main() -> int:
         window.setCentralWidget(tab_widget)
     context = QtAppContext(main_window=window, tab_widget=tab_widget)
     plugin_manager = QtPluginManager(context)
-    ProjectsTab(tab_widget, plugin_manager=plugin_manager)
+    projects_tab = ProjectsTab(
+        tab_widget,
+        plugin_manager=plugin_manager,
+        main_window=window,
+    )
     ReportTab(tab_widget, plugin_manager=plugin_manager, title="Bericht")
 
     if importlib.util.find_spec("PySide6") is not None:
@@ -87,6 +91,7 @@ def main() -> int:
         IsolierungenDbTab(tab_widget, title="Isolierungen DB")
 
     plugin_manager.load_plugins()
+    projects_tab.on_plugins_loaded()
 
     if hasattr(window, "setWindowTitle"):
         window.setWindowTitle("Heatrix Berechnungstools")

@@ -26,6 +26,10 @@ class QtPluginManager:
     def plugins(self) -> dict[str, QtPlugin]:
         return dict(self._plugins)
 
+    @property
+    def plugin_specs(self) -> tuple[QtPluginSpec, ...]:
+        return self._plugin_specs
+
     def load_plugins(self) -> None:
         for plugin_spec in self._plugin_specs:
             if plugin_spec.identifier in self._plugins:
