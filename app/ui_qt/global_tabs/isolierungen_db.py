@@ -9,9 +9,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -22,7 +20,6 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -51,6 +48,7 @@ from app.core.isolierungen_db.services import (
     parse_optional_float,
     parse_required_float,
 )
+from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
 
 
 class IsolierungenDbTab:
@@ -64,7 +62,7 @@ class IsolierungenDbTab:
         self._listener_registered = False
 
         self.widget = QWidget()
-        self._layout = QVBoxLayout()
+        self._layout = make_vbox()
         self.widget.setLayout(self._layout)
 
         self._build_header()
@@ -88,7 +86,7 @@ class IsolierungenDbTab:
 
     def _build_header(self) -> None:
         header = QWidget()
-        header_layout = QHBoxLayout()
+        header_layout = make_hbox()
         title = QLabel("Isolierungen verwalten")
         title.setProperty("class", "title")
         title.setStyleSheet("font-size: 16px; font-weight: bold;")
@@ -99,9 +97,9 @@ class IsolierungenDbTab:
 
     def _build_family_section(self) -> None:
         section = QGroupBox("Materialfamilien")
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
-        action_bar = QHBoxLayout()
+        action_bar = make_hbox()
         self._new_family_button = QPushButton("Neu")
         self._delete_family_button = QPushButton("Familie löschen")
         self._export_button = QPushButton("Exportieren (CSV)")
@@ -136,9 +134,9 @@ class IsolierungenDbTab:
 
     def _build_variant_section(self) -> None:
         section = QGroupBox("Varianten")
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
-        action_bar = QHBoxLayout()
+        action_bar = make_hbox()
         self._new_variant_button = QPushButton("Neue Variante")
         self._delete_variant_button = QPushButton("Variante löschen")
         action_bar.addWidget(self._new_variant_button)
@@ -167,7 +165,7 @@ class IsolierungenDbTab:
 
     def _build_family_form(self) -> None:
         section = QGroupBox("Stammdaten")
-        grid = QGridLayout()
+        grid = make_grid()
 
         self._family_name_input = QLineEdit()
         self._family_class_temp_input = QLineEdit()
@@ -195,7 +193,7 @@ class IsolierungenDbTab:
 
     def _build_variant_form(self) -> None:
         section = QGroupBox("Variante bearbeiten")
-        grid = QGridLayout()
+        grid = make_grid()
 
         self._variant_name_input = QLineEdit()
         self._variant_thickness_input = QLineEdit()
@@ -223,7 +221,7 @@ class IsolierungenDbTab:
 
     def _build_plot_section(self) -> None:
         self._plot_section = QGroupBox("Interpolierte Wärmeleitfähigkeit")
-        self._plot_layout = QVBoxLayout()
+        self._plot_layout = make_vbox()
         self._plot_section.setLayout(self._plot_layout)
         self._layout.addWidget(self._plot_section)
 
@@ -595,7 +593,7 @@ class IsolierungenDbTab:
     def _choose_export_names(self, preselected: Iterable[str]) -> list[str]:
         dialog = QDialog(self.widget)
         dialog.setWindowTitle("Isolierungen exportieren")
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         layout.addWidget(
             QLabel("Bitte wählen Sie ein oder mehrere Isolierungen für den Export aus:")
@@ -610,7 +608,7 @@ class IsolierungenDbTab:
             list_widget.addItem(item)
         layout.addWidget(list_widget)
 
-        action_bar = QHBoxLayout()
+        action_bar = make_hbox()
         select_all_btn = QPushButton("Alle auswählen")
         deselect_btn = QPushButton("Auswahl löschen")
         action_bar.addWidget(select_all_btn)

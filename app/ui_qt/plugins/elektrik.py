@@ -11,17 +11,15 @@ from Elektrik.core.calculations import (
 )
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
+from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
 
 
 
@@ -64,10 +62,10 @@ class ElektrikQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         header = QWidget()
-        header_layout = QVBoxLayout()
+        header_layout = make_vbox()
         title = QLabel("Elektrische Leistung")
         title_font = QFont()
         title_font.setPointSize(14)
@@ -83,13 +81,13 @@ class ElektrikQtPlugin(QtPlugin):
         self._tab_widget = tab_widget
 
         calculator_tab = QWidget()
-        calculator_layout = QHBoxLayout()
+        calculator_layout = make_hbox()
         calculator_tab.setLayout(calculator_layout)
         tab_widget.addTab(calculator_tab, "Leistungsrechner")
         layout.addWidget(tab_widget)
 
         single_group = QGroupBox("Einphasig")
-        single_layout = QGridLayout()
+        single_layout = make_grid()
         single_group.setLayout(single_layout)
         calculator_layout.addWidget(single_group)
 
@@ -106,7 +104,7 @@ class ElektrikQtPlugin(QtPlugin):
         single_layout.addWidget(single_result_label, 4, 0, 1, 2)
 
         three_group = QGroupBox("Dreiphasig")
-        three_layout = QGridLayout()
+        three_layout = make_grid()
         three_group.setLayout(three_layout)
         calculator_layout.addWidget(three_group)
 
