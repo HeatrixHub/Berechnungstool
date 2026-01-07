@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import importlib.util
 import logging
 from typing import Any, Callable, Iterable, Sequence
+
+from PySide6.QtCore import QObject
 
 from app.ui_qt.plugins.base import QtPlugin
 from app.ui_qt.plugins.manager import QtPluginManager
@@ -100,7 +101,6 @@ class DirtyStateTracker:
         self._on_dirty = on_dirty
         self._paused = 0
         self._connections: set[tuple[int, str]] = set()
-        self._qt_available, self._QObject = _resolve_qt_core()
 
     @contextmanager
     def paused(self) -> Iterable[None]:
@@ -117,12 +117,12 @@ class DirtyStateTracker:
         self._paused = max(0, self._paused - 1)
 
     def attach_widget(self, widget: object | None) -> None:
-        if not self._qt_available or widget is None:
+        if widget is None:
             return
         self._attach_object(widget)
         if hasattr(widget, "findChildren"):
             try:
-                children = widget.findChildren(self._QObject)
+                children = widget.findChildren(QObject)
             except Exception:  # pragma: no cover - safety guard
                 children = []
             for child in children:
@@ -148,15 +148,3 @@ class DirtyStateTracker:
         if self._paused:
             return
         self._on_dirty()
-
-
-def _resolve_qt_core() -> tuple[bool, type[object] | None]:
-    if importlib.util.find_spec("PyQt6") is not None:
-        from PyQt6.QtCore import QObject
-
-        return True, QObject
-    if importlib.util.find_spec("PySide6") is not None:
-        from PySide6.QtCore import QObject
-
-        return True, QObject
-    return False, None
