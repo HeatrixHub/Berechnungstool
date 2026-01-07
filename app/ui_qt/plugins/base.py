@@ -3,28 +3,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-import importlib.util
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
-if TYPE_CHECKING:
-    try:
-        from PyQt6.QtWidgets import QMainWindow, QTabWidget
-    except ModuleNotFoundError:
-        from PySide6.QtWidgets import QMainWindow, QTabWidget
-else:
-    QMainWindow = Any
-    QTabWidget = Any
+from PySide6.QtCore import QObject as _QtQObject
+from PySide6.QtWidgets import QMainWindow, QTabWidget
 
-if importlib.util.find_spec("PyQt6") is not None:
-    from PyQt6.QtCore import QObject as _QtQObject
-
-    _QT_OBJECT_TYPES: tuple[type[object], ...] = (_QtQObject,)
-elif importlib.util.find_spec("PySide6") is not None:
-    from PySide6.QtCore import QObject as _QtQObject
-
-    _QT_OBJECT_TYPES = (_QtQObject,)
-else:
-    _QT_OBJECT_TYPES = ()
+_QT_OBJECT_TYPES: tuple[type[object], ...] = (_QtQObject,)
 
 
 @dataclass

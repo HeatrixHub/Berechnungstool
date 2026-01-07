@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,149 +16,22 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTabWidget,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+
 from app.ui_qt.plugins.manager import QtPluginManager
-
-
-class _StubWidget:
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        self.clicked = _StubSignal()
-        return None
-
-    def __getattr__(self, _name: str) -> Any:
-        if _name == "currentIndexChanged" or _name.endswith("Changed"):
-            return _StubSignal()
-
-        def _noop(*_args: object, **_kwargs: object) -> Any:
-            return None
-
-        return _noop
-
-
-class _StubSignal:
-    def connect(self, *_args: object, **_kwargs: object) -> None:
-        return None
-
-
-class _StubQt:
-    AlignCenter = 0
-
-
-class _StubFont:
-    Monospace = 0
-
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        return None
-
-    def __getattr__(self, _name: str) -> Any:
-        def _noop(*_args: object, **_kwargs: object) -> Any:
-            return None
-
-        return _noop
-
-
-class _StubSignalBlocker:
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        return None
-
-    def __enter__(self) -> "_StubSignalBlocker":
-        return self
-
-    def __exit__(self, *_args: object, **_kwargs: object) -> None:
-        return None
-
-
-class _StubMessageBox:
-    @staticmethod
-    def information(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    @staticmethod
-    def warning(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    @staticmethod
-    def critical(*_args: object, **_kwargs: object) -> None:
-        return None
-
-
-def _resolve_qt_widgets() -> tuple[bool, dict[str, Any]]:
-    if importlib.util.find_spec("PyQt6") is not None:
-        from PyQt6.QtCore import QSignalBlocker, Qt
-        from PyQt6.QtGui import QFont
-        from PyQt6.QtWidgets import (
-            QComboBox,
-            QFileDialog,
-            QHBoxLayout,
-            QLabel,
-            QMessageBox,
-            QPushButton,
-            QTabWidget,
-            QTextBrowser,
-            QVBoxLayout,
-            QWidget,
-        )
-
-        return True, {
-            "QComboBox": QComboBox,
-            "QFileDialog": QFileDialog,
-            "QFont": QFont,
-            "QHBoxLayout": QHBoxLayout,
-            "QLabel": QLabel,
-            "QMessageBox": QMessageBox,
-            "QPushButton": QPushButton,
-            "QSignalBlocker": QSignalBlocker,
-            "QTabWidget": QTabWidget,
-            "QTextBrowser": QTextBrowser,
-            "QVBoxLayout": QVBoxLayout,
-            "QWidget": QWidget,
-            "Qt": Qt,
-        }
-    if importlib.util.find_spec("PySide6") is not None:
-        from PySide6.QtCore import QSignalBlocker, Qt
-        from PySide6.QtGui import QFont
-        from PySide6.QtWidgets import (
-            QComboBox,
-            QFileDialog,
-            QHBoxLayout,
-            QLabel,
-            QMessageBox,
-            QPushButton,
-            QTabWidget,
-            QTextBrowser,
-            QVBoxLayout,
-            QWidget,
-        )
-
-        return True, {
-            "QComboBox": QComboBox,
-            "QFileDialog": QFileDialog,
-            "QFont": QFont,
-            "QHBoxLayout": QHBoxLayout,
-            "QLabel": QLabel,
-            "QMessageBox": QMessageBox,
-            "QPushButton": QPushButton,
-            "QSignalBlocker": QSignalBlocker,
-            "QTabWidget": QTabWidget,
-            "QTextBrowser": QTextBrowser,
-            "QVBoxLayout": QVBoxLayout,
-            "QWidget": QWidget,
-            "Qt": Qt,
-        }
-    return False, {
-        "QComboBox": _StubWidget,
-        "QFileDialog": _StubWidget,
-        "QFont": _StubFont,
-        "QHBoxLayout": _StubWidget,
-        "QLabel": _StubWidget,
-        "QMessageBox": _StubMessageBox,
-        "QPushButton": _StubWidget,
-        "QSignalBlocker": _StubSignalBlocker,
-        "QTabWidget": _StubWidget,
-        "QTextBrowser": _StubWidget,
-        "QVBoxLayout": _StubWidget,
-        "QWidget": _StubWidget,
-        "Qt": _StubQt,
-    }
 
 
 @dataclass(frozen=True)
@@ -178,19 +50,6 @@ class ReportTab:
         *,
         title: str = "Bericht",
     ) -> None:
-        self._qt_available, widgets = _resolve_qt_widgets()
-        self._QComboBox = widgets["QComboBox"]
-        self._QFileDialog = widgets["QFileDialog"]
-        self._QFont = widgets["QFont"]
-        self._QHBoxLayout = widgets["QHBoxLayout"]
-        self._QLabel = widgets["QLabel"]
-        self._QMessageBox = widgets["QMessageBox"]
-        self._QPushButton = widgets["QPushButton"]
-        self._QSignalBlocker = widgets["QSignalBlocker"]
-        self._QTextBrowser = widgets["QTextBrowser"]
-        self._QVBoxLayout = widgets["QVBoxLayout"]
-        self._QWidget = widgets["QWidget"]
-
         self._tab_widget = tab_widget
         self._plugin_manager = plugin_manager
         self._report_logger = logging.getLogger(__name__)
@@ -201,7 +60,7 @@ class ReportTab:
         self._report_preview: object | None = None
         self._report_status_label: object | None = None
 
-        self.widget = self._QWidget()
+        self.widget = QWidget()
         self._build_ui()
         self._insert_tab(title)
         self._discover_report_templates()
@@ -211,62 +70,52 @@ class ReportTab:
             self._tab_widget.currentChanged.connect(self._on_tab_changed)
 
     def _insert_tab(self, title: str) -> None:
-        if hasattr(self._tab_widget, "insertTab"):
+        if isinstance(self._tab_widget, QTabWidget):
             self._tab_widget.insertTab(1, self.widget, title)
-            return
-        if hasattr(self._tab_widget, "addTab"):
+        else:
             self._tab_widget.addTab(self.widget, title)
 
     def _build_ui(self) -> None:
-        layout = self._QVBoxLayout()
-        if hasattr(self.widget, "setLayout"):
-            self.widget.setLayout(layout)
+        layout = QVBoxLayout()
+        self.widget.setLayout(layout)
 
-        header = self._QLabel("Bericht")
-        header_font = self._QFont()
-        if hasattr(header_font, "setPointSize"):
-            header_font.setPointSize(12)
-        if hasattr(header_font, "setBold"):
-            header_font.setBold(True)
-        if hasattr(header, "setFont"):
-            header.setFont(header_font)
+        header = QLabel("Bericht")
+        header_font = QFont()
+        header_font.setPointSize(12)
+        header_font.setBold(True)
+        header.setFont(header_font)
         layout.addWidget(header)
 
-        template_layout = self._QHBoxLayout()
-        template_layout.addWidget(self._QLabel("Template"))
-        self._report_template_combo = self._QComboBox()
-        if hasattr(self._report_template_combo, "currentIndexChanged"):
-            self._report_template_combo.currentIndexChanged.connect(self._update_report_preview)
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Template"))
+        self._report_template_combo = QComboBox()
+        self._report_template_combo.currentIndexChanged.connect(self._update_report_preview)
         template_layout.addWidget(self._report_template_combo)
-        refresh_button = self._QPushButton("Templates aktualisieren")
+        refresh_button = QPushButton("Templates aktualisieren")
         refresh_button.clicked.connect(self._discover_report_templates)
         template_layout.addWidget(refresh_button)
         template_layout.addStretch()
         layout.addLayout(template_layout)
 
-        action_layout = self._QHBoxLayout()
-        preview_button = self._QPushButton("Vorschau aktualisieren")
+        action_layout = QHBoxLayout()
+        preview_button = QPushButton("Vorschau aktualisieren")
         preview_button.clicked.connect(self._update_report_preview)
-        export_button = self._QPushButton("PDF exportieren")
+        export_button = QPushButton("PDF exportieren")
         export_button.clicked.connect(self._on_report_export_pdf)
         action_layout.addWidget(preview_button)
         action_layout.addStretch()
         action_layout.addWidget(export_button)
         layout.addLayout(action_layout)
 
-        self._report_preview = self._QTextBrowser()
-        if hasattr(self._report_preview, "setOpenExternalLinks"):
-            self._report_preview.setOpenExternalLinks(False)
-        preview_font = self._QFont("Courier New")
-        if hasattr(preview_font, "setStyleHint"):
-            preview_font.setStyleHint(self._QFont.Monospace)
-        if hasattr(self._report_preview, "setFont"):
-            self._report_preview.setFont(preview_font)
+        self._report_preview = QTextBrowser()
+        self._report_preview.setOpenExternalLinks(False)
+        preview_font = QFont("Courier New")
+        preview_font.setStyleHint(QFont.Monospace)
+        self._report_preview.setFont(preview_font)
         layout.addWidget(self._report_preview)
 
-        self._report_status_label = self._QLabel()
-        if hasattr(self._report_status_label, "setWordWrap"):
-            self._report_status_label.setWordWrap(True)
+        self._report_status_label = QLabel()
+        self._report_status_label.setWordWrap(True)
         layout.addWidget(self._report_status_label)
 
     def _discover_report_templates(self) -> None:
@@ -279,7 +128,7 @@ class ReportTab:
                 )
         if self._report_template_combo is not None:
             current_name = self._report_template_combo.currentText()
-            with self._QSignalBlocker(self._report_template_combo):
+            with QSignalBlocker(self._report_template_combo):
                 self._report_template_combo.clear()
                 for spec in self._report_templates:
                     self._report_template_combo.addItem(spec.name)
@@ -343,9 +192,9 @@ class ReportTab:
     def _on_report_export_pdf(self) -> None:
         spec = self._current_report_template()
         if spec is None:
-            self._QMessageBox.warning(self.widget, "Hinweis", "Keine Report-Templates gefunden.")
+            QMessageBox.warning(self.widget, "Hinweis", "Keine Report-Templates gefunden.")
             return
-        path, _ = self._QFileDialog.getSaveFileName(
+        path, _ = QFileDialog.getSaveFileName(
             self.widget,
             "PDF speichern",
             "",
@@ -361,14 +210,14 @@ class ReportTab:
                 self._set_report_preview_text(rendered)
                 self._write_report_pdf(Path(path), [(f"Bericht – {spec.name}", rendered)])
         except Exception as exc:
-            self._QMessageBox.critical(
+            QMessageBox.critical(
                 self.widget,
                 "Fehler",
                 f"Der Bericht konnte nicht erstellt werden:\n{exc}",
             )
             return
         self._set_report_status(f"Bericht gespeichert unter {path}.")
-        self._QMessageBox.information(self.widget, "Fertig", "Der Bericht wurde erstellt.")
+        QMessageBox.information(self.widget, "Fertig", "Der Bericht wurde erstellt.")
 
     def _render_report_template(self, spec: _ReportTemplateSpec, resource_dir: Path) -> str:
         project, plugin_states = self._build_report_context()
