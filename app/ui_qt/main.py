@@ -8,6 +8,7 @@ from typing import Tuple, Type
 from app.ui_qt.plugins.base import QtAppContext
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.projects.tab import ProjectsTab
+from app.ui_qt.global_tabs.report import ReportTab
 
 
 class _StubApplication:
@@ -78,6 +79,7 @@ def main() -> int:
     context = QtAppContext(main_window=window, tab_widget=tab_widget)
     plugin_manager = QtPluginManager(context)
     ProjectsTab(tab_widget, plugin_manager=plugin_manager)
+    ReportTab(tab_widget, plugin_manager=plugin_manager, title="Bericht")
 
     if importlib.util.find_spec("PySide6") is not None:
         from app.ui_qt.global_tabs.isolierungen_db import IsolierungenDbTab

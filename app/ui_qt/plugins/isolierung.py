@@ -282,9 +282,6 @@ class IsolierungQtPlugin(QtPlugin):
         tab_widget.addTab(self._build_calculation_tab(), "Berechnung")
         tab_widget.addTab(self._build_schichtaufbau_tab(), "Schichtaufbau")
         tab_widget.addTab(self._build_zuschnitt_tab(), "Zuschnitt")
-        report_tab = self._build_report_tab()
-        self._report_tab = report_tab
-        tab_widget.addTab(report_tab, "Bericht")
 
         container.setLayout(layout)
         self.widget = container

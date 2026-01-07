@@ -1,10 +1,10 @@
 {
   "plugins": [
     {
-      "identifier": "elektrik",
-      "name": "Elektrik",
-      "module": "app.ui_qt.plugins.elektrik",
-      "class_name": "ElektrikQtPlugin",
+      "identifier": "isolierung",
+      "name": "Isolierung",
+      "module": "app.ui_qt.plugins.isolierung",
+      "class_name": "IsolierungQtPlugin",
       "enabled": true
     },
     {
@@ -15,10 +15,10 @@
       "enabled": true
     },
     {
-      "identifier": "isolierung",
-      "name": "Isolierung",
-      "module": "app.ui_qt.plugins.isolierung",
-      "class_name": "IsolierungQtPlugin",
+      "identifier": "elektrik",
+      "name": "Elektrik",
+      "module": "app.ui_qt.plugins.elektrik",
+      "class_name": "ElektrikQtPlugin",
       "enabled": true
     }
   ]
