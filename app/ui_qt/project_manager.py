@@ -79,11 +79,13 @@ class ProjectManagerUI:
         *,
         main_window: object,
         plugin_manager: QtPluginManager,
+        tab_widget: object | None = None,
         store: ProjectStore | None = None,
         author: str | None = None,
     ) -> None:
         self._main_window = main_window
         self._plugin_manager = plugin_manager
+        self._tab_widget = tab_widget
         self._store = store or ProjectStore()
         self._author = author or getpass.getuser()
         self._current_project_id: str | None = None
@@ -132,11 +134,13 @@ class ProjectManagerUI:
         if not name:
             return
         states = self._plugin_manager.export_all_states()
+        ui_state = self._capture_ui_state()
         try:
             record = self._store.save_project(
                 name=name,
                 author=self._author,
                 plugin_states=states,
+                ui_state=ui_state,
                 project_id=self._current_project_id,
             )
         except ValueError as exc:
@@ -163,6 +167,7 @@ class ProjectManagerUI:
             self._show_error("Projekt laden fehlgeschlagen", "Das ausgewählte Projekt wurde nicht gefunden.")
             return
         self._plugin_manager.import_all_states(record.plugin_states)
+        self._apply_ui_state(record.ui_state)
         self._current_project_id = record.id
         self._current_project_name = record.name
         self._update_status()
@@ -227,6 +232,33 @@ class ProjectManagerUI:
         else:
             message = "Kein Projekt ausgewählt"
         self._status_bar.showMessage(message)
+
+    def _capture_ui_state(self) -> dict[str, Any]:
+        if not self._tab_widget:
+            return {}
+        current_index = None
+        if hasattr(self._tab_widget, "currentIndex"):
+            current = getattr(self._tab_widget, "currentIndex")
+            current_index = current() if callable(current) else current
+        if current_index is None:
+            return {}
+        return {"active_tab": int(current_index)}
+
+    def _apply_ui_state(self, state: dict[str, Any]) -> None:
+        if not self._tab_widget or not isinstance(state, dict):
+            return
+        active_tab = state.get("active_tab")
+        if not isinstance(active_tab, int):
+            return
+        if hasattr(self._tab_widget, "count") and callable(getattr(self._tab_widget, "count")):
+            tab_count = self._tab_widget.count()
+            if tab_count <= 0:
+                return
+            active_tab = max(0, min(active_tab, tab_count - 1))
+        if hasattr(self._tab_widget, "setCurrentIndex"):
+            setter = getattr(self._tab_widget, "setCurrentIndex")
+            if callable(setter):
+                setter(active_tab)
 
     def _show_info(self, title: str, message: str) -> None:
         if hasattr(self, "_message_box"):
