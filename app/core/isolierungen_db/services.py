@@ -7,7 +7,7 @@ from .logic import FileImportResult
 
 
 def parse_required_float(value: str, label: str) -> float:
-    cleaned = value.strip()
+    cleaned = value.strip().replace(",", ".")
     if not cleaned:
         raise ValueError(f"{label} darf nicht leer sein.")
     try:
@@ -17,7 +17,7 @@ def parse_required_float(value: str, label: str) -> float:
 
 
 def parse_optional_float(value: str) -> float | None:
-    cleaned = value.strip()
+    cleaned = value.strip().replace(",", ".")
     if not cleaned:
         return None
     try:

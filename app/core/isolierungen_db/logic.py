@@ -81,9 +81,11 @@ def save_family(
     density: float | None,
     temps: List[float],
     ks: List[float],
+    *,
+    notify: bool = True,
 ) -> bool:
     saved = save_material_family(name, classification_temp, density, temps, ks)
-    if saved:
+    if saved and notify:
         _notify_material_change_listeners()
     return saved
 
@@ -95,6 +97,8 @@ def save_variant(
     length: float | None,
     width: float | None,
     price: float | None,
+    *,
+    notify: bool = True,
 ) -> bool:
     saved = save_material_variant(
         material_name,
@@ -104,7 +108,7 @@ def save_variant(
         width,
         price,
     )
-    if saved:
+    if saved and notify:
         _notify_material_change_listeners()
     return saved
 
@@ -341,10 +345,18 @@ def import_insulations_from_csv_files(
                             )
                         name = canonical_names[base_name]
 
-                        if not save_family(name, class_temp, density, temps, ks):
+                        if not save_family(
+                            name, class_temp, density, temps, ks, notify=False
+                        ):
                             raise ValueError("Stammdaten konnten nicht gespeichert werden.")
                         if not save_variant(
-                            name, variant_name, thickness, length, width, price
+                            name,
+                            variant_name,
+                            thickness,
+                            length,
+                            width,
+                            price,
+                            notify=False,
                         ):
                             raise ValueError("Variante konnte nicht gespeichert werden.")
                         imported += 1
@@ -400,6 +412,7 @@ def _parse_optional_float(value: str | None) -> float | None:
     cleaned = str(value).strip()
     if not cleaned:
         return None
+    cleaned = cleaned.replace(",", ".")
     return float(cleaned)
 
 
@@ -407,7 +420,9 @@ def _parse_numeric_list(value: str) -> List[float]:
     cleaned = (value or "").strip()
     if not cleaned:
         return []
-    return [float(item.strip()) for item in cleaned.split(";") if item.strip()]
+    separator = ";" if ";" in cleaned else ","
+    parts = [item.strip() for item in cleaned.split(separator) if item.strip()]
+    return [float(item.replace(",", ".")) for item in parts]
 
 
 def _ensure_required_fields(name: str, variant_name: str) -> None:

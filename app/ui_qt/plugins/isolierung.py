@@ -21,7 +21,10 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
-from app.core.isolierungen_db.logic import register_material_change_listener
+from app.core.isolierungen_db.logic import (
+    register_material_change_listener,
+    unregister_material_change_listener,
+)
 from Isolierung.core.database import list_materials, load_material
 from Isolierung.services.tab1_berechnung import perform_calculation, validate_inputs
 
@@ -57,6 +60,8 @@ class IsolierungQtPlugin(QtPlugin):
         self._materials = []
         self._material_names: list[str] = []
         self._material_change_handler = self._on_materials_changed
+        self._listener_registered = False
+        self._missing_materials_warning: str | None = None
 
         self._state: dict[str, Any] = {
             "inputs": {
@@ -109,7 +114,11 @@ class IsolierungQtPlugin(QtPlugin):
         self.widget = container
 
         self._load_materials()
-        register_material_change_listener(self._material_change_handler)
+        if not self._listener_registered:
+            register_material_change_listener(self._material_change_handler)
+            self._listener_registered = True
+        if self.widget is not None and hasattr(self.widget, "destroyed"):
+            self.widget.destroyed.connect(self._on_widget_destroyed)
         self.refresh_view()
 
     def export_state(self) -> dict[str, Any]:
@@ -197,15 +206,32 @@ class IsolierungQtPlugin(QtPlugin):
             self._state["inputs"]["layers"] = layers
         self._set_layer_count(len(layers))
 
+        missing_families: list[str] = []
         for layer, widgets in zip(layers, self._layer_widgets, strict=False):
             thickness = self._coerce_str(layer.get("thickness", ""))
             family = self._coerce_str(layer.get("family", ""))
             variant = self._coerce_str(layer.get("variant", ""))
+            if family and family not in self._material_names:
+                missing_families.append(family)
+                family = ""
+                variant = ""
+                layer["family"] = ""
+                layer["variant"] = ""
             with QSignalBlocker(widgets.thickness_input):
                 widgets.thickness_input.setText(thickness)
             with QSignalBlocker(widgets.family_combo):
                 self._select_combo_value(widgets.family_combo, family, self._FAMILY_PLACEHOLDER)
-            self._populate_variant_combo(widgets, family, variant)
+            variant_found = self._populate_variant_combo(widgets, family, variant)
+            if variant and not variant_found:
+                layer["variant"] = ""
+
+        if missing_families:
+            unique_missing = sorted(set(missing_families))
+            self._missing_materials_warning = (
+                "Fehlende Materialfamilien: " + ", ".join(unique_missing)
+            )
+        else:
+            self._missing_materials_warning = None
 
         result_text = self._format_result_text()
         self._set_label_text(self._result_label, result_text)
@@ -311,7 +337,11 @@ class IsolierungQtPlugin(QtPlugin):
             layers = self._state["inputs"].get("layers", [])
             if isinstance(layers, list) and index < len(layers):
                 selected_variant = self._coerce_str(layers[index].get("variant", ""))
-            self._populate_variant_combo(widgets, current_family, selected_variant)
+            variant_found = self._populate_variant_combo(
+                widgets, current_family, selected_variant
+            )
+            if not variant_found and isinstance(layers, list) and index < len(layers):
+                layers[index]["variant"] = ""
         self._sync_internal_state_from_widgets()
 
     def _set_layer_count(self, count: int) -> None:
@@ -370,8 +400,9 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _populate_variant_combo(
         self, widgets: _LayerWidgets, family_name: str, selected_variant: str
-    ) -> None:
+    ) -> bool:
         variant_lookup: dict[str, tuple[str, float]] = {}
+        found = False
         with QSignalBlocker(widgets.variant_combo):
             widgets.variant_combo.clear()
             widgets.variant_combo.addItem(self._VARIANT_PLACEHOLDER)
@@ -387,11 +418,15 @@ class IsolierungQtPlugin(QtPlugin):
                 for display, (name, _thickness) in variant_lookup.items():
                     if name == selected_variant:
                         display_value = display
+                        found = True
                         break
             self._select_combo_value(
                 widgets.variant_combo, display_value, self._VARIANT_PLACEHOLDER
             )
         widgets.variant_lookup = variant_lookup
+        if not selected_variant:
+            return True
+        return found
 
     def _on_layer_count_changed(self, value: int) -> None:
         layers = self._state["inputs"].get("layers", [])
@@ -535,7 +570,10 @@ class IsolierungQtPlugin(QtPlugin):
         status = self._state["results"].get("status")
         if status != "ok":
             message = self._coerce_str(self._state["results"].get("message", ""))
-            return f"Status: Fehler\n{message}" if message else "Status: Bereit"
+            base = f"Status: Fehler\n{message}" if message else "Status: Bereit"
+            if self._missing_materials_warning:
+                return f"{base}\n{self._missing_materials_warning}"
+            return base
         result = self._state["results"].get("data", {})
         if not isinstance(result, dict):
             return "Status: Berechnung abgeschlossen"
@@ -561,6 +599,8 @@ class IsolierungQtPlugin(QtPlugin):
         if k_final:
             values = ", ".join(f"{value:.3f}" for value in k_final)
             lines.append(f"Endleitfähigkeiten k [W/mK]: {values}")
+        if self._missing_materials_warning:
+            lines.append(self._missing_materials_warning)
         return "\n".join(lines)
 
     @staticmethod
@@ -608,9 +648,6 @@ class IsolierungQtPlugin(QtPlugin):
             return
         index = combo.findText(value)
         if index == -1:
-            combo.addItem(value)
-            index = combo.findText(value)
-        if index == -1:
             combo.setCurrentIndex(0)
         else:
             combo.setCurrentIndex(index)
@@ -638,6 +675,11 @@ class IsolierungQtPlugin(QtPlugin):
         while len(ui_layers) <= index:
             ui_layers.append({"family_index": 0, "variant_index": 0})
         self._state["ui"]["layers"] = ui_layers
+
+    def _on_widget_destroyed(self, _obj: object | None = None) -> None:
+        if self._listener_registered:
+            unregister_material_change_listener(self._material_change_handler)
+            self._listener_registered = False
 
 
 __all__ = ["IsolierungQtPlugin"]
