@@ -156,6 +156,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
+        tab_widget.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(tab_widget)
 
         tab_widget.addTab(self._build_tab1(), "Zustandsgrößen")
@@ -174,9 +175,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         self.refresh_view()
 
     def export_state(self) -> dict[str, Any]:
-        tab1_entries = self._collect_entry_values(self._tab1_entries, self._tab1_inputs["entries"])
-        tab2_entries = self._collect_entry_values(self._tab2_entries, self._tab2_inputs["entries"])
-        tab3_entries = self._collect_entry_values(self._tab3_entries, self._tab3_inputs["entries"])
+        self._sync_internal_state_from_widgets()
         inputs = {
             "tab1": {
                 "zustand": self._tab1_inputs.get("zustand", "Isobar"),
@@ -184,40 +183,25 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
                 "heatrix": self._tab1_inputs.get("heatrix", False),
                 "normkubikmenge": self._tab1_inputs.get("normkubikmenge", False),
                 "heat_priority": self._tab1_inputs.get("heat_priority", False),
-                "entries": tab1_entries,
+                "entries": dict(self._tab1_inputs.get("entries", {})),
             },
             "tab2": {
                 "shape": self._tab2_inputs.get("shape", "Rund"),
                 "flow_unit": self._tab2_inputs.get("flow_unit", "m³/h"),
                 "normkubik": self._tab2_inputs.get("normkubik", False),
-                "entries": tab2_entries,
+                "entries": dict(self._tab2_inputs.get("entries", {})),
             },
             "tab3": {
                 "use_tab1_power": self._tab3_inputs.get("use_tab1_power", False),
-                "entries": tab3_entries,
+                "entries": dict(self._tab3_inputs.get("entries", {})),
             },
         }
         results = {
-            "tab1": self._tab1_results,
-            "tab2": self._tab2_results,
-            "tab3": self._tab3_results,
+            "tab1": dict(self._tab1_results),
+            "tab2": dict(self._tab2_results),
+            "tab3": dict(self._tab3_results),
         }
-        ui = {
-            "active_tab": self._get_active_tab_index(),
-            "tab1": {
-                "entry_states": self._collect_entry_states(self._tab1_entries),
-                "zustand": self._tab1_inputs.get("zustand", "Isobar"),
-            },
-            "tab2": {
-                "entry_states": self._collect_entry_states(self._tab2_entries),
-                "shape": self._tab2_inputs.get("shape", "Rund"),
-                "flow_unit": self._tab2_inputs.get("flow_unit", "m³/h"),
-            },
-            "tab3": {
-                "entry_states": self._collect_entry_states(self._tab3_entries),
-            },
-        }
-        return self.validate_state({"inputs": inputs, "results": results, "ui": ui})
+        return self.validate_state({"inputs": inputs, "results": results, "ui": dict(self._ui_state)})
 
     def import_state(self, state: dict[str, Any]) -> None:
         normalized = self.validate_state(state)
@@ -240,6 +224,21 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             self._tab3_results = self._coerce_results(results.get("tab3"), self._tab3_results)
         if isinstance(ui_state, dict):
             self._ui_state = ui_state
+
+    def _sync_internal_state_from_widgets(self) -> None:
+        self._store_tab1_inputs()
+        self._store_tab2_inputs()
+        self._store_tab3_inputs()
+        self._ui_state["active_tab"] = self._get_active_tab_index()
+        self._ui_state["tab1"] = {
+            "entry_states": self._collect_entry_states(self._tab1_entries),
+        }
+        self._ui_state["tab2"] = {
+            "entry_states": self._collect_entry_states(self._tab2_entries),
+        }
+        self._ui_state["tab3"] = {
+            "entry_states": self._collect_entry_states(self._tab3_entries),
+        }
 
     def refresh_view(self) -> None:
         self._sync_tab1_view()
@@ -281,6 +280,9 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             entry.setText(default)
             layout.addWidget(entry, row, col + 1)
             self._tab1_entries[text] = entry
+            entry.textChanged.connect(
+                lambda value, key=text: self._update_entry_value("tab1", key, value)
+            )
             if text == "Normkubikmeter (m³/h):":
                 entry.setEnabled(False)
                 self._tab1_normkubik_label = label
@@ -325,6 +327,9 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         self._tab2_diameter_label = diameter_label
         self._tab2_diameter_entry = diameter_entry
         self._tab2_entries["Durchmesser (mm):"] = diameter_entry
+        diameter_entry.textChanged.connect(
+            lambda value, key="Durchmesser (mm):": self._update_entry_value("tab2", key, value)
+        )
 
         side_a_label = QLabel("Seite a (mm):")
         side_a_entry = QLineEdit()
@@ -340,11 +345,20 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         self._tab2_side_b_entry = side_b_entry
         self._tab2_entries["Seite a (mm):"] = side_a_entry
         self._tab2_entries["Seite b (mm):"] = side_b_entry
+        side_a_entry.textChanged.connect(
+            lambda value, key="Seite a (mm):": self._update_entry_value("tab2", key, value)
+        )
+        side_b_entry.textChanged.connect(
+            lambda value, key="Seite b (mm):": self._update_entry_value("tab2", key, value)
+        )
 
         layout.addWidget(QLabel("Volumenstrom:"), 3, 0)
         entry_flow = QLineEdit()
         layout.addWidget(entry_flow, 3, 1)
         self._tab2_entries["Volumenstrom"] = entry_flow
+        entry_flow.textChanged.connect(
+            lambda value, key="Volumenstrom": self._update_entry_value("tab2", key, value)
+        )
 
         flow_unit_combo = QComboBox()
         flow_unit_combo.addItems(["m³/h", "m³/s"])
@@ -357,24 +371,38 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             entry = QLineEdit()
             layout.addWidget(entry, 4 + i, 1)
             self._tab2_entries[label] = entry
+            entry.textChanged.connect(
+                lambda value, key=label: self._update_entry_value("tab2", key, value)
+            )
 
         layout.addWidget(QLabel("Strömungsgeschwindigkeit (m/s):"), 6, 0)
         entry_velocity = QLineEdit()
         entry_velocity.setReadOnly(True)
         layout.addWidget(entry_velocity, 6, 1)
         self._tab2_entries["Strömungsgeschwindigkeit (m/s):"] = entry_velocity
+        entry_velocity.textChanged.connect(
+            lambda value, key="Strömungsgeschwindigkeit (m/s):": self._update_entry_value(
+                "tab2", key, value
+            )
+        )
 
         layout.addWidget(QLabel("Reynolds-Zahl:"), 7, 0)
         entry_reynolds = QLineEdit()
         entry_reynolds.setReadOnly(True)
         layout.addWidget(entry_reynolds, 7, 1)
         self._tab2_entries["Reynolds-Zahl:"] = entry_reynolds
+        entry_reynolds.textChanged.connect(
+            lambda value, key="Reynolds-Zahl:": self._update_entry_value("tab2", key, value)
+        )
 
         layout.addWidget(QLabel("Strömungsart:"), 7, 2)
         entry_flowtype = QLineEdit()
         entry_flowtype.setReadOnly(True)
         layout.addWidget(entry_flowtype, 7, 3)
         self._tab2_entries["Strömungsart:"] = entry_flowtype
+        entry_flowtype.textChanged.connect(
+            lambda value, key="Strömungsart:": self._update_entry_value("tab2", key, value)
+        )
 
         norm_check = QCheckBox("Heatrix Normalbedingungen")
         norm_check.toggled.connect(self._on_tab2_toggle_norm)
@@ -399,6 +427,9 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             entry.setText(default)
             layout.addWidget(entry, i, 1)
             self._tab3_entries[label_text] = entry
+            entry.textChanged.connect(
+                lambda value, key=label_text: self._update_entry_value("tab3", key, value)
+            )
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab3)
@@ -922,6 +953,17 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
     def _on_tab3_efficiency_changed(self, _text: str) -> None:
         if self._tab3_use_tab1_power_check is not None and self._tab3_use_tab1_power_check.isChecked():
             self._calculate_tab3()
+
+    def _on_tab_changed(self, index: int) -> None:
+        self._ui_state["active_tab"] = int(index)
+
+    def _update_entry_value(self, tab_key: str, entry_key: str, value: str) -> None:
+        if tab_key == "tab1":
+            self._tab1_inputs.setdefault("entries", {})[entry_key] = value
+        elif tab_key == "tab2":
+            self._tab2_inputs.setdefault("entries", {})[entry_key] = value
+        elif tab_key == "tab3":
+            self._tab3_inputs.setdefault("entries", {})[entry_key] = value
 
     def _store_tab1_inputs(self) -> None:
         self._tab1_inputs["zustand"] = (
