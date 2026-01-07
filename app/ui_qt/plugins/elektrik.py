@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QTabWidget,
     QWidget,
 )
@@ -80,9 +81,10 @@ class ElektrikQtPlugin(QtPlugin):
         layout.addWidget(tab_widget)
 
         single_group = QGroupBox("Einphasig")
+        single_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         single_layout = make_grid()
         single_group.setLayout(single_layout)
-        calculator_layout.addWidget(single_group)
+        calculator_layout.addWidget(single_group, 1)
 
         single_layout.addWidget(QLabel("Formel: P = U × I"), 0, 0, 1, 2)
         single_layout.addWidget(QLabel("Spannung U [V]"), 1, 0)
@@ -97,9 +99,10 @@ class ElektrikQtPlugin(QtPlugin):
         single_layout.addWidget(single_result_label, 4, 0, 1, 2)
 
         three_group = QGroupBox("Dreiphasig")
+        three_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         three_layout = make_grid()
         three_group.setLayout(three_layout)
-        calculator_layout.addWidget(three_group)
+        calculator_layout.addWidget(three_group, 1)
 
         three_layout.addWidget(QLabel("Formel: P = U × I × √3"), 0, 0, 1, 2)
         three_layout.addWidget(QLabel("Außenleiterspannung U [V]"), 1, 0)
