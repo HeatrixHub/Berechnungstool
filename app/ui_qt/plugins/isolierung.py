@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QSizePolicy,
     QSpinBox,
     QTableView,
     QTableWidget,
@@ -789,26 +790,30 @@ class IsolierungQtPlugin(QtPlugin):
 
         summary_layout = make_hbox()
         self._build_given_group = QGroupBox("Gegebene Maße")
+        self._build_given_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         given_layout = make_grid()
         self._build_given_labels = self._build_dimension_summary(given_layout)
         self._build_given_group.setLayout(given_layout)
-        summary_layout.addWidget(self._build_given_group)
+        summary_layout.addWidget(self._build_given_group, 1)
 
         self._build_calc_group = QGroupBox("Berechnete Maße")
+        self._build_calc_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         calc_layout = make_grid()
         self._build_calc_labels = self._build_dimension_summary(calc_layout)
         self._build_calc_group.setLayout(calc_layout)
-        summary_layout.addWidget(self._build_calc_group)
+        summary_layout.addWidget(self._build_calc_group, 1)
 
         layer_info_group = QGroupBox("Schichten")
+        layer_info_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layer_info_layout = make_vbox()
         self._build_layer_count_label = QLabel("–")
         layer_info_layout.addWidget(self._build_layer_count_label)
         layer_info_group.setLayout(layer_info_layout)
-        summary_layout.addWidget(layer_info_group)
+        summary_layout.addWidget(layer_info_group, 1)
         results_layout.addLayout(summary_layout)
 
         self._build_results_table = QTableWidget(0, 6)
+        self._build_results_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._build_results_table.setHorizontalHeaderLabels(
             ["Schicht", "Material", "Platte", "L [mm]", "B [mm]", "H [mm]"]
         )
