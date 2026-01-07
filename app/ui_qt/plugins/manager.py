@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+import importlib
+from typing import Callable, Sequence
 
+from app.core.plugin_registry import RegistryError
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 
@@ -29,7 +31,7 @@ class QtPluginManager:
             if plugin_spec.identifier in self._plugins:
                 logger.warning("Duplicate plugin identifier %s skipped.", plugin_spec.identifier)
                 continue
-            plugin = plugin_spec.plugin_cls()
+            plugin = self._load_plugin_instance(plugin_spec)
             self._apply_identifier(plugin, plugin_spec.identifier)
             plugin.attach(self._context)
             self._plugins[plugin_spec.identifier] = plugin
@@ -75,3 +77,47 @@ class QtPluginManager:
                 setattr(plugin, "_identifier", identifier)
             return
         setattr(plugin, "_identifier", identifier)
+
+    @staticmethod
+    def _load_plugin_instance(plugin_spec: QtPluginSpec) -> QtPlugin:
+        try:
+            module = importlib.import_module(plugin_spec.module)
+            plugin_factory = QtPluginManager._resolve_factory(module, plugin_spec)
+            plugin = plugin_factory()
+        except Exception as exc:
+            logger.exception(
+                "Failed to load Qt plugin %s from %s.%s.",
+                plugin_spec.identifier,
+                plugin_spec.module,
+                plugin_spec.class_name or plugin_spec.factory_name,
+            )
+            raise RegistryError(
+                f"Qt plugin {plugin_spec.identifier} konnte nicht geladen werden"
+            ) from exc
+        if not isinstance(plugin, QtPlugin):
+            raise RegistryError(
+                f"Qt plugin {plugin_spec.identifier} ist kein QtPlugin"
+            )
+        return plugin
+
+    @staticmethod
+    def _resolve_factory(
+        module: object, plugin_spec: QtPluginSpec
+    ) -> type[QtPlugin] | Callable[[], QtPlugin]:
+        if plugin_spec.class_name:
+            try:
+                return getattr(module, plugin_spec.class_name)
+            except AttributeError as exc:
+                raise RegistryError(
+                    f"Qt plugin {plugin_spec.identifier} hat keine Klasse {plugin_spec.class_name}"
+                ) from exc
+        if plugin_spec.factory_name:
+            try:
+                return getattr(module, plugin_spec.factory_name)
+            except AttributeError as exc:
+                raise RegistryError(
+                    f"Qt plugin {plugin_spec.identifier} hat keine Factory {plugin_spec.factory_name}"
+                ) from exc
+        raise RegistryError(
+            f"Qt plugin {plugin_spec.identifier} benötigt class_name oder factory_name"
+        )
