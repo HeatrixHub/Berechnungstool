@@ -7,7 +7,7 @@ from typing import Tuple, Type
 
 from app.ui_qt.plugins.base import QtAppContext
 from app.ui_qt.plugins.manager import QtPluginManager
-from app.ui_qt.project_manager import ProjectManagerUI
+from app.ui_qt.projects.tab import ProjectsTab
 
 
 class _StubApplication:
@@ -76,20 +76,15 @@ def main() -> int:
     if hasattr(window, "setCentralWidget"):
         window.setCentralWidget(tab_widget)
     context = QtAppContext(main_window=window, tab_widget=tab_widget)
+    plugin_manager = QtPluginManager(context)
+    ProjectsTab(tab_widget, plugin_manager=plugin_manager)
 
     if importlib.util.find_spec("PySide6") is not None:
         from app.ui_qt.global_tabs.isolierungen_db import IsolierungenDbTab
 
         IsolierungenDbTab(tab_widget, title="Isolierungen DB")
 
-    plugin_manager = QtPluginManager(context)
     plugin_manager.load_plugins()
-    project_manager = ProjectManagerUI(
-        main_window=window,
-        plugin_manager=plugin_manager,
-        tab_widget=tab_widget,
-    )
-    project_manager.attach()
 
     if hasattr(window, "setWindowTitle"):
         window.setWindowTitle("Heatrix Berechnungstools")
