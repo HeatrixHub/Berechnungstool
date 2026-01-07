@@ -7,6 +7,7 @@ from typing import Tuple, Type
 
 from app.ui_qt.plugins.base import QtAppContext
 from app.ui_qt.plugins.manager import QtPluginManager
+from app.ui_qt.project_manager import ProjectManagerUI
 
 
 class _StubApplication:
@@ -68,6 +69,8 @@ def main() -> int:
 
     plugin_manager = QtPluginManager(context)
     plugin_manager.load_plugins()
+    project_manager = ProjectManagerUI(main_window=window, plugin_manager=plugin_manager)
+    project_manager.attach()
 
     if hasattr(window, "setWindowTitle"):
         window.setWindowTitle("Heatrix Berechnungstools")
