@@ -16,6 +16,8 @@ class ProjectRecord:
     id: str
     name: str
     author: str
+    description: str
+    metadata: Dict[str, Any]
     created_at: str
     updated_at: str
     plugin_states: Dict[str, Any]
@@ -54,6 +56,8 @@ class ProjectStore:
         *,
         name: str,
         author: str,
+        description: str = "",
+        metadata: Dict[str, Any] | None = None,
         plugin_states: Dict[str, Any],
         ui_state: Dict[str, Any] | None = None,
         project_id: str | None = None,
@@ -62,6 +66,7 @@ class ProjectStore:
 
         sanitized_states = self._ensure_json_serializable(plugin_states)
         sanitized_ui_state = self._ensure_json_serializable(ui_state or {})
+        sanitized_metadata = self._ensure_json_serializable(metadata or {})
         now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
         if project_id:
@@ -69,6 +74,8 @@ class ProjectStore:
                 project_id,
                 name=name,
                 author=author,
+                description=description,
+                metadata=sanitized_metadata,
                 plugin_states=sanitized_states,
                 ui_state=sanitized_ui_state,
                 updated_at=now,
@@ -77,6 +84,8 @@ class ProjectStore:
             record = self._create_project(
                 name=name,
                 author=author,
+                description=description,
+                metadata=sanitized_metadata,
                 plugin_states=sanitized_states,
                 ui_state=sanitized_ui_state,
                 created_at=now,
@@ -119,6 +128,8 @@ class ProjectStore:
             id=str(data.get("id")),
             name=str(data.get("name", "")),
             author=str(data.get("author", "")),
+            description=str(data.get("description", "")),
+            metadata=data.get("metadata", {}) or {},
             created_at=str(data.get("created_at", "")),
             updated_at=str(data.get("updated_at", "")),
             plugin_states=data.get("plugin_states", {}) or {},
@@ -139,6 +150,8 @@ class ProjectStore:
         *,
         name: str,
         author: str,
+        description: str,
+        metadata: Dict[str, Any],
         plugin_states: Dict[str, Any],
         ui_state: Dict[str, Any],
         created_at: str,
@@ -150,6 +163,8 @@ class ProjectStore:
             "id": uuid4().hex,
             "name": name,
             "author": author,
+            "description": description,
+            "metadata": metadata,
             "created_at": created_at,
             "updated_at": updated_at,
             "plugin_states": plugin_states,
@@ -164,6 +179,8 @@ class ProjectStore:
         *,
         name: str,
         author: str,
+        description: str,
+        metadata: Dict[str, Any],
         plugin_states: Dict[str, Any],
         ui_state: Dict[str, Any],
         updated_at: str,
@@ -174,6 +191,8 @@ class ProjectStore:
                     {
                         "name": name,
                         "author": author,
+                        "description": description,
+                        "metadata": metadata,
                         "plugin_states": plugin_states,
                         "ui_state": ui_state,
                         "updated_at": updated_at,
