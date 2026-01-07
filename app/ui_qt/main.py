@@ -6,7 +6,7 @@ import sys
 from typing import Tuple, Type
 
 from app.ui_qt.plugins.base import QtAppContext
-from app.ui_qt.plugins.registry import get_plugins
+from app.ui_qt.plugins.manager import QtPluginManager
 
 
 class _StubApplication:
@@ -56,19 +56,6 @@ def _resolve_qt_widgets() -> Tuple[Type[object], Type[object], Type[object]]:
     return _StubApplication, _StubMainWindow, _StubTabWidget
 
 
-def _apply_identifier(plugin: object, identifier: str) -> None:
-    if hasattr(plugin, "_identifier"):
-        setattr(plugin, "_identifier", identifier)
-        return
-    if hasattr(plugin, "identifier"):
-        try:
-            setattr(plugin, "identifier", identifier)
-        except AttributeError:
-            setattr(plugin, "_identifier", identifier)
-        return
-    setattr(plugin, "_identifier", identifier)
-
-
 def main() -> int:
     QApplication, QMainWindow, QTabWidget = _resolve_qt_widgets()
 
@@ -79,13 +66,8 @@ def main() -> int:
         window.setCentralWidget(tab_widget)
     context = QtAppContext(main_window=window, tab_widget=tab_widget)
 
-    for plugin_spec in get_plugins():
-        plugin = plugin_spec.plugin_cls()
-        _apply_identifier(plugin, plugin_spec.identifier)
-        plugin.attach(context)
-        widget = getattr(plugin, "widget", None)
-        if widget is not None and hasattr(tab_widget, "addTab"):
-            tab_widget.addTab(widget, plugin.name)
+    plugin_manager = QtPluginManager(context)
+    plugin_manager.load_plugins()
 
     if hasattr(window, "setWindowTitle"):
         window.setWindowTitle("Heatrix Berechnungstools")
