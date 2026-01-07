@@ -14,7 +14,8 @@ class PluginSpec:
     identifier: str
     name: str
     module: str
-    class_name: str
+    class_name: str | None = None
+    factory_name: str | None = None
     enabled: bool = True
 
 
@@ -75,12 +76,19 @@ def load_registry(path: Path | None = None) -> List[PluginSpec]:
         if not isinstance(entry, dict):
             continue
         try:
+            class_name = entry.get("class_name") or entry.get("qt_class")
+            factory_name = entry.get("factory") or entry.get("factory_name")
+            if not class_name and not factory_name:
+                raise RegistryError(
+                    "Registry-Eintrag benötigt class_name oder factory"
+                )
             specs.append(
                 PluginSpec(
                     identifier=str(entry["identifier"]),
                     name=str(entry["name"]),
                     module=str(entry["module"]),
-                    class_name=str(entry["class_name"]),
+                    class_name=str(class_name) if class_name else None,
+                    factory_name=str(factory_name) if factory_name else None,
                     enabled=bool(entry.get("enabled", True)),
                 )
             )
