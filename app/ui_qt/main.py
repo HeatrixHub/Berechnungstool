@@ -21,9 +21,19 @@ class _StubApplication:
 class _StubTabWidget:
     def __init__(self) -> None:
         self.tabs: list[tuple[object, str]] = []
+        self._current_index = 0
 
     def addTab(self, widget: object, title: str) -> None:
         self.tabs.append((widget, title))
+
+    def currentIndex(self) -> int:
+        return self._current_index
+
+    def setCurrentIndex(self, index: int) -> None:
+        self._current_index = index
+
+    def count(self) -> int:
+        return len(self.tabs)
 
 
 class _StubMainWindow:
@@ -69,7 +79,11 @@ def main() -> int:
 
     plugin_manager = QtPluginManager(context)
     plugin_manager.load_plugins()
-    project_manager = ProjectManagerUI(main_window=window, plugin_manager=plugin_manager)
+    project_manager = ProjectManagerUI(
+        main_window=window,
+        plugin_manager=plugin_manager,
+        tab_widget=tab_widget,
+    )
     project_manager.attach()
 
     if hasattr(window, "setWindowTitle"):

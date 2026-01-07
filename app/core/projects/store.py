@@ -19,6 +19,7 @@ class ProjectRecord:
     created_at: str
     updated_at: str
     plugin_states: Dict[str, Any]
+    ui_state: Dict[str, Any]
 
 
 class ProjectStore:
@@ -54,11 +55,13 @@ class ProjectStore:
         name: str,
         author: str,
         plugin_states: Dict[str, Any],
+        ui_state: Dict[str, Any] | None = None,
         project_id: str | None = None,
     ) -> ProjectRecord:
         """Erstellt oder aktualisiert einen Projekt-Datensatz."""
 
         sanitized_states = self._ensure_json_serializable(plugin_states)
+        sanitized_ui_state = self._ensure_json_serializable(ui_state or {})
         now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
         if project_id:
@@ -67,6 +70,7 @@ class ProjectStore:
                 name=name,
                 author=author,
                 plugin_states=sanitized_states,
+                ui_state=sanitized_ui_state,
                 updated_at=now,
             )
         else:
@@ -74,6 +78,7 @@ class ProjectStore:
                 name=name,
                 author=author,
                 plugin_states=sanitized_states,
+                ui_state=sanitized_ui_state,
                 created_at=now,
                 updated_at=now,
             )
@@ -117,6 +122,7 @@ class ProjectStore:
             created_at=str(data.get("created_at", "")),
             updated_at=str(data.get("updated_at", "")),
             plugin_states=data.get("plugin_states", {}) or {},
+            ui_state=data.get("ui_state", {}) or {},
         )
 
     def _ensure_json_serializable(self, states: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,6 +140,7 @@ class ProjectStore:
         name: str,
         author: str,
         plugin_states: Dict[str, Any],
+        ui_state: Dict[str, Any],
         created_at: str,
         updated_at: str,
     ) -> ProjectRecord:
@@ -146,6 +153,7 @@ class ProjectStore:
             "created_at": created_at,
             "updated_at": updated_at,
             "plugin_states": plugin_states,
+            "ui_state": ui_state,
         }
         self._data.setdefault("projects", []).append(project)
         return self._to_record(project)
@@ -157,6 +165,7 @@ class ProjectStore:
         name: str,
         author: str,
         plugin_states: Dict[str, Any],
+        ui_state: Dict[str, Any],
         updated_at: str,
     ) -> ProjectRecord:
         for project in self._data.get("projects", []):
@@ -166,6 +175,7 @@ class ProjectStore:
                         "name": name,
                         "author": author,
                         "plugin_states": plugin_states,
+                        "ui_state": ui_state,
                         "updated_at": updated_at,
                     }
                 )
