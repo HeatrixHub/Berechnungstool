@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.ui_qt.ui_helpers import (
+    apply_form_layout_defaults,
     create_button_row,
     create_section_header,
     make_grid,
@@ -298,6 +299,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         calculate_button.clicked.connect(self._calculate_tab1)
         layout.addLayout(create_button_row([calculate_button]), 13, 0, 1, 4)
 
+        apply_form_layout_defaults(layout, label_columns=(0, 2), field_columns=(1, 3))
         return tab
 
     def _build_tab2(self) -> QWidget:
@@ -406,6 +408,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         calculate_button.clicked.connect(self._calculate_tab2)
         layout.addLayout(create_button_row([calculate_button]), 10, 1, 1, 2)
 
+        apply_form_layout_defaults(layout, label_columns=(0, 2), field_columns=(1, 3))
         return tab
 
     def _build_tab3(self) -> QWidget:
@@ -437,6 +440,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         if efficiency_entry is not None:
             efficiency_entry.textChanged.connect(self._on_tab3_efficiency_changed)
 
+        apply_form_layout_defaults(layout)
         return tab
 
     def _sync_tab1_view(self) -> None:

@@ -25,6 +25,7 @@ from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
 from app.ui_qt.ui_helpers import (
+    apply_form_layout_defaults,
     create_button_row,
     create_section_header,
     make_grid,
@@ -151,6 +152,7 @@ class ProjectsTab:
         form_layout.addWidget(QLabel("Metadaten (JSON):"), 3, 0)
         form_layout.addWidget(self._metadata_input, 3, 1)
 
+        apply_form_layout_defaults(form_layout)
         details_layout.addWidget(form)
 
         self._status_label = QLabel("Kein Projekt ausgewählt.")

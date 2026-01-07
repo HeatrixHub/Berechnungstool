@@ -51,6 +51,28 @@ def make_grid(parent: QWidget | None = None) -> QGridLayout:
     return layout
 
 
+def apply_form_layout_defaults(
+    layout: QGridLayout,
+    *,
+    label_columns: Sequence[int] = (0,),
+    field_columns: Sequence[int] = (1,),
+    label_alignment: Qt.Alignment = Qt.AlignRight | Qt.AlignVCenter,
+    field_stretch: int = 1,
+) -> QGridLayout:
+    for column in label_columns:
+        layout.setColumnStretch(column, 0)
+    for column in field_columns:
+        layout.setColumnStretch(column, field_stretch)
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        widget = item.widget() if item is not None else None
+        if isinstance(widget, QLabel):
+            _row, column, _row_span, _column_span = layout.getItemPosition(index)
+            if column in label_columns:
+                layout.setAlignment(widget, label_alignment)
+    return layout
+
+
 def create_button_row(
     buttons: Sequence[QPushButton],
     align: Qt.Alignment = Qt.AlignRight,
