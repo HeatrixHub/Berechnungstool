@@ -56,18 +56,20 @@ class IsolierungQtPlugin(QtPlugin):
         self._materials = []
         self._material_names: list[str] = []
 
-        self._inputs: dict[str, Any] = {
-            "T_left": "",
-            "T_inf": "",
-            "h": "",
-            "layers": [{"thickness": "", "family": "", "variant": ""}],
+        self._state: dict[str, Any] = {
+            "inputs": {
+                "T_left": "",
+                "T_inf": "",
+                "h": "",
+                "layers": [{"thickness": "", "family": "", "variant": ""}],
+            },
+            "results": {
+                "status": "idle",
+                "message": "",
+                "data": {},
+            },
+            "ui": {"active_tab": 0, "layers": []},
         }
-        self._results: dict[str, Any] = {
-            "status": "idle",
-            "message": "",
-            "data": {},
-        }
-        self._ui_state: dict[str, Any] = {"active_tab": 0}
 
     @property
     def name(self) -> str:
@@ -111,25 +113,33 @@ class IsolierungQtPlugin(QtPlugin):
         self._sync_internal_state_from_widgets()
         state = {
             "inputs": {
-                "T_left": self._inputs.get("T_left", ""),
-                "T_inf": self._inputs.get("T_inf", ""),
-                "h": self._inputs.get("h", ""),
-                "layers": [dict(layer) for layer in self._inputs.get("layers", [])],
+                "T_left": self._state["inputs"].get("T_left", ""),
+                "T_inf": self._state["inputs"].get("T_inf", ""),
+                "h": self._state["inputs"].get("h", ""),
+                "layers": [dict(layer) for layer in self._state["inputs"].get("layers", [])],
             },
-            "results": dict(self._results),
-            "ui": dict(self._ui_state),
+            "results": dict(self._state["results"]),
+            "ui": dict(self._state["ui"]),
         }
         return self.validate_state(state)
 
+    def import_state(self, state: dict[str, Any]) -> None:
+        normalized = QtPlugin.validate_state(self, state)
+        self._apply_state(normalized)
+        self.refresh_view()
+
     def apply_state(self, state: dict[str, Any]) -> None:
+        self._apply_state(state)
+
+    def _apply_state(self, state: dict[str, Any]) -> None:
         inputs = state.get("inputs", {})
         results = state.get("results", {})
         ui_state = state.get("ui", {})
 
         if isinstance(inputs, dict):
-            self._inputs["T_left"] = self._coerce_str(inputs.get("T_left", ""))
-            self._inputs["T_inf"] = self._coerce_str(inputs.get("T_inf", ""))
-            self._inputs["h"] = self._coerce_str(inputs.get("h", ""))
+            self._state["inputs"]["T_left"] = self._coerce_str(inputs.get("T_left", ""))
+            self._state["inputs"]["T_inf"] = self._coerce_str(inputs.get("T_inf", ""))
+            self._state["inputs"]["h"] = self._coerce_str(inputs.get("h", ""))
             layers = inputs.get("layers", [])
             if isinstance(layers, list) and layers:
                 normalized_layers = []
@@ -144,10 +154,10 @@ class IsolierungQtPlugin(QtPlugin):
                         }
                     )
                 if normalized_layers:
-                    self._inputs["layers"] = normalized_layers
+                    self._state["inputs"]["layers"] = normalized_layers
 
         if isinstance(results, dict):
-            self._results = {
+            self._state["results"] = {
                 "status": self._coerce_str(results.get("status", "idle")),
                 "message": self._coerce_str(results.get("message", "")),
                 "data": results.get("data", {}),
@@ -156,17 +166,32 @@ class IsolierungQtPlugin(QtPlugin):
         if isinstance(ui_state, dict):
             active_tab = ui_state.get("active_tab")
             if isinstance(active_tab, int):
-                self._ui_state["active_tab"] = active_tab
+                self._state["ui"]["active_tab"] = active_tab
+            ui_layers = ui_state.get("layers")
+            if isinstance(ui_layers, list):
+                normalized_ui_layers = []
+                for layer in ui_layers:
+                    if not isinstance(layer, dict):
+                        continue
+                    family_index = layer.get("family_index", 0)
+                    variant_index = layer.get("variant_index", 0)
+                    normalized_ui_layers.append(
+                        {
+                            "family_index": family_index if isinstance(family_index, int) else 0,
+                            "variant_index": variant_index if isinstance(variant_index, int) else 0,
+                        }
+                    )
+                self._state["ui"]["layers"] = normalized_ui_layers
 
     def refresh_view(self) -> None:
-        self._set_input_text(self._T_left_input, self._inputs.get("T_left", ""))
-        self._set_input_text(self._T_inf_input, self._inputs.get("T_inf", ""))
-        self._set_input_text(self._h_input, self._inputs.get("h", ""))
+        self._set_input_text(self._T_left_input, self._state["inputs"].get("T_left", ""))
+        self._set_input_text(self._T_inf_input, self._state["inputs"].get("T_inf", ""))
+        self._set_input_text(self._h_input, self._state["inputs"].get("h", ""))
 
-        layers = self._inputs.get("layers", [])
+        layers = self._state["inputs"].get("layers", [])
         if not isinstance(layers, list) or not layers:
             layers = [{"thickness": "", "family": "", "variant": ""}]
-            self._inputs["layers"] = layers
+            self._state["inputs"]["layers"] = layers
         self._set_layer_count(len(layers))
 
         for layer, widgets in zip(layers, self._layer_widgets, strict=False):
@@ -187,7 +212,7 @@ class IsolierungQtPlugin(QtPlugin):
                 self._layer_count_input.setValue(len(layers))
 
         if self._tab_widget is not None:
-            self._tab_widget.setCurrentIndex(self._ui_state.get("active_tab", 0))
+            self._tab_widget.setCurrentIndex(self._state["ui"].get("active_tab", 0))
 
     def _build_calculation_tab(self) -> QWidget:
         tab = QWidget()
@@ -197,12 +222,15 @@ class IsolierungQtPlugin(QtPlugin):
         inputs_layout = QGridLayout()
         inputs_layout.addWidget(QLabel("Temperatur links T_left [°C]"), 0, 0)
         self._T_left_input = QLineEdit()
+        self._T_left_input.textChanged.connect(self._on_text_input_changed)
         inputs_layout.addWidget(self._T_left_input, 0, 1)
         inputs_layout.addWidget(QLabel("Umgebungstemperatur T_inf [°C]"), 1, 0)
         self._T_inf_input = QLineEdit()
+        self._T_inf_input.textChanged.connect(self._on_text_input_changed)
         inputs_layout.addWidget(self._T_inf_input, 1, 1)
         inputs_layout.addWidget(QLabel("Wärmeübergangskoeffizient h [W/m²K]"), 2, 0)
         self._h_input = QLineEdit()
+        self._h_input.textChanged.connect(self._on_text_input_changed)
         inputs_layout.addWidget(self._h_input, 2, 1)
         inputs_group.setLayout(inputs_layout)
         layout.addWidget(inputs_group)
@@ -290,6 +318,7 @@ class IsolierungQtPlugin(QtPlugin):
         row = index + 1
         label = QLabel(f"{row}")
         thickness_input = QLineEdit()
+        thickness_input.textChanged.connect(lambda text, idx=index: self._on_thickness_changed(idx, text))
         family_combo = QComboBox()
         variant_combo = QComboBox()
         family_combo.currentTextChanged.connect(
@@ -342,7 +371,7 @@ class IsolierungQtPlugin(QtPlugin):
         widgets.variant_lookup = variant_lookup
 
     def _on_layer_count_changed(self, value: int) -> None:
-        layers = self._inputs.get("layers", [])
+        layers = self._state["inputs"].get("layers", [])
         if not isinstance(layers, list):
             layers = []
         if value > len(layers):
@@ -352,28 +381,35 @@ class IsolierungQtPlugin(QtPlugin):
             layers = layers[:value]
         if not layers:
             layers = [{"thickness": "", "family": "", "variant": ""}]
-        self._inputs["layers"] = layers
+        self._state["inputs"]["layers"] = layers
         self.refresh_view()
 
     def _on_family_changed(self, index: int, text: str) -> None:
-        if index >= len(self._inputs.get("layers", [])):
+        if index >= len(self._state["inputs"].get("layers", [])):
             return
         family = "" if text == self._FAMILY_PLACEHOLDER else text
-        self._inputs["layers"][index]["family"] = family
-        self._inputs["layers"][index]["variant"] = ""
+        self._state["inputs"]["layers"][index]["family"] = family
+        self._state["inputs"]["layers"][index]["variant"] = ""
+        self._ensure_ui_layer_state(index)
+        self._state["ui"]["layers"][index]["family_index"] = self._layer_widgets[index].family_combo.currentIndex()
+        self._state["ui"]["layers"][index]["variant_index"] = 0
         if index < len(self._layer_widgets):
             self._populate_variant_combo(self._layer_widgets[index], family, "")
 
     def _on_variant_changed(self, index: int) -> None:
-        if index >= len(self._inputs.get("layers", [])):
+        if index >= len(self._state["inputs"].get("layers", [])):
             return
         widgets = self._layer_widgets[index]
         display = widgets.variant_combo.currentText()
         if display == self._VARIANT_PLACEHOLDER:
-            self._inputs["layers"][index]["variant"] = ""
+            self._state["inputs"]["layers"][index]["variant"] = ""
+            self._ensure_ui_layer_state(index)
+            self._state["ui"]["layers"][index]["variant_index"] = widgets.variant_combo.currentIndex()
             return
         variant_name, thickness = widgets.variant_lookup.get(display, ("", 0.0))
-        self._inputs["layers"][index]["variant"] = variant_name
+        self._state["inputs"]["layers"][index]["variant"] = variant_name
+        self._ensure_ui_layer_state(index)
+        self._state["ui"]["layers"][index]["variant_index"] = widgets.variant_combo.currentIndex()
         if variant_name and not widgets.thickness_input.text():
             widgets.thickness_input.setText(self._format_number(thickness))
 
@@ -396,13 +432,13 @@ class IsolierungQtPlugin(QtPlugin):
                 parsed["T_inf"],
                 parsed["h"],
             )
-            self._results = {
+            self._state["results"] = {
                 "status": "ok",
                 "message": "",
                 "data": result,
             }
         except Exception as exc:
-            self._results = {
+            self._state["results"] = {
                 "status": "error",
                 "message": str(exc),
                 "data": {},
@@ -410,13 +446,13 @@ class IsolierungQtPlugin(QtPlugin):
         self.refresh_view()
 
     def _parse_inputs(self) -> dict[str, Any]:
-        T_left = self._parse_float(self._inputs.get("T_left", ""))
-        T_inf = self._parse_float(self._inputs.get("T_inf", ""))
-        h = self._parse_float(self._inputs.get("h", ""))
+        T_left = self._parse_float(self._state["inputs"].get("T_left", ""))
+        T_inf = self._parse_float(self._state["inputs"].get("T_inf", ""))
+        h = self._parse_float(self._state["inputs"].get("h", ""))
         if T_left is None or T_inf is None or h is None:
             raise ValueError("Bitte gültige Zahlen für T_left, T_inf und h eingeben.")
 
-        layers = self._inputs.get("layers", [])
+        layers = self._state["inputs"].get("layers", [])
         thicknesses = []
         isolierungen = []
         for layer in layers:
@@ -439,13 +475,14 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _sync_internal_state_from_widgets(self) -> None:
         if self._T_left_input is not None:
-            self._inputs["T_left"] = self._T_left_input.text()
+            self._state["inputs"]["T_left"] = self._T_left_input.text()
         if self._T_inf_input is not None:
-            self._inputs["T_inf"] = self._T_inf_input.text()
+            self._state["inputs"]["T_inf"] = self._T_inf_input.text()
         if self._h_input is not None:
-            self._inputs["h"] = self._h_input.text()
+            self._state["inputs"]["h"] = self._h_input.text()
 
         layers: list[dict[str, str]] = []
+        ui_layers: list[dict[str, int]] = []
         for widgets in self._layer_widgets:
             family_text = widgets.family_combo.currentText()
             if family_text == self._FAMILY_PLACEHOLDER:
@@ -461,15 +498,22 @@ class IsolierungQtPlugin(QtPlugin):
                     "variant": variant_text,
                 }
             )
+            ui_layers.append(
+                {
+                    "family_index": widgets.family_combo.currentIndex(),
+                    "variant_index": widgets.variant_combo.currentIndex(),
+                }
+            )
         if layers:
-            self._inputs["layers"] = layers
+            self._state["inputs"]["layers"] = layers
+            self._state["ui"]["layers"] = ui_layers
 
     def _format_result_text(self) -> str:
-        status = self._results.get("status")
+        status = self._state["results"].get("status")
         if status != "ok":
-            message = self._coerce_str(self._results.get("message", ""))
+            message = self._coerce_str(self._state["results"].get("message", ""))
             return f"Status: Fehler\n{message}" if message else "Status: Bereit"
-        result = self._results.get("data", {})
+        result = self._state["results"].get("data", {})
         if not isinstance(result, dict):
             return "Status: Berechnung abgeschlossen"
         q = result.get("q")
@@ -549,7 +593,28 @@ class IsolierungQtPlugin(QtPlugin):
             combo.setCurrentIndex(index)
 
     def _on_tab_changed(self, index: int) -> None:
-        self._ui_state["active_tab"] = index
+        self._state["ui"]["active_tab"] = index
+
+    def _on_text_input_changed(self, text: str) -> None:
+        if self._T_left_input is not None:
+            self._state["inputs"]["T_left"] = self._T_left_input.text()
+        if self._T_inf_input is not None:
+            self._state["inputs"]["T_inf"] = self._T_inf_input.text()
+        if self._h_input is not None:
+            self._state["inputs"]["h"] = self._h_input.text()
+
+    def _on_thickness_changed(self, index: int, text: str) -> None:
+        if index >= len(self._state["inputs"].get("layers", [])):
+            return
+        self._state["inputs"]["layers"][index]["thickness"] = text
+
+    def _ensure_ui_layer_state(self, index: int) -> None:
+        ui_layers = self._state["ui"].get("layers", [])
+        if not isinstance(ui_layers, list):
+            ui_layers = []
+        while len(ui_layers) <= index:
+            ui_layers.append({"family_index": 0, "variant_index": 0})
+        self._state["ui"]["layers"] = ui_layers
 
 
 __all__ = ["IsolierungQtPlugin"]
