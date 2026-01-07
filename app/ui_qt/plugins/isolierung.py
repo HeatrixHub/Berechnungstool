@@ -1,15 +1,18 @@
 """Qt-Plugin für Isolierungsberechnungen (PySide6-only)."""
 from __future__ import annotations
 
+import csv
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable
+import math
+from typing import Any, Callable, Iterable
 
-from PySide6.QtCore import QSignalBlocker
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
     QComboBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -18,12 +21,16 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSpinBox,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QGraphicsScene,
+    QGraphicsView,
 )
+from openpyxl import Workbook
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.core.isolierungen_db.logic import (
@@ -33,6 +40,7 @@ from app.core.isolierungen_db.logic import (
 from Isolierung.core.database import list_materials, load_material
 from Isolierung.services.schichtaufbau import BuildResult, LayerResult, Plate, compute_plate_dimensions
 from Isolierung.services.tab1_berechnung import perform_calculation, validate_inputs
+from Isolierung.services.zuschnitt import Placement, color_for, pack_plates
 
 
 @dataclass
@@ -50,6 +58,80 @@ class _BuildLayerWidgets:
     thickness_input: QLineEdit
     family_combo: QComboBox
     remove_button: QPushButton
+
+
+@dataclass(frozen=True)
+class _TableColumn:
+    key: str
+    label: str
+    alignment: Qt.AlignmentFlag = Qt.AlignCenter
+    formatter: Callable[[dict[str, Any], Any], str] | None = None
+
+
+class _DictTableModel(QAbstractTableModel):
+    def __init__(
+        self,
+        columns: list[_TableColumn],
+        rows: list[dict[str, Any]] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._columns = columns
+        self._rows = rows or []
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
+        if parent.isValid():
+            return 0
+        return len(self._rows)
+
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
+        if parent.isValid():
+            return 0
+        return len(self._columns)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # noqa: N802 - Qt API
+        if not index.isValid():
+            return None
+        row = self._rows[index.row()]
+        column = self._columns[index.column()]
+        if role == Qt.DisplayRole:
+            value = row.get(column.key)
+            if column.formatter is not None:
+                return column.formatter(row, value)
+            if value is None:
+                return "–"
+            return str(value)
+        if role == Qt.TextAlignmentRole:
+            return column.alignment
+        return None
+
+    def headerData(  # noqa: N802 - Qt API
+        self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole
+    ) -> Any:
+        if role != Qt.DisplayRole:
+            return None
+        if orientation == Qt.Horizontal and 0 <= section < len(self._columns):
+            return self._columns[section].label
+        return None
+
+    def set_rows(self, rows: list[dict[str, Any]]) -> None:
+        self.beginResetModel()
+        self._rows = rows
+        self.endResetModel()
+
+    def rows(self) -> list[dict[str, Any]]:
+        return self._rows
+
+
+class _PreviewView(QGraphicsView):
+    def __init__(self, on_resize: Callable[[], None], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._on_resize = on_resize
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().resizeEvent(event)
+        if self._on_resize is not None:
+            self._on_resize()
 
 
 class IsolierungQtPlugin(QtPlugin):
@@ -87,6 +169,15 @@ class IsolierungQtPlugin(QtPlugin):
         self._build_results_table: QTableWidget | None = None
         self._build_status_label: QLabel | None = None
 
+        self._zuschnitt_kerf_input: QLineEdit | None = None
+        self._zuschnitt_status_label: QLabel | None = None
+        self._zuschnitt_overview_view: QTableView | None = None
+        self._zuschnitt_overview_model: _DictTableModel | None = None
+        self._zuschnitt_results_view: QTableView | None = None
+        self._zuschnitt_results_model: _DictTableModel | None = None
+        self._zuschnitt_preview_scene: QGraphicsScene | None = None
+        self._zuschnitt_preview_view: QGraphicsView | None = None
+
         self._materials = []
         self._material_names: list[str] = []
         self._material_change_handler = self._on_materials_changed
@@ -117,6 +208,19 @@ class IsolierungQtPlugin(QtPlugin):
             "data": {},
         }
         self._build_ui: dict[str, Any] = {"selected_row": -1}
+        self._zuschnitt_inputs: dict[str, Any] = {"kerf": "", "cached_plates": []}
+        self._zuschnitt_results: dict[str, Any] = {
+            "status": "idle",
+            "message": "",
+            "placements": [],
+            "summary": [],
+            "total_cost": None,
+            "total_bin_count": None,
+        }
+        self._zuschnitt_ui: dict[str, Any] = {
+            "selected_placement_row": -1,
+            "selected_summary_row": -1,
+        }
         self._ui_state: dict[str, Any] = {"active_tab": 0}
 
     @property
@@ -150,7 +254,7 @@ class IsolierungQtPlugin(QtPlugin):
 
         tab_widget.addTab(self._build_calculation_tab(), "Berechnung")
         tab_widget.addTab(self._build_schichtaufbau_tab(), "Schichtaufbau")
-        tab_widget.addTab(self._build_placeholder_tab(), "Zuschnitt (in Vorbereitung)")
+        tab_widget.addTab(self._build_zuschnitt_tab(), "Zuschnitt")
 
         container.setLayout(layout)
         self.widget = container
@@ -177,15 +281,21 @@ class IsolierungQtPlugin(QtPlugin):
                 "dimensions": dict(self._build_inputs.get("dimensions", {})),
                 "layers": [dict(layer) for layer in self._build_inputs.get("layers", [])],
             },
+            "zuschnitt": {
+                "kerf": self._zuschnitt_inputs.get("kerf", ""),
+                "cached_plates": list(self._zuschnitt_inputs.get("cached_plates", [])),
+            },
         }
         results = {
             "berechnung": dict(self._calc_results),
             "schichtaufbau": dict(self._build_results),
+            "zuschnitt": dict(self._zuschnitt_results),
         }
         ui = {
             "active_tab": self._ui_state.get("active_tab", 0),
             "berechnung": dict(self._calc_ui),
             "schichtaufbau": dict(self._build_ui),
+            "zuschnitt": dict(self._zuschnitt_ui),
         }
         return self.validate_state({"inputs": inputs, "results": results, "ui": ui})
 
@@ -203,16 +313,18 @@ class IsolierungQtPlugin(QtPlugin):
         ui_state = state.get("ui", {})
 
         if isinstance(inputs, dict):
-            if "berechnung" in inputs or "schichtaufbau" in inputs:
+            if "berechnung" in inputs or "schichtaufbau" in inputs or "zuschnitt" in inputs:
                 self._apply_calc_inputs(inputs.get("berechnung", {}))
                 self._apply_build_inputs(inputs.get("schichtaufbau", {}))
+                self._apply_zuschnitt_inputs(inputs.get("zuschnitt", {}))
             else:
                 self._apply_calc_inputs(inputs)
 
         if isinstance(results, dict):
-            if "berechnung" in results or "schichtaufbau" in results:
+            if "berechnung" in results or "schichtaufbau" in results or "zuschnitt" in results:
                 self._apply_calc_results(results.get("berechnung", {}))
                 self._apply_build_results(results.get("schichtaufbau", {}))
+                self._apply_zuschnitt_results(results.get("zuschnitt", {}))
             else:
                 self._apply_calc_results(results)
 
@@ -220,15 +332,17 @@ class IsolierungQtPlugin(QtPlugin):
             active_tab = ui_state.get("active_tab")
             if isinstance(active_tab, int):
                 self._ui_state["active_tab"] = active_tab
-            if "berechnung" in ui_state or "schichtaufbau" in ui_state:
+            if "berechnung" in ui_state or "schichtaufbau" in ui_state or "zuschnitt" in ui_state:
                 self._apply_calc_ui(ui_state.get("berechnung", {}))
                 self._apply_build_ui(ui_state.get("schichtaufbau", {}))
+                self._apply_zuschnitt_ui(ui_state.get("zuschnitt", {}))
             else:
                 self._apply_calc_ui(ui_state)
 
     def refresh_view(self) -> None:
         self._sync_calculation_view()
         self._sync_schichtaufbau_view()
+        self._sync_zuschnitt_view()
         if self._tab_widget is not None:
             self._tab_widget.setCurrentIndex(self._ui_state.get("active_tab", 0))
 
@@ -327,6 +441,37 @@ class IsolierungQtPlugin(QtPlugin):
         if isinstance(selected_row, int):
             self._build_ui["selected_row"] = selected_row
 
+    def _apply_zuschnitt_inputs(self, inputs: dict[str, Any]) -> None:
+        if not isinstance(inputs, dict):
+            return
+        self._zuschnitt_inputs["kerf"] = self._coerce_str(inputs.get("kerf", ""))
+        cached = inputs.get("cached_plates", [])
+        self._zuschnitt_inputs["cached_plates"] = cached if isinstance(cached, list) else []
+
+    def _apply_zuschnitt_results(self, results: dict[str, Any]) -> None:
+        if not isinstance(results, dict):
+            return
+        placements = results.get("placements", [])
+        summary = results.get("summary", [])
+        self._zuschnitt_results = {
+            "status": self._coerce_str(results.get("status", "idle")) or "idle",
+            "message": self._coerce_str(results.get("message", "")),
+            "placements": placements if isinstance(placements, list) else [],
+            "summary": summary if isinstance(summary, list) else [],
+            "total_cost": results.get("total_cost"),
+            "total_bin_count": results.get("total_bin_count"),
+        }
+
+    def _apply_zuschnitt_ui(self, ui_state: dict[str, Any]) -> None:
+        if not isinstance(ui_state, dict):
+            return
+        selected_placement_row = ui_state.get("selected_placement_row", -1)
+        if isinstance(selected_placement_row, int):
+            self._zuschnitt_ui["selected_placement_row"] = selected_placement_row
+        selected_summary_row = ui_state.get("selected_summary_row", -1)
+        if isinstance(selected_summary_row, int):
+            self._zuschnitt_ui["selected_summary_row"] = selected_summary_row
+
     def _sync_calculation_state_from_widgets(self) -> None:
         if self._T_left_input is not None:
             self._calc_inputs["T_left"] = self._T_left_input.text()
@@ -386,6 +531,10 @@ class IsolierungQtPlugin(QtPlugin):
             )
         if layers:
             self._build_inputs["layers"] = layers
+
+    def _sync_zuschnitt_state_from_widgets(self) -> None:
+        if self._zuschnitt_kerf_input is not None:
+            self._zuschnitt_inputs["kerf"] = self._zuschnitt_kerf_input.text()
 
     def _sync_calculation_view(self) -> None:
         self._set_input_text(self._T_left_input, self._calc_inputs.get("T_left", ""))
@@ -477,6 +626,10 @@ class IsolierungQtPlugin(QtPlugin):
             self._build_missing_materials_warning = None
 
         self._refresh_build_results_view()
+
+    def _sync_zuschnitt_view(self) -> None:
+        self._set_input_text(self._zuschnitt_kerf_input, self._coerce_str(self._zuschnitt_inputs.get("kerf", "")))
+        self._refresh_zuschnitt_results_view()
 
     def _build_calculation_tab(self) -> QWidget:
         tab = QWidget()
@@ -656,13 +809,109 @@ class IsolierungQtPlugin(QtPlugin):
         tab.setLayout(layout)
         return tab
 
-    @staticmethod
-    def _build_placeholder_tab() -> QWidget:
+    def _build_zuschnitt_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout()
-        placeholder = QLabel("Der Zuschnitt-Tab wird in einem späteren Schritt ergänzt.")
-        placeholder.setWordWrap(True)
-        layout.addWidget(placeholder)
+
+        header = QLabel("Zuschnittoptimierung")
+        header_font = QFont()
+        header_font.setPointSize(12)
+        header_font.setBold(True)
+        header.setFont(header_font)
+        layout.addWidget(header)
+
+        settings_group = QGroupBox("Einstellungen")
+        settings_layout = QGridLayout()
+        settings_layout.addWidget(QLabel("Schnittfuge [mm]"), 0, 0)
+        self._zuschnitt_kerf_input = QLineEdit()
+        self._zuschnitt_kerf_input.textChanged.connect(self._on_zuschnitt_kerf_changed)
+        settings_layout.addWidget(self._zuschnitt_kerf_input, 0, 1)
+
+        button_layout = QHBoxLayout()
+        import_button = QPushButton("Platten übernehmen")
+        import_button.clicked.connect(self._on_zuschnitt_import_plates)
+        calculate_button = QPushButton("Berechnen")
+        calculate_button.clicked.connect(self._on_zuschnitt_calculate)
+        button_layout.addWidget(import_button)
+        button_layout.addWidget(calculate_button)
+        button_layout.addStretch()
+        settings_layout.addLayout(button_layout, 0, 2)
+        settings_group.setLayout(settings_layout)
+        layout.addWidget(settings_group)
+
+        self._zuschnitt_status_label = QLabel()
+        self._zuschnitt_status_label.setWordWrap(True)
+        layout.addWidget(self._zuschnitt_status_label)
+
+        overview_group = QGroupBox("Rohlingübersicht")
+        overview_layout = QVBoxLayout()
+        overview_columns = [
+            _TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            _TableColumn("count", "Rohlinge (min)", alignment=Qt.AlignCenter),
+            _TableColumn("price", "Preis/Stk [€]", alignment=Qt.AlignCenter, formatter=self._format_price),
+            _TableColumn("cost", "Kosten [€]", alignment=Qt.AlignCenter, formatter=self._format_cost),
+        ]
+        self._zuschnitt_overview_model = _DictTableModel(overview_columns, parent=tab)
+        self._zuschnitt_overview_view = QTableView()
+        self._zuschnitt_overview_view.setModel(self._zuschnitt_overview_model)
+        self._zuschnitt_overview_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._zuschnitt_overview_view.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._zuschnitt_overview_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._zuschnitt_overview_view.horizontalHeader().setStretchLastSection(True)
+        self._zuschnitt_overview_view.verticalHeader().setVisible(False)
+        self._zuschnitt_overview_view.selectionModel().selectionChanged.connect(
+            self._on_zuschnitt_summary_selection_changed
+        )
+        overview_layout.addWidget(self._zuschnitt_overview_view)
+        overview_group.setLayout(overview_layout)
+        layout.addWidget(overview_group)
+
+        results_group = QGroupBox("Platzierungen")
+        results_layout = QVBoxLayout()
+        placements_columns = [
+            _TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            _TableColumn("bin", "Rohling", alignment=Qt.AlignCenter),
+            _TableColumn("teil", "Teil", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            _TableColumn("breite", "Eff. Breite [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
+            _TableColumn("hoehe", "Eff. Höhe [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
+            _TableColumn("x", "X [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
+            _TableColumn("y", "Y [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
+            _TableColumn("rotation", "Drehung", alignment=Qt.AlignCenter, formatter=self._format_rotation),
+        ]
+        self._zuschnitt_results_model = _DictTableModel(placements_columns, parent=tab)
+        self._zuschnitt_results_view = QTableView()
+        self._zuschnitt_results_view.setModel(self._zuschnitt_results_model)
+        self._zuschnitt_results_view.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._zuschnitt_results_view.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._zuschnitt_results_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._zuschnitt_results_view.horizontalHeader().setStretchLastSection(True)
+        self._zuschnitt_results_view.verticalHeader().setVisible(False)
+        self._zuschnitt_results_view.selectionModel().selectionChanged.connect(
+            self._on_zuschnitt_placement_selection_changed
+        )
+        results_layout.addWidget(self._zuschnitt_results_view)
+
+        export_layout = QHBoxLayout()
+        export_layout.addStretch()
+        export_csv_button = QPushButton("CSV exportieren")
+        export_csv_button.clicked.connect(self._on_zuschnitt_export_csv)
+        export_excel_button = QPushButton("Excel exportieren")
+        export_excel_button.clicked.connect(self._on_zuschnitt_export_excel)
+        export_layout.addWidget(export_csv_button)
+        export_layout.addWidget(export_excel_button)
+        results_layout.addLayout(export_layout)
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
+
+        preview_group = QGroupBox("Graphische Übersicht")
+        preview_layout = QVBoxLayout()
+        self._zuschnitt_preview_scene = QGraphicsScene()
+        self._zuschnitt_preview_view = _PreviewView(self._refresh_zuschnitt_preview)
+        self._zuschnitt_preview_view.setScene(self._zuschnitt_preview_scene)
+        preview_layout.addWidget(self._zuschnitt_preview_view)
+        preview_group.setLayout(preview_layout)
+        layout.addWidget(preview_group)
+
         layout.addStretch()
         tab.setLayout(layout)
         return tab
@@ -678,6 +927,417 @@ class IsolierungQtPlugin(QtPlugin):
             layout.addWidget(value_label, row_index, 1)
             labels[key] = value_label
         return labels
+
+    def _on_zuschnitt_kerf_changed(self, text: str) -> None:
+        self._zuschnitt_inputs["kerf"] = text
+
+    def _on_zuschnitt_import_plates(self) -> None:
+        try:
+            plates = self._collect_build_plates()
+            if not plates:
+                raise ValueError("Keine Platten im Schichtaufbau gefunden.")
+            self._zuschnitt_inputs["cached_plates"] = plates
+            self._invalidate_zuschnitt_results("Platten übernommen. Bitte neu berechnen.")
+        except Exception as exc:
+            self._zuschnitt_results["status"] = "error"
+            self._zuschnitt_results["message"] = str(exc)
+            self._refresh_zuschnitt_results_view()
+
+    def _on_zuschnitt_calculate(self) -> None:
+        self._sync_internal_state_from_widgets()
+        try:
+            kerf_value = self._parse_float(self._zuschnitt_inputs.get("kerf", "")) or 0.0
+            if kerf_value < 0:
+                raise ValueError("Schnittfuge muss >= 0 sein.")
+            plates = self._zuschnitt_inputs.get("cached_plates", [])
+            if not plates:
+                plates = self._collect_build_plates()
+                self._zuschnitt_inputs["cached_plates"] = plates
+            if not plates:
+                raise ValueError("Keine Platten vorhanden. Bitte zuerst übernehmen.")
+            placements, summary, total_cost, total_bins = pack_plates(plates, kerf_value)
+            placement_rows = self._build_placement_rows(placements)
+            summary_rows = self._build_summary_rows(summary, total_cost, total_bins)
+            self._zuschnitt_results = {
+                "status": "ok",
+                "message": "",
+                "placements": placement_rows,
+                "summary": summary_rows,
+                "total_cost": total_cost,
+                "total_bin_count": total_bins,
+            }
+        except Exception as exc:
+            self._zuschnitt_results = {
+                "status": "error",
+                "message": str(exc),
+                "placements": [],
+                "summary": [],
+                "total_cost": None,
+                "total_bin_count": None,
+            }
+        self._refresh_zuschnitt_results_view()
+
+    def _collect_build_plates(self) -> list[dict[str, Any]]:
+        status = self._build_results.get("status", "idle")
+        if status != "ok":
+            raise ValueError("Bitte den Schichtaufbau berechnen, bevor Platten übernommen werden.")
+        data = self._build_results.get("data", {})
+        if not isinstance(data, dict):
+            raise ValueError("Keine gültigen Plattendaten vorhanden.")
+        result = self._deserialize_build_result(data)
+        isolierungen = data.get("isolierungen", [])
+        if not isinstance(isolierungen, list):
+            isolierungen = []
+        plates: list[dict[str, Any]] = []
+        for layer in result.layers:
+            material = ""
+            if 0 <= layer.layer_index - 1 < len(isolierungen):
+                material = str(isolierungen[layer.layer_index - 1]).strip()
+            for plate in layer.plates:
+                plates.append(
+                    {
+                        "material": material,
+                        "thickness": layer.thickness,
+                        "length": plate.L,
+                        "width": plate.B,
+                        "name": plate.name,
+                        "layer": layer.layer_index,
+                    }
+                )
+        return plates
+
+    def _build_placement_rows(self, placements: Iterable[Placement]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for placement in placements:
+            rows.append(
+                {
+                    "material": placement.material,
+                    "bin": placement.bin_index,
+                    "teil": placement.part_label,
+                    "breite": placement.width,
+                    "hoehe": placement.height,
+                    "x": placement.x,
+                    "y": placement.y,
+                    "rotation": placement.rotated,
+                    "bin_width": placement.bin_width,
+                    "bin_height": placement.bin_height,
+                    "original_width": placement.original_width,
+                    "original_height": placement.original_height,
+                }
+            )
+        return rows
+
+    def _build_summary_rows(
+        self, material_summary: list[dict[str, Any]], total_cost: float | None, total_bins: int | None
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for entry in material_summary:
+            if not isinstance(entry, dict):
+                continue
+            rows.append(
+                {
+                    "material": entry.get("material", "–"),
+                    "count": entry.get("count"),
+                    "price": entry.get("price"),
+                    "cost": entry.get("cost"),
+                }
+            )
+        if rows:
+            missing_prices = any(entry.get("price") is None for entry in material_summary)
+            if missing_prices and total_cost is not None:
+                cost_text = f"{total_cost:.2f} (ohne fehlende Preise)"
+            elif missing_prices:
+                cost_text = "– (fehlende Preise)"
+            elif total_cost is None:
+                cost_text = "–"
+            else:
+                cost_text = f"{total_cost:.2f}"
+            rows.append(
+                {
+                    "material": "Summe",
+                    "count": total_bins,
+                    "price": None,
+                    "cost": total_cost,
+                    "cost_display": cost_text,
+                    "is_total": True,
+                }
+            )
+        return rows
+
+    def _refresh_zuschnitt_results_view(self) -> None:
+        if self._zuschnitt_status_label is None:
+            return
+        status = self._zuschnitt_results.get("status", "idle")
+        message = self._coerce_str(self._zuschnitt_results.get("message", ""))
+        lines = []
+        if status == "ok":
+            lines.append("Status: Berechnung abgeschlossen")
+        elif status == "error":
+            lines.append("Status: Fehler")
+            if message:
+                lines.append(message)
+        else:
+            lines.append("Status: Bereit")
+            if message:
+                lines.append(message)
+        self._zuschnitt_status_label.setText("\n".join(lines))
+
+        placements = self._zuschnitt_results.get("placements", [])
+        summary = self._zuschnitt_results.get("summary", [])
+        if self._zuschnitt_results_model is not None:
+            self._zuschnitt_results_model.set_rows(
+                placements if isinstance(placements, list) else []
+            )
+        if self._zuschnitt_overview_model is not None:
+            self._zuschnitt_overview_model.set_rows(summary if isinstance(summary, list) else [])
+        self._restore_zuschnitt_selection()
+        self._refresh_zuschnitt_preview()
+
+    def _restore_zuschnitt_selection(self) -> None:
+        if self._zuschnitt_results_view is not None:
+            selected_row = self._zuschnitt_ui.get("selected_placement_row", -1)
+            if isinstance(selected_row, int) and 0 <= selected_row < self._zuschnitt_results_view.model().rowCount():
+                self._zuschnitt_results_view.selectRow(selected_row)
+            else:
+                self._zuschnitt_results_view.clearSelection()
+        if self._zuschnitt_overview_view is not None:
+            selected_row = self._zuschnitt_ui.get("selected_summary_row", -1)
+            if isinstance(selected_row, int) and 0 <= selected_row < self._zuschnitt_overview_view.model().rowCount():
+                self._zuschnitt_overview_view.selectRow(selected_row)
+            else:
+                self._zuschnitt_overview_view.clearSelection()
+
+    def _refresh_zuschnitt_preview(self) -> None:
+        if self._zuschnitt_preview_scene is None or self._zuschnitt_preview_view is None:
+            return
+        self._zuschnitt_preview_scene.clear()
+        placements = self._zuschnitt_results.get("placements", [])
+        if not isinstance(placements, list) or not placements:
+            self._zuschnitt_preview_scene.setSceneRect(0, 0, 0, 0)
+            return
+
+        grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
+        for placement in placements:
+            if not isinstance(placement, dict):
+                continue
+            key = (str(placement.get("material", "")), int(placement.get("bin", 0)))
+            grouped.setdefault(key, []).append(placement)
+
+        bins = list(grouped.items())
+        columns = max(1, math.ceil(math.sqrt(len(bins))))
+        rows = math.ceil(len(bins) / columns)
+
+        col_widths = [0.0 for _ in range(columns)]
+        row_heights = [0.0 for _ in range(rows)]
+        for idx, (_, entries) in enumerate(bins):
+            col = idx % columns
+            row = idx // columns
+            if not entries:
+                continue
+            col_widths[col] = max(col_widths[col], float(entries[0].get("bin_width", 0)))
+            row_heights[row] = max(row_heights[row], float(entries[0].get("bin_height", 0)))
+
+        gap = 30.0
+        padding = 16.0
+        total_width = sum(col_widths) + gap * (columns - 1)
+        total_height = sum(row_heights) + gap * (rows - 1)
+
+        view_width = max(self._zuschnitt_preview_view.viewport().width(), 200)
+        view_height = max(self._zuschnitt_preview_view.viewport().height(), 200)
+        scale_x = (view_width - 2 * padding) / total_width if total_width else 1.0
+        scale_y = (view_height - 2 * padding) / total_height if total_height else 1.0
+        scale = min(scale_x, scale_y, 2.0)
+
+        col_offsets = [padding]
+        for width in col_widths[:-1]:
+            col_offsets.append(col_offsets[-1] + width * scale + gap * scale)
+        row_offsets = [padding]
+        for height in row_heights[:-1]:
+            row_offsets.append(row_offsets[-1] + height * scale + gap * scale)
+
+        label_offset = 6
+        for idx, ((material, bin_idx), entries) in enumerate(bins):
+            col = idx % columns
+            row = idx // columns
+            x_cursor = col_offsets[col]
+            y_cursor = row_offsets[row]
+            if not entries:
+                continue
+            bin_w = float(entries[0].get("bin_width", 0))
+            bin_h = float(entries[0].get("bin_height", 0))
+
+            outline_pen = QPen(QColor("#444"))
+            outline_pen.setWidth(2)
+            self._zuschnitt_preview_scene.addRect(
+                x_cursor,
+                y_cursor + label_offset,
+                bin_w * scale,
+                bin_h * scale,
+                outline_pen,
+            )
+
+            label_item = self._zuschnitt_preview_scene.addText(
+                f"{material} – Rohling {bin_idx}",
+                QFont("Segoe UI", 9, QFont.Bold),
+            )
+            label_item.setPos(x_cursor + 6, y_cursor + 4)
+            label_item.setTextWidth(max(bin_w * scale - 12, 50))
+
+            for placement in entries:
+                color = QColor(color_for(str(material)))
+                fill_brush = QBrush(color)
+                rect_pen = QPen(QColor("#222"))
+                px = x_cursor + float(placement.get("x", 0)) * scale
+                py = y_cursor + label_offset + float(placement.get("y", 0)) * scale
+                pw = float(placement.get("breite", 0)) * scale
+                ph = float(placement.get("hoehe", 0)) * scale
+                self._zuschnitt_preview_scene.addRect(px, py, pw, ph, rect_pen, fill_brush)
+                text_item = self._zuschnitt_preview_scene.addText(
+                    str(placement.get("teil", "")),
+                    QFont("Segoe UI", 8),
+                )
+                text_item.setTextWidth(max(pw - 12, 20))
+                text_item.setPos(px + max((pw - text_item.textWidth()) / 2, 2), py + max((ph - 14) / 2, 2))
+
+        layout_width = padding * 2 + total_width * scale + max(gap * scale, 0)
+        layout_height = padding * 2 + total_height * scale + label_offset + max(gap * scale, 0)
+        self._zuschnitt_preview_scene.setSceneRect(0, 0, layout_width, layout_height)
+
+    def _on_zuschnitt_summary_selection_changed(self) -> None:
+        if self._zuschnitt_overview_view is None:
+            return
+        selected = self._zuschnitt_overview_view.selectionModel().selectedRows()
+        if not selected:
+            self._zuschnitt_ui["selected_summary_row"] = -1
+        else:
+            self._zuschnitt_ui["selected_summary_row"] = selected[0].row()
+
+    def _on_zuschnitt_placement_selection_changed(self) -> None:
+        if self._zuschnitt_results_view is None:
+            return
+        selected = self._zuschnitt_results_view.selectionModel().selectedRows()
+        if not selected:
+            self._zuschnitt_ui["selected_placement_row"] = -1
+        else:
+            self._zuschnitt_ui["selected_placement_row"] = selected[0].row()
+
+    def _invalidate_zuschnitt_results(self, message: str = "", clear_cached: bool = False) -> None:
+        self._zuschnitt_results = {
+            "status": "idle",
+            "message": message,
+            "placements": [],
+            "summary": [],
+            "total_cost": None,
+            "total_bin_count": None,
+        }
+        if clear_cached:
+            self._zuschnitt_inputs["cached_plates"] = []
+        self._zuschnitt_ui["selected_placement_row"] = -1
+        self._zuschnitt_ui["selected_summary_row"] = -1
+        self._refresh_zuschnitt_results_view()
+
+    def _ensure_zuschnitt_results(self) -> None:
+        placements = self._zuschnitt_results.get("placements", [])
+        if not isinstance(placements, list) or not placements:
+            raise ValueError("Keine Ergebnisse zum Export vorhanden.")
+
+    def _on_zuschnitt_export_csv(self) -> None:
+        try:
+            self._ensure_zuschnitt_results()
+            path, _ = QFileDialog.getSaveFileName(
+                self.widget,
+                "CSV speichern",
+                "",
+                "CSV (*.csv);;Alle Dateien (*.*)",
+            )
+            if not path:
+                return
+            placements = self._zuschnitt_results.get("placements", [])
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                writer = csv.writer(fh, delimiter=";")
+                writer.writerow(
+                    [
+                        "Material",
+                        "Rohling",
+                        "Teil",
+                        "Breite_eff_mm",
+                        "Hoehe_eff_mm",
+                        "X_mm",
+                        "Y_mm",
+                        "Rotation",
+                        "Breite_original_mm",
+                        "Hoehe_original_mm",
+                    ]
+                )
+                for row in placements:
+                    writer.writerow(
+                        [
+                            row.get("material", ""),
+                            row.get("bin", ""),
+                            row.get("teil", ""),
+                            row.get("breite", ""),
+                            row.get("hoehe", ""),
+                            row.get("x", ""),
+                            row.get("y", ""),
+                            "90" if row.get("rotation") else "0",
+                            row.get("original_width", ""),
+                            row.get("original_height", ""),
+                        ]
+                    )
+        except Exception as exc:
+            self._zuschnitt_results["status"] = "error"
+            self._zuschnitt_results["message"] = str(exc)
+            self._refresh_zuschnitt_results_view()
+
+    def _on_zuschnitt_export_excel(self) -> None:
+        try:
+            self._ensure_zuschnitt_results()
+            path, _ = QFileDialog.getSaveFileName(
+                self.widget,
+                "Excel speichern",
+                "",
+                "Excel (*.xlsx);;Alle Dateien (*.*)",
+            )
+            if not path:
+                return
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Zuschnitt"
+            ws.append(
+                [
+                    "Material",
+                    "Rohling",
+                    "Teil",
+                    "Breite_eff_mm",
+                    "Hoehe_eff_mm",
+                    "X_mm",
+                    "Y_mm",
+                    "Rotation",
+                    "Breite_original_mm",
+                    "Hoehe_original_mm",
+                ]
+            )
+            placements = self._zuschnitt_results.get("placements", [])
+            for row in placements:
+                ws.append(
+                    [
+                        row.get("material"),
+                        row.get("bin"),
+                        row.get("teil"),
+                        row.get("breite"),
+                        row.get("hoehe"),
+                        row.get("x"),
+                        row.get("y"),
+                        90 if row.get("rotation") else 0,
+                        row.get("original_width"),
+                        row.get("original_height"),
+                    ]
+                )
+            wb.save(path)
+        except Exception as exc:
+            self._zuschnitt_results["status"] = "error"
+            self._zuschnitt_results["message"] = str(exc)
+            self._refresh_zuschnitt_results_view()
 
     def _load_materials(self) -> None:
         self._materials = list_materials()
@@ -719,6 +1379,9 @@ class IsolierungQtPlugin(QtPlugin):
                 if current_family != build_layers[index].get("family", ""):
                     build_layers[index]["family"] = current_family
         self._sync_internal_state_from_widgets()
+        self._invalidate_zuschnitt_results(
+            "Isolierung DB wurde aktualisiert. Bitte Zuschnitt neu berechnen."
+        )
 
     def _set_layer_count(self, count: int) -> None:
         if self._layers_layout is None:
@@ -1048,12 +1711,19 @@ class IsolierungQtPlugin(QtPlugin):
                 "message": "",
                 "data": self._serialize_build_result(result, parsed["materials"]),
             }
+            self._invalidate_zuschnitt_results(
+                "Schichtaufbau aktualisiert. Bitte Platten neu übernehmen.", clear_cached=True
+            )
         except Exception as exc:
             self._build_results = {
                 "status": "error",
                 "message": str(exc),
                 "data": {},
             }
+            self._invalidate_zuschnitt_results(
+                "Schichtaufbau fehlgeschlagen. Zuschnitt-Ergebnisse wurden zurückgesetzt.",
+                clear_cached=True,
+            )
         self.refresh_view()
 
     def _on_build_reset(self) -> None:
@@ -1062,6 +1732,9 @@ class IsolierungQtPlugin(QtPlugin):
         self._build_inputs["layers"] = [{"thickness": "", "family": ""}]
         self._build_results = {"status": "idle", "message": "", "data": {}}
         self._build_ui["selected_row"] = -1
+        self._invalidate_zuschnitt_results(
+            "Schichtaufbau zurückgesetzt. Bitte Platten neu übernehmen.", clear_cached=True
+        )
         self.refresh_view()
 
     def _parse_build_inputs(self) -> dict[str, Any]:
@@ -1241,6 +1914,7 @@ class IsolierungQtPlugin(QtPlugin):
     def _sync_internal_state_from_widgets(self) -> None:
         self._sync_calculation_state_from_widgets()
         self._sync_build_state_from_widgets()
+        self._sync_zuschnitt_state_from_widgets()
         self._ui_state["active_tab"] = self._get_active_tab_index()
 
     def _format_result_text(self) -> str:
@@ -1283,6 +1957,41 @@ class IsolierungQtPlugin(QtPlugin):
     @staticmethod
     def _format_number(value: float) -> str:
         return f"{value:.2f}".rstrip("0").rstrip(".")
+
+    @staticmethod
+    def _format_mm_one(row: dict[str, Any], value: Any) -> str:
+        try:
+            return f"{float(value):.1f}"
+        except (TypeError, ValueError):
+            return "–"
+
+    @staticmethod
+    def _format_rotation(row: dict[str, Any], value: Any) -> str:
+        if value is None:
+            return "–"
+        rotation_value = 90 if bool(value) else 0
+        return f"{rotation_value}°"
+
+    @staticmethod
+    def _format_price(row: dict[str, Any], value: Any) -> str:
+        if value is None:
+            return "–"
+        try:
+            return f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            return "–"
+
+    @staticmethod
+    def _format_cost(row: dict[str, Any], value: Any) -> str:
+        override = row.get("cost_display")
+        if isinstance(override, str) and override:
+            return override
+        if value is None:
+            return "–"
+        try:
+            return f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            return "–"
 
     @staticmethod
     def _parse_float(value: str | float | int | None) -> float | None:
