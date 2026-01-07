@@ -24,7 +24,7 @@ from app.core.projects.store import ProjectRecord, ProjectStore
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
-from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +102,7 @@ class ProjectsTab:
         layout = make_vbox()
         self.widget.setLayout(layout)
 
-        title = QLabel("Projektverwaltung")
-        layout.addWidget(title)
+        layout.addWidget(create_section_header("Projektverwaltung"))
 
         splitter = QSplitter()
         layout.addWidget(splitter)

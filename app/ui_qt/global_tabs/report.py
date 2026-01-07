@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui_qt.plugins.manager import QtPluginManager
-from app.ui_qt.ui_helpers import make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_section_header, make_hbox, make_vbox
 
 
 @dataclass(frozen=True)
@@ -78,12 +78,7 @@ class ReportTab:
         layout = make_vbox()
         self.widget.setLayout(layout)
 
-        header = QLabel("Bericht")
-        header_font = QFont()
-        header_font.setPointSize(12)
-        header_font.setBold(True)
-        header.setFont(header_font)
-        layout.addWidget(header)
+        layout.addWidget(create_section_header("Bericht"))
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))

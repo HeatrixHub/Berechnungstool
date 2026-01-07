@@ -44,7 +44,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
-from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
 from app.core.isolierungen_db.logic import (
     register_material_change_listener,
     unregister_material_change_listener,
@@ -261,17 +261,7 @@ class IsolierungQtPlugin(QtPlugin):
         container = QWidget()
         layout = make_vbox()
 
-        header = QWidget()
-        header_layout = make_hbox()
-        title = QLabel("Isolierungsberechnung")
-        title_font = QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header.setLayout(header_layout)
-        layout.addWidget(header)
+        layout.addWidget(create_section_header("Isolierungsberechnung"))
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
@@ -952,12 +942,7 @@ class IsolierungQtPlugin(QtPlugin):
         tab = QWidget()
         layout = make_vbox()
 
-        header = QLabel("Bericht")
-        header_font = QFont()
-        header_font.setPointSize(12)
-        header_font.setBold(True)
-        header.setFont(header_font)
-        layout.addWidget(header)
+        layout.addWidget(create_section_header("Bericht"))
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))

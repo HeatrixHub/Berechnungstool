@@ -48,7 +48,7 @@ from app.core.isolierungen_db.services import (
     parse_optional_float,
     parse_required_float,
 )
-from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
 
 
 class IsolierungenDbTab:
@@ -85,15 +85,7 @@ class IsolierungenDbTab:
             self._tab_widget.addTab(self.widget, title)
 
     def _build_header(self) -> None:
-        header = QWidget()
-        header_layout = make_hbox()
-        title = QLabel("Isolierungen verwalten")
-        title.setProperty("class", "title")
-        title.setStyleSheet("font-size: 16px; font-weight: bold;")
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        header.setLayout(header_layout)
-        self._layout.addWidget(header)
+        self._layout.addWidget(create_section_header("Isolierungen verwalten"))
 
     def _build_family_section(self) -> None:
         section = QGroupBox("Materialfamilien")
