@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Sequence
 
 from app.core.plugin_registry import load_registry
+
+QT_REGISTRY_PATH = Path(__file__).with_name("registry.json")
 
 
 @dataclass(frozen=True)
@@ -18,7 +21,7 @@ class QtPluginSpec:
 
 def get_plugins() -> Sequence[QtPluginSpec]:
     specs: list[QtPluginSpec] = []
-    for spec in load_registry():
+    for spec in load_registry(path=QT_REGISTRY_PATH):
         if not spec.enabled:
             continue
         specs.append(
