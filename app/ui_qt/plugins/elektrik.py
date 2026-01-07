@@ -211,6 +211,12 @@ class ElektrikQtPlugin(QtPlugin):
         self._three_current_value = ""
         self._single_result_text = self._DEFAULT_RESULT
         self._three_result_text = self._DEFAULT_RESULT
+        self._single_result_value: float | None = None
+        self._single_result_status = "error"
+        self._single_result_message = ""
+        self._three_result_value: float | None = None
+        self._three_result_status = "error"
+        self._three_result_message = ""
         self._active_tab_index = 0
 
     @property
@@ -345,10 +351,19 @@ class ElektrikQtPlugin(QtPlugin):
         voltage = parse_float(voltage_text)
         current = parse_float(current_text)
         if voltage is None or current is None:
-            self._single_result_text = "Leistung: Bitte gültige Zahlen angeben."
+            self._single_result_value = None
+            self._single_result_status = "error"
+            self._single_result_message = "Bitte gültige Zahlen angeben."
         else:
             power = calculate_single_phase(voltage, current)
-            self._single_result_text = f"Leistung: {power:,.2f} W"
+            self._single_result_value = power
+            self._single_result_status = "ok"
+            self._single_result_message = ""
+        self._single_result_text = self._format_result_text(
+            self._single_result_value,
+            self._single_result_status,
+            self._single_result_message,
+        )
         self._set_label_text(self._single_result_label, self._single_result_text)
 
     def _calculate_three_phase(self) -> None:
@@ -359,10 +374,19 @@ class ElektrikQtPlugin(QtPlugin):
         voltage = parse_float(voltage_text)
         current = parse_float(current_text)
         if voltage is None or current is None:
-            self._three_result_text = "Leistung: Bitte gültige Zahlen angeben."
+            self._three_result_value = None
+            self._three_result_status = "error"
+            self._three_result_message = "Bitte gültige Zahlen angeben."
         else:
             power = calculate_three_phase(voltage, current)
-            self._three_result_text = f"Leistung: {power:,.2f} W"
+            self._three_result_value = power
+            self._three_result_status = "ok"
+            self._three_result_message = ""
+        self._three_result_text = self._format_result_text(
+            self._three_result_value,
+            self._three_result_status,
+            self._three_result_message,
+        )
         self._set_label_text(self._three_result_label, self._three_result_text)
 
     def export_state(self) -> dict[str, Any]:
@@ -382,12 +406,16 @@ class ElektrikQtPlugin(QtPlugin):
                 ),
             },
             "results": {
-                "single_result": self._resolve_label_value(
-                    self._single_result_label, self._single_result_text
-                ),
-                "three_result": self._resolve_label_value(
-                    self._three_result_label, self._three_result_text
-                ),
+                "single_phase": {
+                    "value": self._single_result_value,
+                    "status": self._single_result_status,
+                    "message": self._single_result_message,
+                },
+                "three_phase": {
+                    "value": self._three_result_value,
+                    "status": self._three_result_status,
+                    "message": self._three_result_message,
+                },
             },
             "ui": {
                 "active_tab": self._get_active_tab_index(),
@@ -409,13 +437,29 @@ class ElektrikQtPlugin(QtPlugin):
             self._three_voltage_value = self._coerce_str(inputs.get("three_voltage", ""))
             self._three_current_value = self._coerce_str(inputs.get("three_current", ""))
         if isinstance(results, dict):
-            self._single_result_text = self._coerce_str(
-                results.get("single_result", self._DEFAULT_RESULT),
-                default=self._DEFAULT_RESULT,
+            if "single_phase" in results or "three_phase" in results:
+                self._single_result_value, self._single_result_status, self._single_result_message = (
+                    self._coerce_result_entry(results.get("single_phase"))
+                )
+                self._three_result_value, self._three_result_status, self._three_result_message = (
+                    self._coerce_result_entry(results.get("three_phase"))
+                )
+            else:
+                self._single_result_value, self._single_result_status, self._single_result_message = (
+                    self._parse_legacy_result(results.get("single_result", self._DEFAULT_RESULT))
+                )
+                self._three_result_value, self._three_result_status, self._three_result_message = (
+                    self._parse_legacy_result(results.get("three_result", self._DEFAULT_RESULT))
+                )
+            self._single_result_text = self._format_result_text(
+                self._single_result_value,
+                self._single_result_status,
+                self._single_result_message,
             )
-            self._three_result_text = self._coerce_str(
-                results.get("three_result", self._DEFAULT_RESULT),
-                default=self._DEFAULT_RESULT,
+            self._three_result_text = self._format_result_text(
+                self._three_result_value,
+                self._three_result_status,
+                self._three_result_message,
             )
         if isinstance(ui_state, dict):
             active_tab = ui_state.get("active_tab")
@@ -427,6 +471,16 @@ class ElektrikQtPlugin(QtPlugin):
         self._set_input_text(self._single_current_input, self._single_current_value)
         self._set_input_text(self._three_voltage_input, self._three_voltage_value)
         self._set_input_text(self._three_current_input, self._three_current_value)
+        self._single_result_text = self._format_result_text(
+            self._single_result_value,
+            self._single_result_status,
+            self._single_result_message,
+        )
+        self._three_result_text = self._format_result_text(
+            self._three_result_value,
+            self._three_result_status,
+            self._three_result_message,
+        )
         self._set_label_text(self._single_result_label, self._single_result_text)
         self._set_label_text(self._three_result_label, self._three_result_text)
         if self._tab_widget is not None and hasattr(self._tab_widget, "setCurrentIndex"):
@@ -488,6 +542,44 @@ class ElektrikQtPlugin(QtPlugin):
         if isinstance(value, str):
             return value
         return str(value)
+
+    @staticmethod
+    def _format_result_text(value: float | None, status: str, message: str) -> str:
+        if status == "ok" and value is not None:
+            return f"Leistung: {value:,.2f} W"
+        if message:
+            if message.startswith("Leistung:"):
+                return message
+            return f"Leistung: {message}"
+        return ElektrikQtPlugin._DEFAULT_RESULT
+
+    @staticmethod
+    def _coerce_result_entry(entry: object) -> tuple[float | None, str, str]:
+        if not isinstance(entry, dict):
+            return None, "error", ""
+        value = entry.get("value")
+        if not isinstance(value, (int, float)):
+            value = None
+        status = entry.get("status")
+        if status not in {"ok", "error"}:
+            status = "ok" if value is not None else "error"
+        message_value = entry.get("message")
+        message = ElektrikQtPlugin._coerce_str(message_value, default="")
+        if status == "ok" and value is None:
+            status = "error"
+        return value, status, message
+
+    @staticmethod
+    def _parse_legacy_result(value: object) -> tuple[float | None, str, str]:
+        text = ElektrikQtPlugin._coerce_str(value, default=ElektrikQtPlugin._DEFAULT_RESULT)
+        if "Bitte gültige Zahlen" in text:
+            return None, "error", "Bitte gültige Zahlen angeben."
+        numeric_value = parse_float(text)
+        if numeric_value is not None:
+            return numeric_value, "ok", ""
+        if text.startswith("Leistung:"):
+            text = text.replace("Leistung:", "", 1).strip()
+        return None, "error", text
 
     def _get_active_tab_index(self) -> int:
         if self._tab_widget is None:
