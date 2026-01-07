@@ -7,11 +7,9 @@
 {% if not iso %}
 Keine Isolierungsdaten vorhanden.
 {% else %}
-{% set berechnung = iso.get("berechnung") %}
-{% if not berechnung or not berechnung.get("result") %}
-Keine Berechnungsergebnisse vorhanden.
-{% else %}
-{% set result = berechnung.result %}
+{% set berechnung = iso.get("berechnung", {}) %}
+{% set schicht = iso.get("schichtaufbau", {}) %}
+{% set zuschnitt = iso.get("zuschnitt", {}) %}
 
 <para align="center">
   <b>Stationäre Wärmedurchgangsrechnung durch ebene Wand</b>
@@ -24,9 +22,16 @@ Autor: {{ project.author or "–" }}<br/>
 Datum: {{ project.updated_at or project.created_at or "–" }}
 </para>
 
-Projekt: {{ berechnung.name or project.name or "–" }}
+Projekt: {{ berechnung.get("name") or project.name or "–" }}
 
 --------------------------------------------------------------------
+
+Berechnung
+
+{% if not berechnung or not berechnung.get("result") %}
+Keine Berechnungsergebnisse vorhanden.
+{% else %}
+{% set result = berechnung.result %}
 
 Randbedingungen
 
@@ -43,17 +48,19 @@ Iterationen: {{ result.iterations }}
 Temperaturen und Materialkennwerte pro Schicht
 
 <font face="Courier">
-Schicht  Dicke [mm]  Material              T_links [°C]  T_rechts [°C]  T_mittel [°C]  k_mittel [W/mK]
-------------------------------------------------------------------------------------------------------
+Schicht  Dicke [mm]  Materialfamilie        Variante             T_links [°C]  T_rechts [°C]  T_mittel [°C]  k_mittel [W/mK]
+-----------------------------------------------------------------------------------------------------------------------------
 
 {% set T_if = result.interface_temperatures %}
 {% set T_avg = result.T_avg %}
 {% set k_fin = result.k_final %}
+{% set variants = berechnung.get("varianten", []) %}
 
 {% for i in range(berechnung.layer_count) %}
 {{ "%6d"|format(i + 1) }}
 {{ "%11.1f"|format(berechnung.thicknesses[i]) }}
-  {{ "%-20s"|format(berechnung.isolierungen[i]) }}
+  {{ "%-22s"|format(berechnung.isolierungen[i]) }}
+  {{ "%-20s"|format(variants[i] if i < variants|length and variants[i] else "–") }}
   {{ "%12.1f"|format(T_if[i]) }}
   {{ "%13.1f"|format(T_if[i + 1]) }}
   {{ "%14.1f"|format(T_avg[i]) }}
@@ -61,9 +68,140 @@ Schicht  Dicke [mm]  Material              T_links [°C]  T_rechts [°C]  T_mitt
 {% endfor %}
 </font>
 
+{% if berechnung.get("temperature_plot") %}
 <para align="center">
   <img src="{{ berechnung.temperature_plot }}" width="480" height="320" />
 </para>
+{% endif %}
+{% endif %}
 
+--------------------------------------------------------------------
+
+Schichtaufbau
+
+{% if not schicht %}
+Keine Schichtaufbau-Daten vorhanden.
+{% else %}
+{% set schicht_layers = schicht.get("layers", {}) %}
+{% set schicht_thicknesses = schicht_layers.get("thicknesses") or [] %}
+{% set schicht_isos = schicht_layers.get("isolierungen") or [] %}
+{% set schicht_result = schicht.get("result") %}
+{% set dims = schicht.get("dimensions", {}) %}
+
+Maßvorgabe: {% if schicht.get("measure_type") == "inner" %}Innenmaß{% elif schicht.get("measure_type") == "outer" %}Außenmaß{% else %}–{% endif %}
+
+Gegebene Maße (L/B/H): {{ "%.1f"|format(dims.get("L") or 0) }} / {{ "%.1f"|format(dims.get("B") or 0) }} / {{ "%.1f"|format(dims.get("H") or 0) }} mm
+
+{% if schicht_thicknesses %}
+<font face="Courier">
+Schicht  Dicke [mm]  Materialfamilie
+-----------------------------------
+{% for i in range(schicht_thicknesses|length) %}
+{{ "%6d"|format(i + 1) }}
+{{ "%11.1f"|format(schicht_thicknesses[i]) }}
+  {{ "%-20s"|format(schicht_isos[i] if i < schicht_isos|length else "–") }}
+{% endfor %}
+</font>
+{% else %}
+Keine Schichtdaten vorhanden.
+{% endif %}
+
+{% if schicht_result %}
+Ergebnisse (Schichtaufbau)
+
+Außenmaße (L/B/H): {{ "%.1f"|format(schicht_result.la_l) }} / {{ "%.1f"|format(schicht_result.la_b) }} / {{ "%.1f"|format(schicht_result.la_h) }} mm  
+Innenmaße (L/B/H): {{ "%.1f"|format(schicht_result.li_l) }} / {{ "%.1f"|format(schicht_result.li_b) }} / {{ "%.1f"|format(schicht_result.li_h) }} mm
+
+Plattenliste
+
+<font face="Courier">
+Schicht  Materialfamilie        Platte                    L [mm]   B [mm]   H [mm]
+--------------------------------------------------------------------------------
+{% set result_isos = schicht_result.get("isolierungen", schicht_isos) %}
+{% for layer in schicht_result.layers %}
+{% set material = result_isos[layer.layer_index - 1] if layer.layer_index - 1 < result_isos|length else "–" %}
+{% if layer.plates %}
+{% for plate in layer.plates %}
+{{ "%6d"|format(layer.layer_index) }}
+  {{ "%-22s"|format(material) }}
+  {{ "%-24s"|format(plate.name) }}
+  {{ "%7.1f"|format(plate.L) }}
+  {{ "%7.1f"|format(plate.B) }}
+  {{ "%7.1f"|format(plate.H) }}
+{% endfor %}
+{% else %}
+{{ "%6d"|format(layer.layer_index) }}
+  {{ "%-22s"|format(material) }}
+  {{ "%-24s"|format("–") }}
+  {{ "%7s"|format("–") }}
+  {{ "%7s"|format("–") }}
+  {{ "%7s"|format("–") }}
+{% endif %}
+{% endfor %}
+</font>
+{% else %}
+Keine Schichtaufbau-Ergebnisse vorhanden.
+{% endif %}
+{% endif %}
+
+--------------------------------------------------------------------
+
+Zuschnitt
+
+{% if not zuschnitt %}
+Keine Zuschnitt-Daten vorhanden.
+{% else %}
+{% set zuschnitt_status = zuschnitt.get("status") %}
+Schnittfuge: {{ "%.1f"|format(zuschnitt.get("kerf") or 0) }} mm
+
+{% if zuschnitt_status and zuschnitt_status != "ok" %}
+Keine Zuschnitt-Ergebnisse vorhanden.
+{% if zuschnitt.get("message") %}{{ zuschnitt.get("message") }}{% endif %}
+{% else %}
+Zuschnitt-Summen
+
+Rohlinge gesamt: {{ zuschnitt.get("total_bin_count") if zuschnitt.get("total_bin_count") is not none else "–" }}  
+Gesamtkosten: {% if zuschnitt.get("total_cost") is not none %}{{ "%.2f"|format(zuschnitt.get("total_cost")) }} €{% else %}–{% endif %}
+
+{% if zuschnitt.get("material_summary") %}
+<font face="Courier">
+Material                    Rohlinge  Preis/Stk [€]  Kosten [€]
+----------------------------------------------------------------
+{% for entry in zuschnitt.get("material_summary") %}
+{{ "%-27s"|format(entry.material) }}
+  {{ "%7s"|format(entry.count if entry.count is not none else "–") }}
+  {{ "%12s"|format("%.2f"|format(entry.price) if entry.price is not none else "–") }}
+  {{ "%11s"|format("%.2f"|format(entry.cost) if entry.cost is not none else "–") }}
+{% endfor %}
+</font>
+{% else %}
+Keine Materialübersicht vorhanden.
+{% endif %}
+
+{% if zuschnitt.get("placements") %}
+Platzierungen
+
+<font face="Courier">
+Material                    Rohling  Teil                         B [mm]   H [mm]   X [mm]   Y [mm]  Drehung
+-------------------------------------------------------------------------------------------------------------
+{% for placement in zuschnitt.get("placements") %}
+{% set placement_bin = placement.get("bin", placement.get("bin_index")) %}
+{% set placement_label = placement.get("teil", placement.get("part_label")) %}
+{% set placement_width = placement.get("breite", placement.get("width")) %}
+{% set placement_height = placement.get("hoehe", placement.get("height")) %}
+{% set placement_rotation = placement.get("rotation", placement.get("rotated")) %}
+{{ "%-27s"|format(placement.get("material", "–")) }}
+  {{ "%7s"|format(placement_bin if placement_bin is not none else "–") }}
+  {{ "%-27s"|format(placement_label if placement_label else "–") }}
+  {{ "%7.1f"|format(placement_width or 0) }}
+  {{ "%7.1f"|format(placement_height or 0) }}
+  {{ "%7.1f"|format(placement.get("x") or 0) }}
+  {{ "%7.1f"|format(placement.get("y") or 0) }}
+  {{ "%7s"|format("90°" if placement_rotation else "0°") }}
+{% endfor %}
+</font>
+{% else %}
+Keine Platzierungen vorhanden.
+{% endif %}
 {% endif %}
 {% endif %}
