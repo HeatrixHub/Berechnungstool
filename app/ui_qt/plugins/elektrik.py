@@ -9,7 +9,6 @@ from Elektrik.core.calculations import (
     calculate_three_phase,
     parse_float,
 )
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
@@ -19,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
 
 
 
@@ -64,18 +63,12 @@ class ElektrikQtPlugin(QtPlugin):
         container = QWidget()
         layout = make_vbox()
 
-        header = QWidget()
-        header_layout = make_vbox()
-        title = QLabel("Elektrische Leistung")
-        title_font = QFont()
-        title_font.setPointSize(14)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        subtitle = QLabel("Berechnung für ein- und dreiphasige Systeme")
-        header_layout.addWidget(title)
-        header_layout.addWidget(subtitle)
-        header.setLayout(header_layout)
-        layout.addWidget(header)
+        layout.addWidget(
+            create_section_header(
+                "Elektrische Leistung",
+                "Berechnung für ein- und dreiphasige Systeme",
+            )
+        )
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
-from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
 from SoffeigenschaftenLuft.core.flow_calculations import compute_flow_properties
 from SoffeigenschaftenLuft.core.heater_calculations import compute_heater_power
 from SoffeigenschaftenLuft.core.state_calculations import calculate_state
@@ -138,19 +138,8 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         container = QWidget()
         layout = make_vbox()
 
-        header = QWidget()
-        header_layout = make_hbox()
-        title = QLabel("Stoffeigenschaften Luft")
-        title_font = QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        header_layout.addWidget(title)
-        header_layout.addStretch()
         version = QLabel(self._DEFAULT_VERSION)
-        header_layout.addWidget(version)
-        header.setLayout(header_layout)
-        layout.addWidget(header)
+        layout.addWidget(create_section_header("Stoffeigenschaften Luft", right_widget=version))
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
