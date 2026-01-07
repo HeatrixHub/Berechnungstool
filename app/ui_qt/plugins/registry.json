@@ -13,6 +13,13 @@
       "module": "app.ui_qt.plugins.stoffeigenschaften_luft",
       "class_name": "StoffeigenschaftenLuftQtPlugin",
       "enabled": true
+    },
+    {
+      "identifier": "isolierung",
+      "name": "Isolierung",
+      "module": "app.ui_qt.plugins.isolierung",
+      "class_name": "IsolierungQtPlugin",
+      "enabled": true
     }
   ]
 }
