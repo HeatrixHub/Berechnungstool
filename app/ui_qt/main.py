@@ -77,6 +77,11 @@ def main() -> int:
         window.setCentralWidget(tab_widget)
     context = QtAppContext(main_window=window, tab_widget=tab_widget)
 
+    if importlib.util.find_spec("PySide6") is not None:
+        from app.ui_qt.global_tabs.isolierungen_db import IsolierungenDbTab
+
+        IsolierungenDbTab(tab_widget, title="Isolierungen DB")
+
     plugin_manager = QtPluginManager(context)
     plugin_manager.load_plugins()
     project_manager = ProjectManagerUI(
