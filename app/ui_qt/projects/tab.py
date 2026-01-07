@@ -338,8 +338,9 @@ class ProjectsTab:
             name_item = self._QTableWidgetItem(record.name)
             author_item = self._QTableWidgetItem(record.author)
             updated_item = self._QTableWidgetItem(record.updated_at)
-            if hasattr(name_item, "setData"):
-                name_item.setData(self._Qt.UserRole, record.id)
+            for item in (name_item, author_item, updated_item):
+                if hasattr(item, "setData"):
+                    item.setData(self._Qt.UserRole, record.id)
             if hasattr(self._table, "setItem"):
                 self._table.setItem(row, 0, name_item)
                 self._table.setItem(row, 1, author_item)
@@ -506,6 +507,15 @@ class ProjectsTab:
                     project_id = arg.data(self._Qt.UserRole)
                     if project_id:
                         return project_id
+                if hasattr(self._table, "row") and hasattr(self._table, "item"):
+                    try:
+                        row = self._table.row(arg)
+                    except TypeError:
+                        row = None
+                    if isinstance(row, int) and row >= 0:
+                        project_id = self._project_id_for_row(row)
+                        if project_id:
+                            return project_id
         if hasattr(self._table, "selectionModel"):
             selection_model = self._table.selectionModel()
             if selection_model and hasattr(selection_model, "selectedRows"):
@@ -516,14 +526,17 @@ class ProjectsTab:
                         project_id = index.data(self._Qt.UserRole)
                         if project_id:
                             return project_id
+                    if hasattr(index, "row"):
+                        row = index.row()
+                        project_id = self._project_id_for_row(row)
+                        if project_id:
+                            return project_id
         if hasattr(self._table, "currentRow") and hasattr(self._table, "item"):
             row = self._table.currentRow()
             if row is not None and row >= 0:
-                item = self._table.item(row, 0)
-                if item and hasattr(item, "data"):
-                    project_id = item.data(self._Qt.UserRole)
-                    if project_id:
-                        return project_id
+                project_id = self._project_id_for_row(row)
+                if project_id:
+                    return project_id
         if hasattr(self._table, "selectedItems"):
             selected = self._table.selectedItems()
             if not selected:
@@ -533,6 +546,25 @@ class ProjectsTab:
                     project_id = item.data(self._Qt.UserRole)
                     if project_id:
                         return project_id
+                if hasattr(self._table, "row"):
+                    try:
+                        row = self._table.row(item)
+                    except TypeError:
+                        row = None
+                    if isinstance(row, int) and row >= 0:
+                        project_id = self._project_id_for_row(row)
+                        if project_id:
+                            return project_id
+        return None
+
+    def _project_id_for_row(self, row: int) -> str | None:
+        if not hasattr(self._table, "item"):
+            return None
+        item = self._table.item(row, 0)
+        if item and hasattr(item, "data"):
+            project_id = item.data(self._Qt.UserRole)
+            if project_id:
+                return project_id
         return None
 
     def _set_action_buttons(
