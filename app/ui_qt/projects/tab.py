@@ -357,8 +357,8 @@ class ProjectsTab:
             self.reset_form(new_mode=False)
         self._set_status("Liste aktualisiert. Wähle ein Projekt oder speichere ein neues.")
 
-    def on_project_select(self, *_args: object) -> None:
-        project_id = self._current_selection_id()
+    def on_project_select(self, *args: object) -> None:
+        project_id = self._current_selection_id(args)
         if not project_id:
             if not self._is_new_mode:
                 self._selected_project_id = None
@@ -495,22 +495,44 @@ class ProjectsTab:
             if item.data(self._Qt.UserRole) == project_id:
                 if hasattr(self._table, "selectRow"):
                     self._table.selectRow(row)
+                if hasattr(self._table, "setCurrentCell"):
+                    self._table.setCurrentCell(row, 0)
                 return
 
-    def _current_selection_id(self) -> str | None:
+    def _current_selection_id(self, args: Iterable[object] | None = None) -> str | None:
+        if args:
+            for arg in args:
+                if hasattr(arg, "data"):
+                    project_id = arg.data(self._Qt.UserRole)
+                    if project_id:
+                        return project_id
+        if hasattr(self._table, "selectionModel"):
+            selection_model = self._table.selectionModel()
+            if selection_model and hasattr(selection_model, "selectedRows"):
+                rows = selection_model.selectedRows(0)
+                if rows:
+                    index = rows[0]
+                    if hasattr(index, "data"):
+                        project_id = index.data(self._Qt.UserRole)
+                        if project_id:
+                            return project_id
         if hasattr(self._table, "currentRow") and hasattr(self._table, "item"):
             row = self._table.currentRow()
             if row is not None and row >= 0:
                 item = self._table.item(row, 0)
                 if item and hasattr(item, "data"):
-                    return item.data(self._Qt.UserRole)
+                    project_id = item.data(self._Qt.UserRole)
+                    if project_id:
+                        return project_id
         if hasattr(self._table, "selectedItems"):
             selected = self._table.selectedItems()
             if not selected:
                 return None
-            item = selected[0]
-            if hasattr(item, "data"):
-                return item.data(self._Qt.UserRole)
+            for item in selected:
+                if hasattr(item, "data"):
+                    project_id = item.data(self._Qt.UserRole)
+                    if project_id:
+                        return project_id
         return None
 
     def _set_action_buttons(
