@@ -668,10 +668,10 @@ class ProjectsTab:
             return "discard"
         return "cancel"
 
-    def _message_box_button(self, name: str) -> int:
+    def _message_box_button(self, name: str) -> object:
         if hasattr(self._QMessageBox, "StandardButton"):
-            return int(getattr(self._QMessageBox.StandardButton, name, 0))
-        return int(getattr(self._QMessageBox, name, 0))
+            return getattr(self._QMessageBox.StandardButton, name, 0)
+        return getattr(self._QMessageBox, name, 0)
 
     def _on_project_fields_changed(self, *_args: object) -> None:
         if self._suppress_project_updates:

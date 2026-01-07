@@ -71,13 +71,22 @@ class QtPlugin(ABC):
             raise TypeError("State must be a dictionary.")
         allowed_sections = {"inputs", "results", "ui"}
         normalized: dict[str, Any] = {section: {} for section in allowed_sections}
+        legacy_sections: dict[str, Any] = {}
         for key, value in state.items():
             if key not in allowed_sections:
-                raise ValueError(f"Unexpected state section: {key!r}.")
+                self._validate_json_value(value, path=key)
+                legacy_sections[key] = value
+                continue
             if not isinstance(value, dict):
                 raise TypeError(f"State section {key!r} must be a dictionary.")
             self._validate_json_value(value, path=key)
             normalized[key] = value
+        if legacy_sections:
+            inputs = normalized.get("inputs") or {}
+            if isinstance(inputs, dict):
+                merged = dict(legacy_sections)
+                merged.update(inputs)
+                normalized["inputs"] = merged
         return normalized
 
     def _validate_json_value(self, value: Any, *, path: str) -> None:
