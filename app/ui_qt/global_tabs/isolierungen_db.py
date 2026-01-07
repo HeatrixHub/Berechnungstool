@@ -49,6 +49,7 @@ from app.core.isolierungen_db.services import (
     parse_required_float,
 )
 from app.ui_qt.ui_helpers import (
+    apply_form_layout_defaults,
     create_button_row,
     create_section_header,
     make_grid,
@@ -183,6 +184,7 @@ class IsolierungenDbTab:
         grid.addWidget(self._family_ks_input, 4, 1)
         grid.addWidget(self._family_save_button, 5, 0, 1, 2, alignment=Qt.AlignRight)
 
+        apply_form_layout_defaults(grid)
         section.setLayout(grid)
         self._layout.addWidget(section)
 
@@ -211,6 +213,7 @@ class IsolierungenDbTab:
         grid.addWidget(self._variant_price_input, 2, 1)
         grid.addWidget(self._variant_save_button, 3, 0, 1, 4, alignment=Qt.AlignRight)
 
+        apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
         section.setLayout(grid)
         self._layout.addWidget(section)
 
