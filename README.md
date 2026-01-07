@@ -11,8 +11,8 @@ Anwendung über den Qt-Entry-Point:
 python -m app.main_qt
 ```
 
-Der frühere Tkinter-Client wurde als reine Referenz nach `legacy_tk/` verschoben
-und wird nicht mehr geladen oder gepflegt.
+Der Qt-Entry-Point ist der einzige unterstützte Startpfad; es gibt keinen
+Tkinter-Client mehr im Projekt.
 
 ## Plugin-System
 
