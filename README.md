@@ -17,7 +17,7 @@ Tkinter-Client mehr im Projekt.
 ## Plugin-System
 
 Die Qt-Host-Anwendung lädt ihre Werkzeuge dynamisch auf Basis der Datei
-`app/ui_qt/plugins/registry.json`. Jeder Eintrag beschreibt ein Plugin mit Name,
+`app/core/plugins.json`. Jeder Eintrag beschreibt ein Plugin mit Name,
 Python-Modul und Klassenname. Fehlende Plugins führen nicht mehr zum Absturz,
 sondern werden beim Laden protokolliert.
 
