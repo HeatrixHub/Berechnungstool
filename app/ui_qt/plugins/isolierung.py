@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -35,7 +34,6 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTabWidget,
     QTextBrowser,
-    QVBoxLayout,
     QWidget,
     QGraphicsScene,
     QGraphicsView,
@@ -46,6 +44,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
+from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
 from app.core.isolierungen_db.logic import (
     register_material_change_listener,
     unregister_material_change_listener,
@@ -260,10 +259,10 @@ class IsolierungQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         header = QWidget()
-        header_layout = QHBoxLayout()
+        header_layout = make_hbox()
         title = QLabel("Isolierungsberechnung")
         title_font = QFont()
         title_font.setPointSize(16)
@@ -666,10 +665,10 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_calculation_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         inputs_group = QGroupBox("Randbedingungen")
-        inputs_layout = QGridLayout()
+        inputs_layout = make_grid()
         inputs_layout.addWidget(QLabel("Temperatur links T_left [°C]"), 0, 0)
         self._T_left_input = QLineEdit()
         self._T_left_input.textChanged.connect(self._on_text_input_changed)
@@ -686,8 +685,8 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(inputs_group)
 
         layers_group = QGroupBox("Schichten")
-        layers_layout = QVBoxLayout()
-        layer_controls = QHBoxLayout()
+        layers_layout = make_vbox()
+        layer_controls = make_hbox()
         layer_controls.addWidget(QLabel("Anzahl der Schichten"))
         self._layer_count_input = QSpinBox()
         self._layer_count_input.setMinimum(1)
@@ -697,7 +696,7 @@ class IsolierungQtPlugin(QtPlugin):
         layer_controls.addStretch()
         layers_layout.addLayout(layer_controls)
 
-        grid = QGridLayout()
+        grid = make_grid()
         grid.addWidget(QLabel("Schicht"), 0, 0)
         grid.addWidget(QLabel("Dicke [mm]"), 0, 1)
         grid.addWidget(QLabel("Materialfamilie"), 0, 2)
@@ -707,7 +706,7 @@ class IsolierungQtPlugin(QtPlugin):
         layers_group.setLayout(layers_layout)
         layout.addWidget(layers_group)
 
-        action_layout = QHBoxLayout()
+        action_layout = make_hbox()
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._on_calculate)
         action_layout.addStretch()
@@ -715,7 +714,7 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addLayout(action_layout)
 
         result_group = QGroupBox("Ergebnisse")
-        result_layout = QVBoxLayout()
+        result_layout = make_vbox()
         self._result_label = QLabel()
         self._result_label.setWordWrap(True)
         result_layout.addWidget(self._result_label)
@@ -728,10 +727,10 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_schichtaufbau_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         measure_group = QGroupBox("Maßvorgabe")
-        measure_layout = QHBoxLayout()
+        measure_layout = make_hbox()
         self._build_measure_outer = QRadioButton("Außenmaße gegeben")
         self._build_measure_inner = QRadioButton("Innenmaße gegeben")
         self._build_measure_group = QButtonGroup()
@@ -746,7 +745,7 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(measure_group)
 
         dims_group = QGroupBox("Abmessungen")
-        dims_layout = QGridLayout()
+        dims_layout = make_grid()
         dims_layout.addWidget(QLabel("Länge [mm]"), 0, 0)
         self._build_L_input = QLineEdit()
         self._build_L_input.textChanged.connect(self._on_build_dimension_changed)
@@ -763,8 +762,8 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(dims_group)
 
         layers_group = QGroupBox("Schichtdicken [mm]")
-        layers_layout = QVBoxLayout()
-        layer_controls = QHBoxLayout()
+        layers_layout = make_vbox()
+        layer_controls = make_hbox()
         add_button = QPushButton("+ Schicht")
         add_button.clicked.connect(self._on_build_add_layer)
         import_button = QPushButton("Aus Berechnung übernehmen")
@@ -774,7 +773,7 @@ class IsolierungQtPlugin(QtPlugin):
         layer_controls.addStretch()
         layers_layout.addLayout(layer_controls)
 
-        grid = QGridLayout()
+        grid = make_grid()
         grid.addWidget(QLabel("#"), 0, 0)
         grid.addWidget(QLabel("Dicke [mm]"), 0, 1)
         grid.addWidget(QLabel("Materialfamilie"), 0, 2)
@@ -784,7 +783,7 @@ class IsolierungQtPlugin(QtPlugin):
         layers_group.setLayout(layers_layout)
         layout.addWidget(layers_group)
 
-        action_layout = QHBoxLayout()
+        action_layout = make_hbox()
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._on_build_calculate)
         reset_button = QPushButton("Felder leeren")
@@ -795,26 +794,26 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addLayout(action_layout)
 
         results_group = QGroupBox("Ergebnis")
-        results_layout = QVBoxLayout()
+        results_layout = make_vbox()
         self._build_status_label = QLabel()
         self._build_status_label.setWordWrap(True)
         results_layout.addWidget(self._build_status_label)
 
-        summary_layout = QHBoxLayout()
+        summary_layout = make_hbox()
         self._build_given_group = QGroupBox("Gegebene Maße")
-        given_layout = QGridLayout()
+        given_layout = make_grid()
         self._build_given_labels = self._build_dimension_summary(given_layout)
         self._build_given_group.setLayout(given_layout)
         summary_layout.addWidget(self._build_given_group)
 
         self._build_calc_group = QGroupBox("Berechnete Maße")
-        calc_layout = QGridLayout()
+        calc_layout = make_grid()
         self._build_calc_labels = self._build_dimension_summary(calc_layout)
         self._build_calc_group.setLayout(calc_layout)
         summary_layout.addWidget(self._build_calc_group)
 
         layer_info_group = QGroupBox("Schichten")
-        layer_info_layout = QVBoxLayout()
+        layer_info_layout = make_vbox()
         self._build_layer_count_label = QLabel("–")
         layer_info_layout.addWidget(self._build_layer_count_label)
         layer_info_group.setLayout(layer_info_layout)
@@ -844,7 +843,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_zuschnitt_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         header = QLabel("Zuschnittoptimierung")
         header_font = QFont()
@@ -854,13 +853,13 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(header)
 
         settings_group = QGroupBox("Einstellungen")
-        settings_layout = QGridLayout()
+        settings_layout = make_grid()
         settings_layout.addWidget(QLabel("Schnittfuge [mm]"), 0, 0)
         self._zuschnitt_kerf_input = QLineEdit()
         self._zuschnitt_kerf_input.textChanged.connect(self._on_zuschnitt_kerf_changed)
         settings_layout.addWidget(self._zuschnitt_kerf_input, 0, 1)
 
-        button_layout = QHBoxLayout()
+        button_layout = make_hbox()
         import_button = QPushButton("Platten übernehmen")
         import_button.clicked.connect(self._on_zuschnitt_import_plates)
         calculate_button = QPushButton("Berechnen")
@@ -877,7 +876,7 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(self._zuschnitt_status_label)
 
         overview_group = QGroupBox("Rohlingübersicht")
-        overview_layout = QVBoxLayout()
+        overview_layout = make_vbox()
         overview_columns = [
             _TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
             _TableColumn("count", "Rohlinge (min)", alignment=Qt.AlignCenter),
@@ -900,7 +899,7 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(overview_group)
 
         results_group = QGroupBox("Platzierungen")
-        results_layout = QVBoxLayout()
+        results_layout = make_vbox()
         placements_columns = [
             _TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
             _TableColumn("bin", "Rohling", alignment=Qt.AlignCenter),
@@ -924,7 +923,7 @@ class IsolierungQtPlugin(QtPlugin):
         )
         results_layout.addWidget(self._zuschnitt_results_view)
 
-        export_layout = QHBoxLayout()
+        export_layout = make_hbox()
         export_layout.addStretch()
         export_csv_button = QPushButton("CSV exportieren")
         export_csv_button.clicked.connect(self._on_zuschnitt_export_csv)
@@ -937,7 +936,7 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addWidget(results_group)
 
         preview_group = QGroupBox("Graphische Übersicht")
-        preview_layout = QVBoxLayout()
+        preview_layout = make_vbox()
         self._zuschnitt_preview_scene = QGraphicsScene()
         self._zuschnitt_preview_view = _PreviewView(self._refresh_zuschnitt_preview)
         self._zuschnitt_preview_view.setScene(self._zuschnitt_preview_scene)
@@ -951,7 +950,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_report_tab(self) -> QWidget:
         tab = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         header = QLabel("Bericht")
         header_font = QFont()
@@ -960,7 +959,7 @@ class IsolierungQtPlugin(QtPlugin):
         header.setFont(header_font)
         layout.addWidget(header)
 
-        template_layout = QHBoxLayout()
+        template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))
         self._report_template_combo = QComboBox()
         self._report_template_combo.currentIndexChanged.connect(self._update_report_preview)
@@ -971,7 +970,7 @@ class IsolierungQtPlugin(QtPlugin):
         template_layout.addStretch()
         layout.addLayout(template_layout)
 
-        action_layout = QHBoxLayout()
+        action_layout = make_hbox()
         preview_button = QPushButton("Vorschau aktualisieren")
         preview_button.clicked.connect(self._update_report_preview)
         export_button = QPushButton("PDF exportieren")

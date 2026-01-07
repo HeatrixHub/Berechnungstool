@@ -8,17 +8,15 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
+from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
 from SoffeigenschaftenLuft.core.flow_calculations import compute_flow_properties
 from SoffeigenschaftenLuft.core.heater_calculations import compute_heater_power
 from SoffeigenschaftenLuft.core.state_calculations import calculate_state
@@ -138,10 +136,10 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = QVBoxLayout()
+        layout = make_vbox()
 
         header = QWidget()
-        header_layout = QHBoxLayout()
+        header_layout = make_hbox()
         title = QLabel("Stoffeigenschaften Luft")
         title_font = QFont()
         title_font.setPointSize(16)
@@ -249,7 +247,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab1(self) -> QWidget:
         tab = QWidget()
-        layout = QGridLayout()
+        layout = make_grid()
         tab.setLayout(layout)
 
         zustand_combo = QComboBox()
@@ -309,7 +307,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab2(self) -> QWidget:
         tab = QWidget()
-        layout = QGridLayout()
+        layout = make_grid()
         tab.setLayout(layout)
 
         shape_label = QLabel("Querschnittsform:")
@@ -417,7 +415,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab3(self) -> QWidget:
         tab = QWidget()
-        layout = QGridLayout()
+        layout = make_grid()
         tab.setLayout(layout)
 
         for i, (label_text, default) in enumerate(self._TAB3_FIELDS):

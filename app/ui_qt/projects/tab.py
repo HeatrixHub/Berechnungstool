@@ -9,8 +9,6 @@ from typing import Any, Sequence
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -19,7 +17,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QTextEdit,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -27,6 +24,7 @@ from app.core.projects.store import ProjectRecord, ProjectStore
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
+from app.ui_qt.ui_helpers import make_grid, make_hbox, make_vbox
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +99,7 @@ class ProjectsTab:
             self._tab_widget.addTab(self.widget, "Projekte")
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout()
+        layout = make_vbox()
         self.widget.setLayout(layout)
 
         title = QLabel("Projektverwaltung")
@@ -111,7 +109,7 @@ class ProjectsTab:
         layout.addWidget(splitter)
 
         list_container = QWidget()
-        list_layout = QVBoxLayout()
+        list_layout = make_vbox()
         list_container.setLayout(list_layout)
         list_layout.addWidget(QLabel("Projektliste"))
         self._project_list = QListWidget()
@@ -125,12 +123,12 @@ class ProjectsTab:
         list_layout.addWidget(self._project_list)
 
         details_container = QWidget()
-        details_layout = QVBoxLayout()
+        details_layout = make_vbox()
         details_container.setLayout(details_layout)
 
         details_layout.addWidget(QLabel("Projektdetails"))
         form = QWidget()
-        form_layout = QGridLayout()
+        form_layout = make_grid()
         form.setLayout(form_layout)
 
         self._name_input = QLineEdit()
@@ -154,7 +152,7 @@ class ProjectsTab:
         details_layout.addWidget(self._status_label)
 
         actions_container = QWidget()
-        actions_layout = QHBoxLayout()
+        actions_layout = make_hbox()
         actions_container.setLayout(actions_layout)
 
         self._new_button = QPushButton("Neu")

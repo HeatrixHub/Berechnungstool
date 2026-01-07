@@ -21,17 +21,16 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QTabWidget,
     QTextBrowser,
-    QVBoxLayout,
     QWidget,
 )
 
 from app.ui_qt.plugins.manager import QtPluginManager
+from app.ui_qt.ui_helpers import make_hbox, make_vbox
 
 
 @dataclass(frozen=True)
@@ -76,7 +75,7 @@ class ReportTab:
             self._tab_widget.addTab(self.widget, title)
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout()
+        layout = make_vbox()
         self.widget.setLayout(layout)
 
         header = QLabel("Bericht")
@@ -86,7 +85,7 @@ class ReportTab:
         header.setFont(header_font)
         layout.addWidget(header)
 
-        template_layout = QHBoxLayout()
+        template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))
         self._report_template_combo = QComboBox()
         self._report_template_combo.currentIndexChanged.connect(self._update_report_preview)
@@ -97,7 +96,7 @@ class ReportTab:
         template_layout.addStretch()
         layout.addLayout(template_layout)
 
-        action_layout = QHBoxLayout()
+        action_layout = make_hbox()
         preview_button = QPushButton("Vorschau aktualisieren")
         preview_button.clicked.connect(self._update_report_preview)
         export_button = QPushButton("PDF exportieren")
