@@ -20,6 +20,8 @@ from Isolierung.core.database import (
     delete_material_variant,
     list_materials,
     load_material,
+    rename_material,
+    rename_material_variant,
     save_material_family,
     save_material_variant,
 )
@@ -119,6 +121,20 @@ def delete_variant(material_name: str, variant_name: str) -> bool:
     if deleted:
         _notify_material_change_listeners()
     return deleted
+
+
+def rename_family(old_name: str, new_name: str) -> bool:
+    renamed = rename_material(old_name, new_name)
+    if renamed:
+        _notify_material_change_listeners()
+    return renamed
+
+
+def rename_variant(material_name: str, old_name: str, new_name: str) -> bool:
+    renamed = rename_material_variant(material_name, old_name, new_name)
+    if renamed:
+        _notify_material_change_listeners()
+    return renamed
 
 
 def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):

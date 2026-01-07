@@ -855,5 +855,83 @@ def delete_material_variant(material_name: str, variant_name: str) -> bool:
         return False
 
 
+def rename_material(old_name: str, new_name: str) -> bool:
+    if old_name == new_name:
+        return True
+    try:
+        with _get_connection() as conn:
+            existing = conn.execute(
+                "SELECT id FROM materials WHERE name = ?", (old_name,)
+            ).fetchone()
+            if not existing:
+                return False
+            duplicate = conn.execute(
+                "SELECT id FROM materials WHERE name = ?", (new_name,)
+            ).fetchone()
+            if duplicate:
+                return False
+            cursor = conn.execute(
+                """
+                UPDATE materials
+                SET name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (new_name, existing["id"]),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as exc:
+        print(f"[DB] Fehler beim Umbenennen des Materials '{old_name}': {exc}")
+        return False
+
+
+def rename_material_variant(
+    material_name: str, old_variant_name: str, new_variant_name: str
+) -> bool:
+    if old_variant_name == new_variant_name:
+        return True
+    try:
+        with _get_connection() as conn:
+            material_row = conn.execute(
+                "SELECT id FROM materials WHERE name = ?", (material_name,)
+            ).fetchone()
+            if not material_row:
+                return False
+            existing = conn.execute(
+                """
+                SELECT id FROM material_variants
+                WHERE material_id = ? AND name = ?
+                """,
+                (material_row["id"], old_variant_name),
+            ).fetchone()
+            if not existing:
+                return False
+            duplicate = conn.execute(
+                """
+                SELECT id FROM material_variants
+                WHERE material_id = ? AND name = ?
+                """,
+                (material_row["id"], new_variant_name),
+            ).fetchone()
+            if duplicate:
+                return False
+            cursor = conn.execute(
+                """
+                UPDATE material_variants
+                SET name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (new_variant_name, existing["id"]),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as exc:
+        print(
+            "[DB] Fehler beim Umbenennen der Variante "
+            f"'{old_variant_name}' in '{new_variant_name}': {exc}"
+        )
+        return False
+
+
 _run_migrations()
 _migrate_legacy_data()

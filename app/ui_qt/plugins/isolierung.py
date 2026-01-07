@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
+from app.core.isolierungen_db.logic import register_material_change_listener
 from Isolierung.core.database import list_materials, load_material
 from Isolierung.services.tab1_berechnung import perform_calculation, validate_inputs
 
@@ -55,6 +56,7 @@ class IsolierungQtPlugin(QtPlugin):
 
         self._materials = []
         self._material_names: list[str] = []
+        self._material_change_handler = self._on_materials_changed
 
         self._state: dict[str, Any] = {
             "inputs": {
@@ -107,6 +109,7 @@ class IsolierungQtPlugin(QtPlugin):
         self.widget = container
 
         self._load_materials()
+        register_material_change_listener(self._material_change_handler)
         self.refresh_view()
 
     def export_state(self) -> dict[str, Any]:
@@ -290,6 +293,26 @@ class IsolierungQtPlugin(QtPlugin):
     def _load_materials(self) -> None:
         self._materials = list_materials()
         self._material_names = [material.name for material in self._materials]
+
+    def _on_materials_changed(self) -> None:
+        if self.widget is None:
+            return
+        self._load_materials()
+        for index, widgets in enumerate(self._layer_widgets):
+            current_family = widgets.family_combo.currentText()
+            current_family = (
+                current_family if current_family in self._material_names else ""
+            )
+            self._populate_family_combo(widgets.family_combo)
+            self._select_combo_value(
+                widgets.family_combo, current_family, self._FAMILY_PLACEHOLDER
+            )
+            selected_variant = ""
+            layers = self._state["inputs"].get("layers", [])
+            if isinstance(layers, list) and index < len(layers):
+                selected_variant = self._coerce_str(layers[index].get("variant", ""))
+            self._populate_variant_combo(widgets, current_family, selected_variant)
+        self._sync_internal_state_from_widgets()
 
     def _set_layer_count(self, count: int) -> None:
         if self._layers_layout is None:
