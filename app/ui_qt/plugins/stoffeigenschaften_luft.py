@@ -16,7 +16,13 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
-from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import (
+    create_button_row,
+    create_section_header,
+    make_grid,
+    make_hbox,
+    make_vbox,
+)
 from SoffeigenschaftenLuft.core.flow_calculations import compute_flow_properties
 from SoffeigenschaftenLuft.core.heater_calculations import compute_heater_power
 from SoffeigenschaftenLuft.core.state_calculations import calculate_state
@@ -290,7 +296,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab1)
-        layout.addWidget(calculate_button, 13, 0, 1, 4)
+        layout.addLayout(create_button_row([calculate_button]), 13, 0, 1, 4)
 
         return tab
 
@@ -398,7 +404,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab2)
-        layout.addWidget(calculate_button, 10, 1, 1, 2)
+        layout.addLayout(create_button_row([calculate_button]), 10, 1, 1, 2)
 
         return tab
 
@@ -420,7 +426,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab3)
-        layout.addWidget(calculate_button, 4, 1, 1, 2)
+        layout.addLayout(create_button_row([calculate_button]), 4, 1, 1, 2)
 
         use_tab1_check = QCheckBox("Leistung übernehmen")
         use_tab1_check.toggled.connect(self._on_tab3_toggle_use_tab1)

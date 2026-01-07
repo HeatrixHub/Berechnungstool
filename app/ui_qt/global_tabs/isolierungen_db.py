@@ -48,7 +48,13 @@ from app.core.isolierungen_db.services import (
     parse_optional_float,
     parse_required_float,
 )
-from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import (
+    create_button_row,
+    create_section_header,
+    make_grid,
+    make_hbox,
+    make_vbox,
+)
 
 
 class IsolierungenDbTab:
@@ -91,16 +97,18 @@ class IsolierungenDbTab:
         section = QGroupBox("Materialfamilien")
         layout = make_vbox()
 
-        action_bar = make_hbox()
         self._new_family_button = QPushButton("Neu")
         self._delete_family_button = QPushButton("Familie löschen")
         self._export_button = QPushButton("Exportieren (CSV)")
         self._import_button = QPushButton("Importieren (CSV)")
-        action_bar.addWidget(self._new_family_button)
-        action_bar.addWidget(self._delete_family_button)
-        action_bar.addStretch()
-        action_bar.addWidget(self._export_button)
-        action_bar.addWidget(self._import_button)
+        action_bar = create_button_row(
+            [
+                self._new_family_button,
+                self._delete_family_button,
+                self._export_button,
+                self._import_button,
+            ]
+        )
 
         self._family_table = QTableWidget(0, 4)
         self._family_table.setHorizontalHeaderLabels(
@@ -128,12 +136,9 @@ class IsolierungenDbTab:
         section = QGroupBox("Varianten")
         layout = make_vbox()
 
-        action_bar = make_hbox()
         self._new_variant_button = QPushButton("Neue Variante")
         self._delete_variant_button = QPushButton("Variante löschen")
-        action_bar.addWidget(self._new_variant_button)
-        action_bar.addWidget(self._delete_variant_button)
-        action_bar.addStretch()
+        action_bar = create_button_row([self._new_variant_button, self._delete_variant_button])
 
         self._variant_table = QTableWidget(0, 5)
         self._variant_table.setHorizontalHeaderLabels(

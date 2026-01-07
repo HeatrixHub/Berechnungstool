@@ -24,7 +24,13 @@ from app.core.projects.store import ProjectRecord, ProjectStore
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
-from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import (
+    create_button_row,
+    create_section_header,
+    make_grid,
+    make_hbox,
+    make_vbox,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,18 +157,14 @@ class ProjectsTab:
         details_layout.addWidget(self._status_label)
 
         actions_container = QWidget()
-        actions_layout = make_hbox()
-        actions_container.setLayout(actions_layout)
-
         self._new_button = QPushButton("Neu")
         self._save_button = QPushButton("Speichern")
         self._load_button = QPushButton("Laden")
         self._delete_button = QPushButton("Löschen")
-
-        actions_layout.addWidget(self._new_button)
-        actions_layout.addWidget(self._save_button)
-        actions_layout.addWidget(self._load_button)
-        actions_layout.addWidget(self._delete_button)
+        actions_layout = create_button_row(
+            [self._new_button, self._save_button, self._load_button, self._delete_button]
+        )
+        actions_container.setLayout(actions_layout)
 
         details_layout.addWidget(actions_container)
 
