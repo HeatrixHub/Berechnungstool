@@ -30,7 +30,12 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui_qt.plugins.manager import QtPluginManager
-from app.ui_qt.ui_helpers import create_section_header, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import (
+    create_button_row,
+    create_section_header,
+    make_hbox,
+    make_vbox,
+)
 
 
 @dataclass(frozen=True)
@@ -91,14 +96,11 @@ class ReportTab:
         template_layout.addStretch()
         layout.addLayout(template_layout)
 
-        action_layout = make_hbox()
         preview_button = QPushButton("Vorschau aktualisieren")
         preview_button.clicked.connect(self._update_report_preview)
         export_button = QPushButton("PDF exportieren")
         export_button.clicked.connect(self._on_report_export_pdf)
-        action_layout.addWidget(preview_button)
-        action_layout.addStretch()
-        action_layout.addWidget(export_button)
+        action_layout = create_button_row([preview_button, export_button])
         layout.addLayout(action_layout)
 
         self._report_preview = QTextBrowser()

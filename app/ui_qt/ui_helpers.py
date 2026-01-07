@@ -1,8 +1,19 @@
 """Helper utilities for consistent Qt layout defaults."""
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 DEFAULT_MARGINS = (12, 12, 12, 12)
 DEFAULT_SPACING = 8
@@ -37,6 +48,28 @@ def make_hbox(parent: QWidget | None = None) -> QHBoxLayout:
 def make_grid(parent: QWidget | None = None) -> QGridLayout:
     layout = QGridLayout(parent)
     apply_layout_defaults(layout)
+    return layout
+
+
+def create_button_row(
+    buttons: Sequence[QPushButton],
+    align: Qt.Alignment = Qt.AlignRight,
+) -> QHBoxLayout:
+    layout = make_hbox()
+    if align & Qt.AlignHCenter:
+        layout.addStretch()
+    elif align & Qt.AlignRight:
+        layout.addStretch()
+
+    for button in buttons:
+        layout.addWidget(button)
+
+    if align & Qt.AlignHCenter:
+        layout.addStretch()
+    elif align & Qt.AlignLeft:
+        layout.addStretch()
+
+    layout.setAlignment(align)
     return layout
 
 

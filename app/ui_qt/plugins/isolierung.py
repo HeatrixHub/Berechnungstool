@@ -44,7 +44,13 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
-from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import (
+    create_button_row,
+    create_section_header,
+    make_grid,
+    make_hbox,
+    make_vbox,
+)
 from app.core.isolierungen_db.logic import (
     register_material_change_listener,
     unregister_material_change_listener,
@@ -696,11 +702,9 @@ class IsolierungQtPlugin(QtPlugin):
         layers_group.setLayout(layers_layout)
         layout.addWidget(layers_group)
 
-        action_layout = make_hbox()
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._on_calculate)
-        action_layout.addStretch()
-        action_layout.addWidget(calculate_button)
+        action_layout = create_button_row([calculate_button])
         layout.addLayout(action_layout)
 
         result_group = QGroupBox("Ergebnisse")
@@ -753,14 +757,11 @@ class IsolierungQtPlugin(QtPlugin):
 
         layers_group = QGroupBox("Schichtdicken [mm]")
         layers_layout = make_vbox()
-        layer_controls = make_hbox()
         add_button = QPushButton("+ Schicht")
         add_button.clicked.connect(self._on_build_add_layer)
         import_button = QPushButton("Aus Berechnung übernehmen")
         import_button.clicked.connect(self._on_build_import_layers)
-        layer_controls.addWidget(add_button)
-        layer_controls.addWidget(import_button)
-        layer_controls.addStretch()
+        layer_controls = create_button_row([add_button, import_button])
         layers_layout.addLayout(layer_controls)
 
         grid = make_grid()
@@ -773,14 +774,11 @@ class IsolierungQtPlugin(QtPlugin):
         layers_group.setLayout(layers_layout)
         layout.addWidget(layers_group)
 
-        action_layout = make_hbox()
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._on_build_calculate)
         reset_button = QPushButton("Felder leeren")
         reset_button.clicked.connect(self._on_build_reset)
-        action_layout.addStretch()
-        action_layout.addWidget(calculate_button)
-        action_layout.addWidget(reset_button)
+        action_layout = create_button_row([calculate_button, reset_button])
         layout.addLayout(action_layout)
 
         results_group = QGroupBox("Ergebnis")
@@ -849,14 +847,11 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_kerf_input.textChanged.connect(self._on_zuschnitt_kerf_changed)
         settings_layout.addWidget(self._zuschnitt_kerf_input, 0, 1)
 
-        button_layout = make_hbox()
         import_button = QPushButton("Platten übernehmen")
         import_button.clicked.connect(self._on_zuschnitt_import_plates)
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._on_zuschnitt_calculate)
-        button_layout.addWidget(import_button)
-        button_layout.addWidget(calculate_button)
-        button_layout.addStretch()
+        button_layout = create_button_row([import_button, calculate_button])
         settings_layout.addLayout(button_layout, 0, 2)
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
@@ -913,14 +908,11 @@ class IsolierungQtPlugin(QtPlugin):
         )
         results_layout.addWidget(self._zuschnitt_results_view)
 
-        export_layout = make_hbox()
-        export_layout.addStretch()
         export_csv_button = QPushButton("CSV exportieren")
         export_csv_button.clicked.connect(self._on_zuschnitt_export_csv)
         export_excel_button = QPushButton("Excel exportieren")
         export_excel_button.clicked.connect(self._on_zuschnitt_export_excel)
-        export_layout.addWidget(export_csv_button)
-        export_layout.addWidget(export_excel_button)
+        export_layout = create_button_row([export_csv_button, export_excel_button])
         results_layout.addLayout(export_layout)
         results_group.setLayout(results_layout)
         layout.addWidget(results_group)
@@ -955,14 +947,11 @@ class IsolierungQtPlugin(QtPlugin):
         template_layout.addStretch()
         layout.addLayout(template_layout)
 
-        action_layout = make_hbox()
         preview_button = QPushButton("Vorschau aktualisieren")
         preview_button.clicked.connect(self._update_report_preview)
         export_button = QPushButton("PDF exportieren")
         export_button.clicked.connect(self._on_report_export_pdf)
-        action_layout.addWidget(preview_button)
-        action_layout.addStretch()
-        action_layout.addWidget(export_button)
+        action_layout = create_button_row([preview_button, export_button])
         layout.addLayout(action_layout)
 
         self._report_preview = QTextBrowser()
