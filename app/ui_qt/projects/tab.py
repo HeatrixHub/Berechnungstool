@@ -13,13 +13,22 @@ from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 
 class _StubWidget:
     def __init__(self, *_args: object, **_kwargs: object) -> None:
+        self.clicked = _StubSignal()
         return None
 
     def __getattr__(self, _name: str) -> Any:
+        if _name == "itemSelectionChanged" or _name.endswith("Changed"):
+            return _StubSignal()
+
         def _noop(*_args: object, **_kwargs: object) -> Any:
             return None
 
         return _noop
+
+
+class _StubSignal:
+    def connect(self, *_args: object, **_kwargs: object) -> None:
+        return None
 
 
 class _StubQt:
