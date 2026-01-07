@@ -1,6 +1,5 @@
 matplotlib
 numpy
-python-docx
 reportlab
 rectpack
 openpyxl
