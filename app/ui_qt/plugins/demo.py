@@ -47,6 +47,8 @@ class DemoOverviewPlugin(QtPlugin):
     def __init__(self) -> None:
         self._identifier = ""
         self.widget: object | None = None
+        self.label: object | None = None
+        self._label_text = "Demo-Inhalt für Übersicht"
 
     @property
     def name(self) -> str:
@@ -60,18 +62,43 @@ class DemoOverviewPlugin(QtPlugin):
         QWidget, QVBoxLayout, QLabel = _resolve_qt_widgets()
         widget = QWidget()
         layout = QVBoxLayout()
-        label = QLabel("Demo-Inhalt für Übersicht")
+        label = QLabel(self._label_text)
         if hasattr(layout, "addWidget"):
             layout.addWidget(label)
         if hasattr(widget, "setLayout"):
             widget.setLayout(layout)
+        self.label = label
         self.widget = widget
+
+    def export_state(self) -> dict[str, object]:
+        state = {
+            "inputs": {},
+            "results": {},
+            "ui": {"label_text": self._label_text},
+        }
+        return self.validate_state(state)
+
+    def import_state(self, state: dict[str, object]) -> None:
+        super().import_state(state)
+
+    def apply_state(self, state: dict[str, object]) -> None:
+        ui_state = state.get("ui", {})
+        if isinstance(ui_state, dict):
+            label_text = ui_state.get("label_text")
+            if isinstance(label_text, str):
+                self._label_text = label_text
+
+    def refresh_view(self) -> None:
+        if self.label is not None and hasattr(self.label, "setText"):
+            self.label.setText(self._label_text)
 
 
 class DemoSettingsPlugin(QtPlugin):
     def __init__(self) -> None:
         self._identifier = ""
         self.widget: object | None = None
+        self.label: object | None = None
+        self._label_text = "Platzhalter für Einstellungen"
 
     @property
     def name(self) -> str:
@@ -85,9 +112,32 @@ class DemoSettingsPlugin(QtPlugin):
         QWidget, QVBoxLayout, QLabel = _resolve_qt_widgets()
         widget = QWidget()
         layout = QVBoxLayout()
-        label = QLabel("Platzhalter für Einstellungen")
+        label = QLabel(self._label_text)
         if hasattr(layout, "addWidget"):
             layout.addWidget(label)
         if hasattr(widget, "setLayout"):
             widget.setLayout(layout)
+        self.label = label
         self.widget = widget
+
+    def export_state(self) -> dict[str, object]:
+        state = {
+            "inputs": {},
+            "results": {},
+            "ui": {"label_text": self._label_text},
+        }
+        return self.validate_state(state)
+
+    def import_state(self, state: dict[str, object]) -> None:
+        super().import_state(state)
+
+    def apply_state(self, state: dict[str, object]) -> None:
+        ui_state = state.get("ui", {})
+        if isinstance(ui_state, dict):
+            label_text = ui_state.get("label_text")
+            if isinstance(label_text, str):
+                self._label_text = label_text
+
+    def refresh_view(self) -> None:
+        if self.label is not None and hasattr(self.label, "setText"):
+            self.label.setText(self._label_text)
