@@ -2,7 +2,6 @@ matplotlib
 numpy
 python-docx
 reportlab
-sv-ttk
 rectpack
 openpyxl
 Jinja2

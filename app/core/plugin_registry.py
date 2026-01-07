@@ -25,20 +25,20 @@ DEFAULT_SPECS: Sequence[PluginSpec] = (
     PluginSpec(
         identifier="isolierung",
         name="Isolierung",
-        module="Isolierung.ui.plugin",
-        class_name="IsolierungPlugin",
+        module="app.ui_qt.plugins.isolierung",
+        class_name="IsolierungQtPlugin",
     ),
     PluginSpec(
-        identifier="stoffeigenschaften-luft",
+        identifier="stoffeigenschaften_luft",
         name="Stoffeigenschaften Luft",
-        module="SoffeigenschaftenLuft.ui.plugin",
-        class_name="StoffeigenschaftenLuftPlugin",
+        module="app.ui_qt.plugins.stoffeigenschaften_luft",
+        class_name="StoffeigenschaftenLuftQtPlugin",
     ),
     PluginSpec(
         identifier="elektrik",
         name="Elektrik",
-        module="Elektrik.ui.plugin",
-        class_name="ElektrikPlugin",
+        module="app.ui_qt.plugins.elektrik",
+        class_name="ElektrikQtPlugin",
     ),
 )
 
