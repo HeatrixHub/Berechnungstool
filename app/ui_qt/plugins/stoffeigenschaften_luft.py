@@ -19,10 +19,8 @@ from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
-    create_section_header,
+    create_page_layout,
     make_grid,
-    make_hbox,
-    make_vbox,
 )
 from SoffeigenschaftenLuft.core.flow_calculations import compute_flow_properties
 from SoffeigenschaftenLuft.core.heater_calculations import compute_heater_power
@@ -143,10 +141,15 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = make_vbox()
-
         version = QLabel(self._DEFAULT_VERSION)
-        layout.addWidget(create_section_header("Stoffeigenschaften Luft", right_widget=version))
+        version_font = QFont()
+        version_font.setPointSize(10)
+        version.setFont(version_font)
+        layout = create_page_layout(
+            container,
+            "Stoffeigenschaften Luft",
+            actions=version,
+        )
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
@@ -163,7 +166,6 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         footer.setFont(footer_font)
         layout.addWidget(footer)
 
-        container.setLayout(layout)
         self.widget = container
 
         self.refresh_view()
@@ -243,36 +245,37 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab1(self) -> QWidget:
         tab = QWidget()
-        layout = make_grid()
-        tab.setLayout(layout)
+        layout = create_page_layout(tab, "Zustandsgrößen")
+        grid = make_grid()
+        layout.addLayout(grid)
 
         zustand_combo = QComboBox()
         zustand_combo.addItems(["Isobar", "Isochor"])
         zustand_combo.currentTextChanged.connect(self._on_tab1_zustand_changed)
         self._tab1_zustand_combo = zustand_combo
-        layout.addWidget(zustand_combo, 0, 1, 1, 2)
+        grid.addWidget(zustand_combo, 0, 1, 1, 2)
 
         normkubik_check = QCheckBox("Normbedingungen DIN 1343")
         normkubik_check.toggled.connect(self._on_tab1_toggle_din)
-        layout.addWidget(normkubik_check, 1, 0, 1, 2)
+        grid.addWidget(normkubik_check, 1, 0, 1, 2)
         self._tab1_normkubik_check = normkubik_check
 
         heatrix_check = QCheckBox("Heatrix Normalbedingungen")
         heatrix_check.toggled.connect(self._on_tab1_toggle_heatrix)
-        layout.addWidget(heatrix_check, 2, 0, 1, 2)
+        grid.addWidget(heatrix_check, 2, 0, 1, 2)
         self._tab1_heatrix_check = heatrix_check
 
         normkubikmenge_check = QCheckBox("Normkubikmeter verwenden")
         normkubikmenge_check.toggled.connect(self._on_tab1_toggle_normkubikmenge)
-        layout.addWidget(normkubikmenge_check, 1, 2, 1, 2)
+        grid.addWidget(normkubikmenge_check, 1, 2, 1, 2)
         self._tab1_normkubikmenge_check = normkubikmenge_check
 
         for text, default, row, col in self._TAB1_FIELDS:
             label = QLabel(text)
-            layout.addWidget(label, row, col)
+            grid.addWidget(label, row, col)
             entry = QLineEdit()
             entry.setText(default)
-            layout.addWidget(entry, row, col + 1)
+            grid.addWidget(entry, row, col + 1)
             self._tab1_entries[text] = entry
             entry.textChanged.connect(
                 lambda value, key=text: self._update_entry_value("tab1", key, value)
@@ -292,33 +295,34 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             if text == "Wärmeleistung (kW):":
                 heat_priority_check = QCheckBox("Wärmeleistung priorisieren")
                 heat_priority_check.toggled.connect(self._on_tab1_toggle_heat_priority)
-                layout.addWidget(heat_priority_check, row, col + 2)
+                grid.addWidget(heat_priority_check, row, col + 2)
                 self._tab1_heat_priority_check = heat_priority_check
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab1)
-        layout.addLayout(create_button_row([calculate_button]), 13, 0, 1, 4)
+        grid.addLayout(create_button_row([calculate_button]), 13, 0, 1, 4)
 
-        apply_form_layout_defaults(layout, label_columns=(0, 2), field_columns=(1, 3))
+        apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
         return tab
 
     def _build_tab2(self) -> QWidget:
         tab = QWidget()
-        layout = make_grid()
-        tab.setLayout(layout)
+        layout = create_page_layout(tab, "Geschwindigkeitsberechnung")
+        grid = make_grid()
+        layout.addLayout(grid)
 
         shape_label = QLabel("Querschnittsform:")
-        layout.addWidget(shape_label, 0, 0)
+        grid.addWidget(shape_label, 0, 0)
         shape_combo = QComboBox()
         shape_combo.addItems(["Rund", "Rechteckig"])
         shape_combo.currentTextChanged.connect(self._on_tab2_shape_changed)
-        layout.addWidget(shape_combo, 0, 1, 1, 2)
+        grid.addWidget(shape_combo, 0, 1, 1, 2)
         self._tab2_shape_combo = shape_combo
 
         diameter_label = QLabel("Durchmesser (mm):")
         diameter_entry = QLineEdit()
-        layout.addWidget(diameter_label, 1, 0)
-        layout.addWidget(diameter_entry, 1, 1)
+        grid.addWidget(diameter_label, 1, 0)
+        grid.addWidget(diameter_entry, 1, 1)
         self._tab2_diameter_label = diameter_label
         self._tab2_diameter_entry = diameter_entry
         self._tab2_entries["Durchmesser (mm):"] = diameter_entry
@@ -330,10 +334,10 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         side_a_entry = QLineEdit()
         side_b_label = QLabel("Seite b (mm):")
         side_b_entry = QLineEdit()
-        layout.addWidget(side_a_label, 1, 0)
-        layout.addWidget(side_a_entry, 1, 1)
-        layout.addWidget(side_b_label, 2, 0)
-        layout.addWidget(side_b_entry, 2, 1)
+        grid.addWidget(side_a_label, 1, 0)
+        grid.addWidget(side_a_entry, 1, 1)
+        grid.addWidget(side_b_label, 2, 0)
+        grid.addWidget(side_b_entry, 2, 1)
         self._tab2_side_a_label = side_a_label
         self._tab2_side_a_entry = side_a_entry
         self._tab2_side_b_label = side_b_label
@@ -347,9 +351,9 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             lambda value, key="Seite b (mm):": self._update_entry_value("tab2", key, value)
         )
 
-        layout.addWidget(QLabel("Volumenstrom:"), 3, 0)
+        grid.addWidget(QLabel("Volumenstrom:"), 3, 0)
         entry_flow = QLineEdit()
-        layout.addWidget(entry_flow, 3, 1)
+        grid.addWidget(entry_flow, 3, 1)
         self._tab2_entries["Volumenstrom"] = entry_flow
         entry_flow.textChanged.connect(
             lambda value, key="Volumenstrom": self._update_entry_value("tab2", key, value)
@@ -358,22 +362,22 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         flow_unit_combo = QComboBox()
         flow_unit_combo.addItems(["m³/h", "m³/s"])
         flow_unit_combo.currentTextChanged.connect(self._on_tab2_flow_unit_changed)
-        layout.addWidget(flow_unit_combo, 3, 2)
+        grid.addWidget(flow_unit_combo, 3, 2)
         self._tab2_flow_unit_combo = flow_unit_combo
 
         for i, label in enumerate(["Temperatur (°C):", "Dichte (kg/m³):"]):
-            layout.addWidget(QLabel(label), 4 + i, 0)
+            grid.addWidget(QLabel(label), 4 + i, 0)
             entry = QLineEdit()
-            layout.addWidget(entry, 4 + i, 1)
+            grid.addWidget(entry, 4 + i, 1)
             self._tab2_entries[label] = entry
             entry.textChanged.connect(
                 lambda value, key=label: self._update_entry_value("tab2", key, value)
             )
 
-        layout.addWidget(QLabel("Strömungsgeschwindigkeit (m/s):"), 6, 0)
+        grid.addWidget(QLabel("Strömungsgeschwindigkeit (m/s):"), 6, 0)
         entry_velocity = QLineEdit()
         entry_velocity.setReadOnly(True)
-        layout.addWidget(entry_velocity, 6, 1)
+        grid.addWidget(entry_velocity, 6, 1)
         self._tab2_entries["Strömungsgeschwindigkeit (m/s):"] = entry_velocity
         entry_velocity.textChanged.connect(
             lambda value, key="Strömungsgeschwindigkeit (m/s):": self._update_entry_value(
@@ -381,19 +385,19 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             )
         )
 
-        layout.addWidget(QLabel("Reynolds-Zahl:"), 7, 0)
+        grid.addWidget(QLabel("Reynolds-Zahl:"), 7, 0)
         entry_reynolds = QLineEdit()
         entry_reynolds.setReadOnly(True)
-        layout.addWidget(entry_reynolds, 7, 1)
+        grid.addWidget(entry_reynolds, 7, 1)
         self._tab2_entries["Reynolds-Zahl:"] = entry_reynolds
         entry_reynolds.textChanged.connect(
             lambda value, key="Reynolds-Zahl:": self._update_entry_value("tab2", key, value)
         )
 
-        layout.addWidget(QLabel("Strömungsart:"), 7, 2)
+        grid.addWidget(QLabel("Strömungsart:"), 7, 2)
         entry_flowtype = QLineEdit()
         entry_flowtype.setReadOnly(True)
-        layout.addWidget(entry_flowtype, 7, 3)
+        grid.addWidget(entry_flowtype, 7, 3)
         self._tab2_entries["Strömungsart:"] = entry_flowtype
         entry_flowtype.textChanged.connect(
             lambda value, key="Strömungsart:": self._update_entry_value("tab2", key, value)
@@ -401,27 +405,28 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
         norm_check = QCheckBox("Heatrix Normalbedingungen")
         norm_check.toggled.connect(self._on_tab2_toggle_norm)
-        layout.addWidget(norm_check, 8, 0, 1, 2)
+        grid.addWidget(norm_check, 8, 0, 1, 2)
         self._tab2_normkubik_check = norm_check
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab2)
-        layout.addLayout(create_button_row([calculate_button]), 10, 1, 1, 2)
+        grid.addLayout(create_button_row([calculate_button]), 10, 1, 1, 2)
 
-        apply_form_layout_defaults(layout, label_columns=(0, 2), field_columns=(1, 3))
+        apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
         return tab
 
     def _build_tab3(self) -> QWidget:
         tab = QWidget()
-        layout = make_grid()
-        tab.setLayout(layout)
+        layout = create_page_layout(tab, "Heizer Leistung")
+        grid = make_grid()
+        layout.addLayout(grid)
 
         for i, (label_text, default) in enumerate(self._TAB3_FIELDS):
             label = QLabel(label_text)
-            layout.addWidget(label, i, 0)
+            grid.addWidget(label, i, 0)
             entry = QLineEdit()
             entry.setText(default)
-            layout.addWidget(entry, i, 1)
+            grid.addWidget(entry, i, 1)
             self._tab3_entries[label_text] = entry
             entry.textChanged.connect(
                 lambda value, key=label_text: self._update_entry_value("tab3", key, value)
@@ -429,18 +434,18 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
         calculate_button = QPushButton("Berechnen")
         calculate_button.clicked.connect(self._calculate_tab3)
-        layout.addLayout(create_button_row([calculate_button]), 4, 1, 1, 2)
+        grid.addLayout(create_button_row([calculate_button]), 4, 1, 1, 2)
 
         use_tab1_check = QCheckBox("Leistung übernehmen")
         use_tab1_check.toggled.connect(self._on_tab3_toggle_use_tab1)
-        layout.addWidget(use_tab1_check, 3, 0, 1, 2)
+        grid.addWidget(use_tab1_check, 3, 0, 1, 2)
         self._tab3_use_tab1_power_check = use_tab1_check
 
         efficiency_entry = self._tab3_entries.get("Effizienz (%):")
         if efficiency_entry is not None:
             efficiency_entry.textChanged.connect(self._on_tab3_efficiency_changed)
 
-        apply_form_layout_defaults(layout)
+        apply_form_layout_defaults(grid)
         return tab
 
     def _sync_tab1_view(self) -> None:

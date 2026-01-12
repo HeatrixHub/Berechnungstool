@@ -3,23 +3,36 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QFont, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLayout,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-DEFAULT_MARGINS = (12, 12, 12, 12)
-DEFAULT_SPACING = 8
-HEADER_TITLE_SIZE = 16
+from app.ui_qt.style.assets import get_logo_path
+
+ROOT_MARGINS = (16, 16, 16, 16)
+ROOT_SPACING = 12
+SECTION_MARGINS = (12, 12, 12, 12)
+SECTION_SPACING = 8
+CONTENT_MARGINS = (0, 0, 0, 0)
+DEFAULT_MARGINS = SECTION_MARGINS
+DEFAULT_SPACING = SECTION_SPACING
+HEADER_TITLE_SIZE = 18
 HEADER_SUBTITLE_SIZE = 10
 HEADER_TEXT_SPACING = 4
+PAGE_HEADER_SPACING = 12
+PAGE_HEADER_LOGO_HEIGHT = 28
 
 
 def apply_layout_defaults(
@@ -39,9 +52,21 @@ def make_vbox(parent: QWidget | None = None) -> QVBoxLayout:
     return layout
 
 
+def make_root_vbox(parent: QWidget | None = None) -> QVBoxLayout:
+    layout = QVBoxLayout(parent)
+    apply_layout_defaults(layout, margins=ROOT_MARGINS, spacing=ROOT_SPACING)
+    return layout
+
+
 def make_hbox(parent: QWidget | None = None) -> QHBoxLayout:
     layout = QHBoxLayout(parent)
     apply_layout_defaults(layout)
+    return layout
+
+
+def make_root_hbox(parent: QWidget | None = None) -> QHBoxLayout:
+    layout = QHBoxLayout(parent)
+    apply_layout_defaults(layout, margins=ROOT_MARGINS, spacing=ROOT_SPACING)
     return layout
 
 
@@ -129,3 +154,116 @@ def create_section_header(
 
     header.setLayout(layout)
     return header
+
+
+def apply_app_style(app: object) -> None:
+    if hasattr(app, "setStyleSheet"):
+        app.setStyleSheet(
+            "QPushButton { min-height: 28px; }"
+            "QLineEdit, QTextEdit, QComboBox { min-height: 24px; }"
+            "QHeaderView::section { padding: 4px 6px; }"
+        )
+
+
+def _load_logo_pixmap(logo_path: Path, height: int) -> QPixmap | None:
+    if not logo_path.exists():
+        return None
+    if logo_path.suffix.lower() == ".svg":
+        renderer = QSvgRenderer(str(logo_path))
+        if not renderer.isValid():
+            return None
+        size = renderer.defaultSize()
+        if size.isEmpty():
+            size = QSize(height * 4, height)
+        width = int(size.width() * height / size.height()) if size.height() else height
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return pixmap
+    pixmap = QPixmap(str(logo_path))
+    if pixmap.isNull():
+        return None
+    return pixmap.scaledToHeight(height, Qt.SmoothTransformation)
+
+
+def create_page_header(
+    title: str,
+    *,
+    subtitle: str | None = None,
+    actions: QWidget | None = None,
+    logo_path: str | Path | None = None,
+    parent: QWidget | None = None,
+) -> QWidget:
+    header = QWidget(parent)
+    layout = QHBoxLayout()
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(PAGE_HEADER_SPACING)
+
+    title_layout = QVBoxLayout()
+    title_layout.setContentsMargins(0, 0, 0, 0)
+    title_layout.setSpacing(HEADER_TEXT_SPACING)
+
+    title_label = QLabel(title)
+    title_font = QFont()
+    title_font.setPointSize(HEADER_TITLE_SIZE)
+    title_font.setWeight(QFont.Weight.DemiBold)
+    title_label.setFont(title_font)
+    title_label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+    title_layout.addWidget(title_label)
+
+    if subtitle:
+        subtitle_label = QLabel(subtitle)
+        subtitle_font = QFont()
+        subtitle_font.setPointSize(HEADER_SUBTITLE_SIZE)
+        subtitle_label.setFont(subtitle_font)
+        title_layout.addWidget(subtitle_label)
+
+    layout.addLayout(title_layout)
+
+    if actions is not None:
+        actions.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        layout.addWidget(actions)
+
+    layout.addStretch()
+
+    resolved_logo = Path(logo_path) if logo_path is not None else get_logo_path()
+    logo_pixmap = _load_logo_pixmap(resolved_logo, PAGE_HEADER_LOGO_HEIGHT)
+    if logo_pixmap is not None:
+        logo_label = QLabel()
+        logo_label.setPixmap(logo_pixmap)
+        logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        logo_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        layout.addWidget(logo_label)
+
+    header.setLayout(layout)
+    header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    return header
+
+
+def create_page_layout(
+    page: QWidget,
+    title: str,
+    *,
+    subtitle: str | None = None,
+    actions: QWidget | None = None,
+    logo_path: str | Path | None = None,
+) -> QVBoxLayout:
+    root_layout = make_root_vbox()
+    page.setLayout(root_layout)
+    header = create_page_header(
+        title,
+        subtitle=subtitle,
+        actions=actions,
+        logo_path=logo_path,
+        parent=page,
+    )
+    root_layout.addWidget(header)
+
+    content_widget = QWidget()
+    content_layout = QVBoxLayout(content_widget)
+    apply_layout_defaults(content_layout, margins=CONTENT_MARGINS, spacing=SECTION_SPACING)
+    content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+    root_layout.addWidget(content_widget, 1)
+    return content_layout
