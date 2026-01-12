@@ -32,9 +32,8 @@ from PySide6.QtWidgets import (
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.ui_helpers import (
     create_button_row,
-    create_section_header,
+    create_page_layout,
     make_hbox,
-    make_vbox,
 )
 
 
@@ -80,10 +79,7 @@ class ReportTab:
             self._tab_widget.addTab(self.widget, title)
 
     def _build_ui(self) -> None:
-        layout = make_vbox()
-        self.widget.setLayout(layout)
-
-        layout.addWidget(create_section_header("Bericht"))
+        layout = create_page_layout(self.widget, "Bericht")
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))

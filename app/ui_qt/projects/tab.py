@@ -27,9 +27,8 @@ from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
 from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
-    create_section_header,
+    create_page_layout,
     make_grid,
-    make_hbox,
     make_vbox,
 )
 
@@ -106,10 +105,7 @@ class ProjectsTab:
             self._tab_widget.addTab(self.widget, "Projekte")
 
     def _build_ui(self) -> None:
-        layout = make_vbox()
-        self.widget.setLayout(layout)
-
-        layout.addWidget(create_section_header("Projektverwaltung"))
+        layout = create_page_layout(self.widget, "Projektverwaltung")
 
         splitter = QSplitter()
         layout.addWidget(splitter)

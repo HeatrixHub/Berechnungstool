@@ -51,7 +51,7 @@ from app.core.isolierungen_db.services import (
 from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
-    create_section_header,
+    create_page_layout,
     make_grid,
     make_hbox,
     make_vbox,
@@ -69,17 +69,12 @@ class IsolierungenDbTab:
         self._listener_registered = False
 
         self.widget = QWidget()
-        self._layout = make_vbox()
-        self.widget.setLayout(self._layout)
-
-        self._build_header()
+        self._layout = create_page_layout(self.widget, "Isolierungen DB")
         self._build_family_section()
         self._build_variant_section()
         self._build_family_form()
         self._build_variant_form()
         self._build_plot_section()
-
-        self._layout.addStretch()
 
         self.refresh_table(preserve_selection=False)
         if not self._listener_registered:
@@ -90,9 +85,6 @@ class IsolierungenDbTab:
 
         if hasattr(self._tab_widget, "addTab"):
             self._tab_widget.addTab(self.widget, title)
-
-    def _build_header(self) -> None:
-        self._layout.addWidget(create_section_header("Isolierungen verwalten"))
 
     def _build_family_section(self) -> None:
         section = QGroupBox("Materialfamilien")

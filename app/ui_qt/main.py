@@ -9,10 +9,12 @@ from app.ui_qt.plugins.base import QtAppContext
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.projects.tab import ProjectsTab
 from app.ui_qt.global_tabs.report import ReportTab
+from app.ui_qt.ui_helpers import apply_app_style
 
 
 def main() -> int:
     app = QApplication(sys.argv)
+    apply_app_style(app)
     window = QMainWindow()
     tab_widget = QTabWidget()
     window.setCentralWidget(tab_widget)

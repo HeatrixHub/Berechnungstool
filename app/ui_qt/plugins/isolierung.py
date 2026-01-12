@@ -47,7 +47,7 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.ui_qt.ui_helpers import (
     create_button_row,
-    create_section_header,
+    create_page_layout,
     make_grid,
     make_hbox,
     make_vbox,
@@ -266,9 +266,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = make_vbox()
-
-        layout.addWidget(create_section_header("Isolierungsberechnung"))
+        layout = create_page_layout(container, "Isolierungsberechnung")
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
@@ -279,7 +277,6 @@ class IsolierungQtPlugin(QtPlugin):
         tab_widget.addTab(self._build_schichtaufbau_tab(), "Schichtaufbau")
         tab_widget.addTab(self._build_zuschnitt_tab(), "Zuschnitt")
 
-        container.setLayout(layout)
         self.widget = container
 
         self._load_materials()
@@ -662,7 +659,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_calculation_tab(self) -> QWidget:
         tab = QWidget()
-        layout = make_vbox()
+        layout = create_page_layout(tab, "Berechnung")
 
         inputs_group = QGroupBox("Randbedingungen")
         inputs_layout = make_grid()
@@ -716,13 +713,11 @@ class IsolierungQtPlugin(QtPlugin):
         result_group.setLayout(result_layout)
         layout.addWidget(result_group)
 
-        layout.addStretch()
-        tab.setLayout(layout)
         return tab
 
     def _build_schichtaufbau_tab(self) -> QWidget:
         tab = QWidget()
-        layout = make_vbox()
+        layout = create_page_layout(tab, "Schichtaufbau")
 
         measure_group = QGroupBox("Maßvorgabe")
         measure_layout = make_hbox()
@@ -830,20 +825,11 @@ class IsolierungQtPlugin(QtPlugin):
         results_group.setLayout(results_layout)
         layout.addWidget(results_group)
 
-        layout.addStretch()
-        tab.setLayout(layout)
         return tab
 
     def _build_zuschnitt_tab(self) -> QWidget:
         tab = QWidget()
-        layout = make_vbox()
-
-        header = QLabel("Zuschnittoptimierung")
-        header_font = QFont()
-        header_font.setPointSize(12)
-        header_font.setBold(True)
-        header.setFont(header_font)
-        layout.addWidget(header)
+        layout = create_page_layout(tab, "Zuschnittoptimierung")
 
         settings_group = QGroupBox("Einstellungen")
         settings_layout = make_grid()
@@ -931,15 +917,11 @@ class IsolierungQtPlugin(QtPlugin):
         preview_group.setLayout(preview_layout)
         layout.addWidget(preview_group)
 
-        layout.addStretch()
-        tab.setLayout(layout)
         return tab
 
     def _build_report_tab(self) -> QWidget:
         tab = QWidget()
-        layout = make_vbox()
-
-        layout.addWidget(create_section_header("Bericht"))
+        layout = create_page_layout(tab, "Bericht")
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))
@@ -970,7 +952,6 @@ class IsolierungQtPlugin(QtPlugin):
         self._report_status_label.setWordWrap(True)
         layout.addWidget(self._report_status_label)
 
-        tab.setLayout(layout)
         self._discover_report_templates()
         self._update_report_preview()
         return tab

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui_qt.ui_helpers import create_section_header, make_grid, make_hbox, make_vbox
+from app.ui_qt.ui_helpers import create_page_layout, make_grid, make_hbox
 
 
 
@@ -62,21 +62,19 @@ class ElektrikQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = make_vbox()
-
-        layout.addWidget(
-            create_section_header(
-                "Elektrische Leistung",
-                "Berechnung für ein- und dreiphasige Systeme",
-            )
+        layout = create_page_layout(
+            container,
+            "Elektrische Leistung",
+            subtitle="Berechnung für ein- und dreiphasige Systeme",
         )
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
 
         calculator_tab = QWidget()
-        calculator_layout = make_hbox()
-        calculator_tab.setLayout(calculator_layout)
+        calculator_layout = create_page_layout(calculator_tab, "Leistungsrechner")
+        calculator_content = make_hbox()
+        calculator_layout.addLayout(calculator_content)
         tab_widget.addTab(calculator_tab, "Leistungsrechner")
         layout.addWidget(tab_widget)
 
@@ -84,7 +82,7 @@ class ElektrikQtPlugin(QtPlugin):
         single_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         single_layout = make_grid()
         single_group.setLayout(single_layout)
-        calculator_layout.addWidget(single_group, 1)
+        calculator_content.addWidget(single_group, 1)
 
         single_layout.addWidget(QLabel("Formel: P = U × I"), 0, 0, 1, 2)
         single_layout.addWidget(QLabel("Spannung U [V]"), 1, 0)
@@ -102,7 +100,7 @@ class ElektrikQtPlugin(QtPlugin):
         three_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         three_layout = make_grid()
         three_group.setLayout(three_layout)
-        calculator_layout.addWidget(three_group, 1)
+        calculator_content.addWidget(three_group, 1)
 
         three_layout.addWidget(QLabel("Formel: P = U × I × √3"), 0, 0, 1, 2)
         three_layout.addWidget(QLabel("Außenleiterspannung U [V]"), 1, 0)
@@ -118,8 +116,6 @@ class ElektrikQtPlugin(QtPlugin):
 
         single_button.clicked.connect(self._calculate_single_phase)
         three_button.clicked.connect(self._calculate_three_phase)
-
-        container.setLayout(layout)
 
         self.widget = container
         self._single_voltage_input = single_voltage_input
