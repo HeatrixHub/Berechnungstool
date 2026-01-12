@@ -266,7 +266,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = create_page_layout(container, "Isolierungsberechnung")
+        layout = create_page_layout(container, "Isolierungsberechnung", show_logo=True)
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget

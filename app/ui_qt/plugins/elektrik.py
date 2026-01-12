@@ -66,6 +66,7 @@ class ElektrikQtPlugin(QtPlugin):
             container,
             "Elektrische Leistung",
             subtitle="Berechnung für ein- und dreiphasige Systeme",
+            show_logo=True,
         )
 
         tab_widget = QTabWidget()

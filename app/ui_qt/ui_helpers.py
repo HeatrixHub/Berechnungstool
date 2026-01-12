@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui_qt.style.assets import get_logo_path
+from app.ui_qt.style.assets import APP_HEADER_LOGO_SVG_PATH
 
 ROOT_MARGINS = (16, 16, 16, 16)
 ROOT_SPACING = 12
@@ -166,26 +166,21 @@ def apply_app_style(app: object) -> None:
 
 
 def _load_logo_pixmap(logo_path: Path, height: int) -> QPixmap | None:
-    if not logo_path.exists():
+    if not logo_path.exists() or logo_path.suffix.lower() != ".svg":
         return None
-    if logo_path.suffix.lower() == ".svg":
-        renderer = QSvgRenderer(str(logo_path))
-        if not renderer.isValid():
-            return None
-        size = renderer.defaultSize()
-        if size.isEmpty():
-            size = QSize(height * 4, height)
-        width = int(size.width() * height / size.height()) if size.height() else height
-        pixmap = QPixmap(width, height)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-        return pixmap
-    pixmap = QPixmap(str(logo_path))
-    if pixmap.isNull():
+    renderer = QSvgRenderer(str(logo_path))
+    if not renderer.isValid():
         return None
-    return pixmap.scaledToHeight(height, Qt.SmoothTransformation)
+    size = renderer.defaultSize()
+    if size.isEmpty():
+        size = QSize(height * 4, height)
+    width = int(size.width() * height / size.height()) if size.height() else height
+    pixmap = QPixmap(width, height)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+    return pixmap
 
 
 def create_page_header(
@@ -194,6 +189,7 @@ def create_page_header(
     subtitle: str | None = None,
     actions: QWidget | None = None,
     logo_path: str | Path | None = None,
+    show_logo: bool = False,
     parent: QWidget | None = None,
 ) -> QWidget:
     header = QWidget(parent)
@@ -228,14 +224,15 @@ def create_page_header(
 
     layout.addStretch()
 
-    resolved_logo = Path(logo_path) if logo_path is not None else get_logo_path()
-    logo_pixmap = _load_logo_pixmap(resolved_logo, PAGE_HEADER_LOGO_HEIGHT)
-    if logo_pixmap is not None:
-        logo_label = QLabel()
-        logo_label.setPixmap(logo_pixmap)
-        logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        logo_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        layout.addWidget(logo_label)
+    if show_logo:
+        resolved_logo = Path(logo_path) if logo_path is not None else APP_HEADER_LOGO_SVG_PATH
+        logo_pixmap = _load_logo_pixmap(resolved_logo, PAGE_HEADER_LOGO_HEIGHT)
+        if logo_pixmap is not None:
+            logo_label = QLabel()
+            logo_label.setPixmap(logo_pixmap)
+            logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            logo_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            layout.addWidget(logo_label)
 
     header.setLayout(layout)
     header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -249,6 +246,7 @@ def create_page_layout(
     subtitle: str | None = None,
     actions: QWidget | None = None,
     logo_path: str | Path | None = None,
+    show_logo: bool = False,
 ) -> QVBoxLayout:
     root_layout = make_root_vbox()
     page.setLayout(root_layout)
@@ -257,6 +255,7 @@ def create_page_layout(
         subtitle=subtitle,
         actions=actions,
         logo_path=logo_path,
+        show_logo=show_logo,
         parent=page,
     )
     root_layout.addWidget(header)

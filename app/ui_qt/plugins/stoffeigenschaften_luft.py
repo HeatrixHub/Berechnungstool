@@ -149,6 +149,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             container,
             "Stoffeigenschaften Luft",
             actions=version,
+            show_logo=True,
         )
 
         tab_widget = QTabWidget()

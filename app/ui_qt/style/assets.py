@@ -1,11 +1,15 @@
-"""Asset loading helpers for Qt UI."""
+"""Asset loading helpers for Qt UI.
+
+Das App-Header-Logo ist bewusst auf Top-Level-Seiten beschränkt.
+Setze ``show_logo=True`` beim Erzeugen eines Page-Headers, wenn das Logo im
+obersten Tab-Header angezeigt werden soll; bei Unterseiten bleibt es standardmäßig aus.
+"""
 from __future__ import annotations
 
 from pathlib import Path
 import sys
 
 ASSET_DIR = "assets"
-LOGO_FILENAME = "heatrix_logo_v1.svg"
 
 
 def _asset_base_dir() -> Path:
@@ -18,5 +22,4 @@ def get_asset_path(filename: str) -> Path:
     return _asset_base_dir() / filename
 
 
-def get_logo_path() -> Path:
-    return get_asset_path(LOGO_FILENAME)
+APP_HEADER_LOGO_SVG_PATH = get_asset_path("heatrix_logo_v1.svg")
