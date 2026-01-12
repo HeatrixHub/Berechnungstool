@@ -124,12 +124,13 @@ class ProjectStore:
         )
 
     def _to_record(self, data: Dict[str, Any]) -> ProjectRecord:
+        metadata = self._normalize_metadata(data.get("metadata", {}) or {})
         return ProjectRecord(
             id=str(data.get("id")),
             name=str(data.get("name", "")),
             author=str(data.get("author", "")),
             description=str(data.get("description", "")),
-            metadata=data.get("metadata", {}) or {},
+            metadata=metadata,
             created_at=str(data.get("created_at", "")),
             updated_at=str(data.get("updated_at", "")),
             plugin_states=data.get("plugin_states", {}) or {},
@@ -144,6 +145,20 @@ class ProjectStore:
                 "Plugin-Zustände enthalten nicht serialisierbare Daten"
             ) from exc
         return json.loads(serialized)
+
+    def _normalize_metadata(self, metadata: Any) -> Dict[str, Any]:
+        if isinstance(metadata, dict):
+            return metadata
+        if isinstance(metadata, str):
+            raw = metadata.strip()
+            if not raw:
+                return {}
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        return {}
 
     def _create_project(
         self,
