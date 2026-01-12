@@ -105,7 +105,7 @@ class ProjectsTab:
             self._tab_widget.addTab(self.widget, "Projekte")
 
     def _build_ui(self) -> None:
-        layout = create_page_layout(self.widget, "Projektverwaltung")
+        layout = create_page_layout(self.widget, "Projektverwaltung", show_logo=True)
 
         splitter = QSplitter()
         layout.addWidget(splitter)

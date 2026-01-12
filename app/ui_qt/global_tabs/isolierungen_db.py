@@ -69,7 +69,7 @@ class IsolierungenDbTab:
         self._listener_registered = False
 
         self.widget = QWidget()
-        self._layout = create_page_layout(self.widget, "Isolierungen DB")
+        self._layout = create_page_layout(self.widget, "Isolierungen DB", show_logo=True)
         self._build_family_section()
         self._build_variant_section()
         self._build_family_form()

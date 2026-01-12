@@ -79,7 +79,7 @@ class ReportTab:
             self._tab_widget.addTab(self.widget, title)
 
     def _build_ui(self) -> None:
-        layout = create_page_layout(self.widget, "Bericht")
+        layout = create_page_layout(self.widget, "Bericht", show_logo=True)
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))
