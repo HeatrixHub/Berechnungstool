@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QLabel,
     QLineEdit,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QTabWidget,
     QTableWidget,
@@ -51,9 +53,10 @@ from app.core.isolierungen_db.services import (
 from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
-    create_page_layout,
+    create_page_header,
     make_grid,
     make_hbox,
+    make_root_vbox,
     make_vbox,
 )
 
@@ -69,12 +72,31 @@ class IsolierungenDbTab:
         self._listener_registered = False
 
         self.widget = QWidget()
-        self._layout = create_page_layout(self.widget, "Isolierungen DB", show_logo=True)
-        self._build_family_section()
-        self._build_variant_section()
-        self._build_family_form()
-        self._build_variant_form()
-        self._build_plot_section()
+        root_layout = make_root_vbox(self.widget)
+        header = create_page_header("Isolierungen DB", show_logo=True, parent=self.widget)
+        root_layout.addWidget(header)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+
+        content_widget = QWidget()
+        self._layout = make_vbox(content_widget)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area.setWidget(content_widget)
+        root_layout.addWidget(scroll_area, 1)
+
+        tables_row = make_hbox()
+        tables_row.addWidget(self._build_family_section(), 1)
+        tables_row.addWidget(self._build_variant_section(), 1)
+        self._layout.addLayout(tables_row)
+
+        forms_row = make_hbox()
+        forms_row.addWidget(self._build_family_form(), 1)
+        forms_row.addWidget(self._build_variant_form(), 1)
+        self._layout.addLayout(forms_row)
+
+        self._layout.addWidget(self._build_plot_section())
 
         self.refresh_table(preserve_selection=False)
         if not self._listener_registered:
@@ -86,7 +108,7 @@ class IsolierungenDbTab:
         if hasattr(self._tab_widget, "addTab"):
             self._tab_widget.addTab(self.widget, title)
 
-    def _build_family_section(self) -> None:
+    def _build_family_section(self) -> QGroupBox:
         section = QGroupBox("Materialfamilien")
         layout = make_vbox()
 
@@ -117,15 +139,14 @@ class IsolierungenDbTab:
         layout.addLayout(action_bar)
         layout.addWidget(self._family_table)
         section.setLayout(layout)
-        self._layout.addWidget(section)
-
         self._new_family_button.clicked.connect(self.new_family)
         self._delete_family_button.clicked.connect(self.delete_family)
         self._export_button.clicked.connect(self.export_selected)
         self._import_button.clicked.connect(self.import_from_csv)
         self._family_table.itemSelectionChanged.connect(self.on_family_select)
+        return section
 
-    def _build_variant_section(self) -> None:
+    def _build_variant_section(self) -> QGroupBox:
         section = QGroupBox("Varianten")
         layout = make_vbox()
 
@@ -147,13 +168,12 @@ class IsolierungenDbTab:
         layout.addLayout(action_bar)
         layout.addWidget(self._variant_table)
         section.setLayout(layout)
-        self._layout.addWidget(section)
-
         self._new_variant_button.clicked.connect(self.new_variant)
         self._delete_variant_button.clicked.connect(self.delete_variant)
         self._variant_table.itemSelectionChanged.connect(self.on_variant_select)
+        return section
 
-    def _build_family_form(self) -> None:
+    def _build_family_form(self) -> QGroupBox:
         section = QGroupBox("Stammdaten")
         grid = make_grid()
 
@@ -178,11 +198,10 @@ class IsolierungenDbTab:
 
         apply_form_layout_defaults(grid)
         section.setLayout(grid)
-        self._layout.addWidget(section)
-
         self._family_save_button.clicked.connect(self.save_family)
+        return section
 
-    def _build_variant_form(self) -> None:
+    def _build_variant_form(self) -> QGroupBox:
         section = QGroupBox("Variante bearbeiten")
         grid = make_grid()
 
@@ -207,15 +226,16 @@ class IsolierungenDbTab:
 
         apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
         section.setLayout(grid)
-        self._layout.addWidget(section)
-
         self._variant_save_button.clicked.connect(self.save_variant)
+        return section
 
-    def _build_plot_section(self) -> None:
+    def _build_plot_section(self) -> QGroupBox:
         self._plot_section = QGroupBox("Interpolierte Wärmeleitfähigkeit")
         self._plot_layout = make_vbox()
+        self._plot_section.setMinimumHeight(260)
+        self._plot_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._plot_section.setLayout(self._plot_layout)
-        self._layout.addWidget(self._plot_section)
+        return self._plot_section
 
     def refresh_table(self, preserve_selection: bool = True) -> None:
         selected_family = self._selected_family if preserve_selection else None
