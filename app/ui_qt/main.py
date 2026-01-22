@@ -36,7 +36,7 @@ def main() -> int:
 
     window.setWindowTitle("Heatrix Berechnungstools")
     window.resize(1280, 840)
-    window.show()
+    window.showMaximized()
     return app.exec()
 
 
