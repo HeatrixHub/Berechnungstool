@@ -89,14 +89,14 @@ class IsolierungenDbTab:
         tables_row = make_hbox()
         tables_row.addWidget(self._build_family_section(), 1)
         tables_row.addWidget(self._build_variant_section(), 1)
-        self._layout.addLayout(tables_row)
+        self._layout.addLayout(tables_row, 3)
 
         forms_row = make_hbox()
         forms_row.addWidget(self._build_family_form(), 1)
         forms_row.addWidget(self._build_variant_form(), 1)
-        self._layout.addLayout(forms_row)
+        self._layout.addLayout(forms_row, 1)
 
-        self._layout.addWidget(self._build_plot_section())
+        self._layout.addWidget(self._build_plot_section(), 1)
 
         self.refresh_table(preserve_selection=False)
         if not self._listener_registered:
@@ -137,8 +137,9 @@ class IsolierungenDbTab:
         self._family_table.verticalHeader().setVisible(False)
 
         layout.addLayout(action_bar)
-        layout.addWidget(self._family_table)
+        layout.addWidget(self._family_table, 1)
         section.setLayout(layout)
+        section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._new_family_button.clicked.connect(self.new_family)
         self._delete_family_button.clicked.connect(self.delete_family)
         self._export_button.clicked.connect(self.export_selected)
@@ -166,8 +167,9 @@ class IsolierungenDbTab:
         self._variant_table.verticalHeader().setVisible(False)
 
         layout.addLayout(action_bar)
-        layout.addWidget(self._variant_table)
+        layout.addWidget(self._variant_table, 1)
         section.setLayout(layout)
+        section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._new_variant_button.clicked.connect(self.new_variant)
         self._delete_variant_button.clicked.connect(self.delete_variant)
         self._variant_table.itemSelectionChanged.connect(self.on_variant_select)
@@ -198,6 +200,7 @@ class IsolierungenDbTab:
 
         apply_form_layout_defaults(grid)
         section.setLayout(grid)
+        section.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self._family_save_button.clicked.connect(self.save_family)
         return section
 
@@ -226,6 +229,7 @@ class IsolierungenDbTab:
 
         apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
         section.setLayout(grid)
+        section.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self._variant_save_button.clicked.connect(self.save_variant)
         return section
 
