@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="180" height="36" viewBox="0 0 180 36" xmlns="http://www.w3.org/2000/svg">
-  <rect width="180" height="36" fill="none"/>
-  <g fill="#1f2a44">
-    <rect x="4" y="6" width="24" height="24" rx="6" fill="#2d6cdf"/>
-    <path d="M16 12.5c3.59 0 6.5 2.91 6.5 6.5s-2.91 6.5-6.5 6.5-6.5-2.91-6.5-6.5 2.91-6.5 6.5-6.5z" fill="#ffffff" opacity="0.9"/>
-  </g>
-  <text x="40" y="24" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="600" fill="#1f2a44">Heatrix</text>
-</svg>
