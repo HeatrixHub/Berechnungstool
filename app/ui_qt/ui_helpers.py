@@ -162,7 +162,6 @@ def apply_app_style(app: object) -> None:
             "QPushButton { min-height: 28px; }"
             "QLineEdit, QTextEdit, QComboBox { min-height: 24px; }"
             "QHeaderView::section { padding: 4px 6px; }"
-            "QGroupBox { background-color: palette(window); }"
         )
 
 
