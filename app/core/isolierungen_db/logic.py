@@ -1,4 +1,13 @@
-"""Business logic for robust insulation DB CRUD using stable IDs."""
+"""Business logic for robust insulation DB CRUD using stable IDs.
+
+Create/Update semantics in this module:
+
+* Create operations are explicit and name-based (`create_family`, `create_variant`,
+  `create_family_by_name`, `create_variant_by_name`).
+* Update operations are explicit and id-based (`update_family`, `update_variant`).
+* `save_family` and `save_variant` are kept for backwards compatibility and now only
+  perform *create* semantics. They no longer upsert by name.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -154,13 +163,45 @@ def save_family(
     *,
     notify: bool = True,
 ) -> bool:
+    """Create a family by name.
+
+    This helper is intentionally create-only for API clarity. To modify an
+    existing family, call :func:`update_family` with a family id.
+    """
+    return create_family_by_name(
+        name,
+        classification_temp,
+        density,
+        temps,
+        ks,
+        notify=notify,
+    )
+
+
+def create_family_by_name(
+    name: str,
+    classification_temp: float | None,
+    density: float | None,
+    temps: list[float],
+    ks: list[float],
+    *,
+    notify: bool = True,
+) -> bool:
+    """Create a family from user inputs.
+
+    Raises:
+        ValueError: If required fields are missing or a family with the same
+            name already exists.
+    """
     if classification_temp is None or density is None:
         raise ValueError("Klass.-Temp und Dichte sind Pflichtfelder.")
     existing = repo.get_family_by_name(name)
     if existing:
-        update_family(existing["id"], name, classification_temp, density, temps, ks)
-    else:
-        create_family(name, classification_temp, density, temps, ks)
+        raise ValueError(
+            f"Materialfamilie '{name}' existiert bereits. "
+            "Für Änderungen bitte update_family(family_id, ...) verwenden."
+        )
+    create_family(name, classification_temp, density, temps, ks)
     if not notify:
         return True
     return True
@@ -176,14 +217,48 @@ def save_variant(
     *,
     notify: bool = True,
 ) -> bool:
+    """Create a variant by names (`material_name`, `variant_name`).
+
+    This helper is intentionally create-only for API clarity. To modify an
+    existing variant, call :func:`update_variant` with a variant id.
+    """
+    return create_variant_by_name(
+        material_name,
+        variant_name,
+        thickness,
+        length,
+        width,
+        price,
+        notify=notify,
+    )
+
+
+def create_variant_by_name(
+    material_name: str,
+    variant_name: str,
+    thickness: float,
+    length: float | None,
+    width: float | None,
+    price: float | None,
+    *,
+    notify: bool = True,
+) -> bool:
+    """Create a variant for an existing family identified by name.
+
+    Raises:
+        ValueError: If family/variant constraints are violated. Existing
+            variants are not updated implicitly.
+    """
     family = repo.get_family_by_name(material_name)
     if not family:
         return False
     existing = next((row for row in family["variants"] if row["name"] == variant_name), None)
     if existing:
-        update_variant(existing["id"], variant_name, thickness, length, width, price)
-    else:
-        create_variant(family["id"], variant_name, thickness, length, width, price)
+        raise ValueError(
+            f"Variante '{variant_name}' existiert in Familie '{material_name}' bereits. "
+            "Für Änderungen bitte update_variant(variant_id, ...) verwenden."
+        )
+    create_variant(family["id"], variant_name, thickness, length, width, price)
     return True
 
 

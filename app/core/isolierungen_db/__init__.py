@@ -3,6 +3,10 @@
 from .logic import (
     FileImportResult,
     CSV_HEADERS,
+    create_family,
+    create_family_by_name,
+    create_variant,
+    create_variant_by_name,
     LEGACY_HEADERS,
     REQUIRED_HEADERS,
     delete_insulation,
@@ -25,6 +29,10 @@ from .services import build_import_summary, parse_optional_float, parse_required
 
 __all__ = [
     "CSV_HEADERS",
+    "create_family",
+    "create_family_by_name",
+    "create_variant",
+    "create_variant_by_name",
     "LEGACY_HEADERS",
     "REQUIRED_HEADERS",
     "FileImportResult",
