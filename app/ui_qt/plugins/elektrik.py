@@ -9,13 +9,17 @@ from Elektrik.core.calculations import (
     calculate_three_phase,
     parse_float,
 )
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QFrame,
     QGroupBox,
     QLabel,
     QLineEdit,
     QPushButton,
     QSizePolicy,
     QTabWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -75,45 +79,102 @@ class ElektrikQtPlugin(QtPlugin):
         calculator_tab = QWidget()
         calculator_layout = create_page_layout(calculator_tab, "Leistungsrechner")
         calculator_content = make_hbox()
+        calculator_content.setSpacing(16)
         calculator_layout.addLayout(calculator_content)
         tab_widget.addTab(calculator_tab, "Leistungsrechner")
         layout.addWidget(tab_widget)
 
         single_group = QGroupBox("Einphasig")
-        single_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        single_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         single_layout = make_grid()
+        single_layout.setHorizontalSpacing(12)
+        single_layout.setVerticalSpacing(10)
+        single_layout.setColumnStretch(0, 0)
+        single_layout.setColumnStretch(1, 1)
         single_group.setLayout(single_layout)
         calculator_content.addWidget(single_group, 1)
 
-        single_layout.addWidget(QLabel("Formel: P = U × I"), 0, 0, 1, 2)
+        single_formula = QLabel("Formel: P = U × I")
+        single_formula.setStyleSheet("color: #5f6368;")
+        single_layout.addWidget(single_formula, 0, 0, 1, 2)
         single_layout.addWidget(QLabel("Spannung U [V]"), 1, 0)
         single_voltage_input = QLineEdit()
+        single_voltage_input.setPlaceholderText("z. B. 230")
+        single_voltage_input.setClearButtonEnabled(True)
         single_layout.addWidget(single_voltage_input, 1, 1)
         single_layout.addWidget(QLabel("Strom I [A]"), 2, 0)
         single_current_input = QLineEdit()
+        single_current_input.setPlaceholderText("z. B. 16")
+        single_current_input.setClearButtonEnabled(True)
         single_layout.addWidget(single_current_input, 2, 1)
         single_button = QPushButton("Berechnen")
+        single_button.setMinimumHeight(32)
         single_layout.addWidget(single_button, 3, 0, 1, 2)
+
+        single_result_box = QFrame()
+        single_result_box.setFrameShape(QFrame.StyledPanel)
+        single_result_box.setStyleSheet("QFrame { border-radius: 6px; background-color: #f7f8fa; }")
+        single_result_layout = QVBoxLayout(single_result_box)
+        single_result_layout.setContentsMargins(10, 8, 10, 8)
+        single_result_layout.setSpacing(4)
+        single_result_title = QLabel("Ergebnis")
+        single_result_title.setStyleSheet("color: #5f6368;")
         single_result_label = QLabel(self._single_result_text)
-        single_layout.addWidget(single_result_label, 4, 0, 1, 2)
+        single_result_font = QFont()
+        single_result_font.setPointSize(11)
+        single_result_font.setWeight(QFont.Weight.DemiBold)
+        single_result_label.setFont(single_result_font)
+        single_result_layout.addWidget(single_result_title)
+        single_result_layout.addWidget(single_result_label)
+        single_layout.addWidget(single_result_box, 4, 0, 1, 2)
+        single_layout.setRowStretch(5, 1)
 
         three_group = QGroupBox("Dreiphasig")
-        three_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        three_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         three_layout = make_grid()
+        three_layout.setHorizontalSpacing(12)
+        three_layout.setVerticalSpacing(10)
+        three_layout.setColumnStretch(0, 0)
+        three_layout.setColumnStretch(1, 1)
         three_group.setLayout(three_layout)
         calculator_content.addWidget(three_group, 1)
 
-        three_layout.addWidget(QLabel("Formel: P = U × I × √3"), 0, 0, 1, 2)
+        three_formula = QLabel("Formel: P = U × I × √3")
+        three_formula.setStyleSheet("color: #5f6368;")
+        three_layout.addWidget(three_formula, 0, 0, 1, 2)
         three_layout.addWidget(QLabel("Außenleiterspannung U [V]"), 1, 0)
         three_voltage_input = QLineEdit()
+        three_voltage_input.setPlaceholderText("z. B. 400")
+        three_voltage_input.setClearButtonEnabled(True)
         three_layout.addWidget(three_voltage_input, 1, 1)
         three_layout.addWidget(QLabel("Strom I [A]"), 2, 0)
         three_current_input = QLineEdit()
+        three_current_input.setPlaceholderText("z. B. 16")
+        three_current_input.setClearButtonEnabled(True)
         three_layout.addWidget(three_current_input, 2, 1)
         three_button = QPushButton("Berechnen")
+        three_button.setMinimumHeight(32)
         three_layout.addWidget(three_button, 3, 0, 1, 2)
+
+        three_result_box = QFrame()
+        three_result_box.setFrameShape(QFrame.StyledPanel)
+        three_result_box.setStyleSheet("QFrame { border-radius: 6px; background-color: #f7f8fa; }")
+        three_result_layout = QVBoxLayout(three_result_box)
+        three_result_layout.setContentsMargins(10, 8, 10, 8)
+        three_result_layout.setSpacing(4)
+        three_result_title = QLabel("Ergebnis")
+        three_result_title.setStyleSheet("color: #5f6368;")
         three_result_label = QLabel(self._three_result_text)
-        three_layout.addWidget(three_result_label, 4, 0, 1, 2)
+        three_result_font = QFont()
+        three_result_font.setPointSize(11)
+        three_result_font.setWeight(QFont.Weight.DemiBold)
+        three_result_label.setFont(three_result_font)
+        three_result_layout.addWidget(three_result_title)
+        three_result_layout.addWidget(three_result_label)
+        three_layout.addWidget(three_result_box, 4, 0, 1, 2)
+        three_layout.setRowStretch(5, 1)
+
+        calculator_content.setAlignment(Qt.AlignTop)
 
         single_button.clicked.connect(self._calculate_single_phase)
         three_button.clicked.connect(self._calculate_three_phase)
