@@ -1,0 +1,890 @@
+{
+  "projects": [
+    {
+      "id": "f7d074f0fc9e4e4b8b137fe39ace9f83",
+      "name": "Test1",
+      "author": "Hannes",
+      "description": "",
+      "metadata": {},
+      "created_at": "2026-01-07T13:48:47Z",
+      "updated_at": "2026-01-07T13:49:31Z",
+      "plugin_states": {
+        "isolierung": {
+          "inputs": {
+            "berechnung": {
+              "T_left": "1000",
+              "T_inf": "20",
+              "h": "9",
+              "layers": [
+                {
+                  "thickness": "30",
+                  "family": "Test",
+                  "variant": ""
+                }
+              ]
+            },
+            "schichtaufbau": {
+              "measure_type": "outer",
+              "dimensions": {
+                "L": "1000",
+                "B": "500",
+                "H": "500"
+              },
+              "layers": [
+                {
+                  "thickness": "30",
+                  "family": "Test"
+                }
+              ]
+            },
+            "zuschnitt": {
+              "kerf": "0",
+              "cached_plates": [
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 1000.0,
+                  "width": 500.0,
+                  "name": "Oben",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 1000.0,
+                  "width": 500.0,
+                  "name": "Unten",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 440.0,
+                  "width": 500.0,
+                  "name": "Vorne",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 440.0,
+                  "width": 500.0,
+                  "name": "Hinten",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 940.0,
+                  "width": 440.0,
+                  "name": "Rechts",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 940.0,
+                  "width": 440.0,
+                  "name": "Links",
+                  "layer": 1
+                }
+              ]
+            }
+          },
+          "ui": {
+            "active_tab": 2,
+            "berechnung": {
+              "layers": [
+                {
+                  "family_index": 1,
+                  "variant_index": 0
+                }
+              ]
+            },
+            "schichtaufbau": {
+              "selected_row": -1
+            },
+            "zuschnitt": {
+              "selected_placement_row": -1,
+              "selected_summary_row": -1
+            }
+          },
+          "results": {
+            "berechnung": {
+              "status": "ok",
+              "message": "",
+              "data": {
+                "q": 7852.793357528736,
+                "R_total": 0.12479635658060978,
+                "interface_temperatures": [
+                  1000.0,
+                  892.5325952809706
+                ],
+                "iterations": 4,
+                "T_avg": [
+                  946.2662976404852
+                ],
+                "k_final": [
+                  2.19253259528097
+                ]
+              }
+            },
+            "schichtaufbau": {
+              "status": "ok",
+              "message": "",
+              "data": {
+                "la_l": 1000.0,
+                "la_b": 500.0,
+                "la_h": 500.0,
+                "li_l": 940.0,
+                "li_b": 440.0,
+                "li_h": 440.0,
+                "layers": [
+                  {
+                    "layer_index": 1,
+                    "thickness": 30.0,
+                    "plates": [
+                      {
+                        "name": "Oben",
+                        "L": 1000.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Unten",
+                        "L": 1000.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Vorne",
+                        "L": 440.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Hinten",
+                        "L": 440.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Rechts",
+                        "L": 940.0,
+                        "B": 440.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Links",
+                        "L": 940.0,
+                        "B": 440.0,
+                        "H": 30.0
+                      }
+                    ]
+                  }
+                ],
+                "isolierungen": [
+                  "Test"
+                ]
+              }
+            },
+            "zuschnitt": {
+              "status": "ok",
+              "message": "",
+              "placements": [
+                {
+                  "material": "Test (35)",
+                  "bin": 1,
+                  "teil": "Schicht 1: Oben",
+                  "breite": 1000.0,
+                  "hoehe": 500.0,
+                  "x": 0.0,
+                  "y": 0.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 1000.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 1,
+                  "teil": "Schicht 1: Unten",
+                  "breite": 1000.0,
+                  "hoehe": 500.0,
+                  "x": 0.0,
+                  "y": 500.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 1000.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 2,
+                  "teil": "Schicht 1: Rechts",
+                  "breite": 940.0,
+                  "hoehe": 440.0,
+                  "x": 0.0,
+                  "y": 0.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 940.0,
+                  "original_height": 440.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 2,
+                  "teil": "Schicht 1: Vorne",
+                  "breite": 440.0,
+                  "hoehe": 500.0,
+                  "x": 0.0,
+                  "y": 440.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 440.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 2,
+                  "teil": "Schicht 1: Hinten",
+                  "breite": 440.0,
+                  "hoehe": 500.0,
+                  "x": 440.0,
+                  "y": 440.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 440.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 3,
+                  "teil": "Schicht 1: Links",
+                  "breite": 940.0,
+                  "hoehe": 440.0,
+                  "x": 0.0,
+                  "y": 0.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 940.0,
+                  "original_height": 440.0
+                }
+              ],
+              "summary": [
+                {
+                  "material": "Test (35)",
+                  "count": 3,
+                  "price": 50.0,
+                  "cost": 150.0
+                },
+                {
+                  "material": "Summe",
+                  "count": 3,
+                  "price": null,
+                  "cost": 150.0,
+                  "cost_display": "150.00",
+                  "is_total": true
+                }
+              ],
+              "total_cost": 150.0,
+              "total_bin_count": 3
+            }
+          }
+        },
+        "stoffeigenschaften_luft": {
+          "inputs": {
+            "tab1": {
+              "zustand": "Isobar",
+              "normkubik": false,
+              "heatrix": false,
+              "normkubikmenge": false,
+              "heat_priority": false,
+              "entries": {
+                "Normkubikmeter (m³/h):": "",
+                "Temperatur 1 (°C):": "20",
+                "Volumenstrom 1 (m³/h):": "",
+                "Druck 1 (Pa):": "101325",
+                "Dichte 1 (kg/m³):": "1.20412",
+                "Temperatur 2 (°C):": "",
+                "Volumenstrom 2 (m³/h):": "",
+                "Druck 2 (Pa):": "",
+                "Dichte 2 (kg/m³):": "",
+                "Dynamische Viskosität 1 (Pa·s):": "",
+                "Dynamische Viskosität 2 (Pa·s):": "",
+                "Schallgeschwindigkeit 1 (m/s):": "",
+                "Schallgeschwindigkeit 2 (m/s):": "",
+                "Spezifische Wärmekapazität Cp 1 (J/kg*K):": "",
+                "Spezifische Wärmekapazität Cp 2 (J/kg*K):": "",
+                "Massenstrom 1 (kg/s):": "",
+                "Massenstrom 2 (kg/s):": "",
+                "Wärmeleistung (kW):": ""
+              }
+            },
+            "tab2": {
+              "shape": "Rund",
+              "flow_unit": "m³/h",
+              "normkubik": false,
+              "entries": {
+                "Durchmesser (mm):": "",
+                "Seite a (mm):": "",
+                "Seite b (mm):": "",
+                "Volumenstrom": "",
+                "Temperatur (°C):": "",
+                "Dichte (kg/m³):": "",
+                "Strömungsgeschwindigkeit (m/s):": "",
+                "Reynolds-Zahl:": "",
+                "Strömungsart:": ""
+              }
+            },
+            "tab3": {
+              "use_tab1_power": false,
+              "entries": {
+                "Elektrische Leistung (kW):": "",
+                "Wärmeleistung (kW):": "",
+                "Effizienz (%):": "90"
+              }
+            }
+          },
+          "ui": {
+            "active_tab": 0,
+            "tab1": {
+              "entry_states": {
+                "Normkubikmeter (m³/h):": "disabled",
+                "Temperatur 1 (°C):": "normal",
+                "Volumenstrom 1 (m³/h):": "normal",
+                "Druck 1 (Pa):": "normal",
+                "Dichte 1 (kg/m³):": "normal",
+                "Temperatur 2 (°C):": "normal",
+                "Volumenstrom 2 (m³/h):": "readonly",
+                "Druck 2 (Pa):": "readonly",
+                "Dichte 2 (kg/m³):": "readonly",
+                "Dynamische Viskosität 1 (Pa·s):": "readonly",
+                "Dynamische Viskosität 2 (Pa·s):": "readonly",
+                "Schallgeschwindigkeit 1 (m/s):": "readonly",
+                "Schallgeschwindigkeit 2 (m/s):": "readonly",
+                "Spezifische Wärmekapazität Cp 1 (J/kg*K):": "readonly",
+                "Spezifische Wärmekapazität Cp 2 (J/kg*K):": "readonly",
+                "Massenstrom 1 (kg/s):": "readonly",
+                "Massenstrom 2 (kg/s):": "readonly",
+                "Wärmeleistung (kW):": "normal"
+              }
+            },
+            "tab2": {
+              "entry_states": {
+                "Durchmesser (mm):": "normal",
+                "Seite a (mm):": "normal",
+                "Seite b (mm):": "normal",
+                "Volumenstrom": "normal",
+                "Temperatur (°C):": "normal",
+                "Dichte (kg/m³):": "normal",
+                "Strömungsgeschwindigkeit (m/s):": "readonly",
+                "Reynolds-Zahl:": "readonly",
+                "Strömungsart:": "readonly"
+              }
+            },
+            "tab3": {
+              "entry_states": {
+                "Elektrische Leistung (kW):": "normal",
+                "Wärmeleistung (kW):": "normal",
+                "Effizienz (%):": "normal"
+              }
+            }
+          },
+          "results": {
+            "tab1": {
+              "status": "idle",
+              "message": "",
+              "values": {}
+            },
+            "tab2": {
+              "status": "idle",
+              "message": "",
+              "values": {}
+            },
+            "tab3": {
+              "status": "idle",
+              "message": "",
+              "values": {}
+            }
+          }
+        },
+        "elektrik": {
+          "inputs": {
+            "single_voltage": "",
+            "single_current": "",
+            "three_voltage": "",
+            "three_current": ""
+          },
+          "ui": {
+            "active_tab": 0
+          },
+          "results": {
+            "single_phase": {
+              "value": null,
+              "status": "error",
+              "message": ""
+            },
+            "three_phase": {
+              "value": null,
+              "status": "error",
+              "message": ""
+            }
+          }
+        }
+      },
+      "ui_state": {
+        "active_tab": 0
+      }
+    },
+    {
+      "id": "eab629c27d6d46cfa7f58479b304760c",
+      "name": "Test2",
+      "author": "Hannes",
+      "description": "",
+      "metadata": {},
+      "created_at": "2026-01-07T13:49:48Z",
+      "updated_at": "2026-01-07T13:50:56Z",
+      "plugin_states": {
+        "isolierung": {
+          "inputs": {
+            "berechnung": {
+              "T_left": "1000",
+              "T_inf": "20",
+              "h": "9",
+              "layers": [
+                {
+                  "thickness": "30",
+                  "family": "Test",
+                  "variant": ""
+                }
+              ]
+            },
+            "schichtaufbau": {
+              "measure_type": "outer",
+              "dimensions": {
+                "L": "1000",
+                "B": "500",
+                "H": "500"
+              },
+              "layers": [
+                {
+                  "thickness": "30",
+                  "family": "Test"
+                }
+              ]
+            },
+            "zuschnitt": {
+              "kerf": "0",
+              "cached_plates": [
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 1000.0,
+                  "width": 500.0,
+                  "name": "Oben",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 1000.0,
+                  "width": 500.0,
+                  "name": "Unten",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 440.0,
+                  "width": 500.0,
+                  "name": "Vorne",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 440.0,
+                  "width": 500.0,
+                  "name": "Hinten",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 940.0,
+                  "width": 440.0,
+                  "name": "Rechts",
+                  "layer": 1
+                },
+                {
+                  "material": "Test",
+                  "thickness": 30.0,
+                  "length": 940.0,
+                  "width": 440.0,
+                  "name": "Links",
+                  "layer": 1
+                }
+              ]
+            }
+          },
+          "ui": {
+            "active_tab": 0,
+            "berechnung": {
+              "layers": [
+                {
+                  "family_index": 1,
+                  "variant_index": 0
+                }
+              ]
+            },
+            "schichtaufbau": {
+              "selected_row": -1
+            },
+            "zuschnitt": {
+              "selected_placement_row": -1,
+              "selected_summary_row": -1
+            }
+          },
+          "results": {
+            "berechnung": {
+              "status": "ok",
+              "message": "",
+              "data": {
+                "q": 7852.793357528736,
+                "R_total": 0.12479635658060978,
+                "interface_temperatures": [
+                  1000.0,
+                  892.5325952809706
+                ],
+                "iterations": 4,
+                "T_avg": [
+                  946.2662976404852
+                ],
+                "k_final": [
+                  2.19253259528097
+                ]
+              }
+            },
+            "schichtaufbau": {
+              "status": "ok",
+              "message": "",
+              "data": {
+                "la_l": 1000.0,
+                "la_b": 500.0,
+                "la_h": 500.0,
+                "li_l": 940.0,
+                "li_b": 440.0,
+                "li_h": 440.0,
+                "layers": [
+                  {
+                    "layer_index": 1,
+                    "thickness": 30.0,
+                    "plates": [
+                      {
+                        "name": "Oben",
+                        "L": 1000.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Unten",
+                        "L": 1000.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Vorne",
+                        "L": 440.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Hinten",
+                        "L": 440.0,
+                        "B": 500.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Rechts",
+                        "L": 940.0,
+                        "B": 440.0,
+                        "H": 30.0
+                      },
+                      {
+                        "name": "Links",
+                        "L": 940.0,
+                        "B": 440.0,
+                        "H": 30.0
+                      }
+                    ]
+                  }
+                ],
+                "isolierungen": [
+                  "Test"
+                ]
+              }
+            },
+            "zuschnitt": {
+              "status": "ok",
+              "message": "",
+              "placements": [
+                {
+                  "material": "Test (35)",
+                  "bin": 1,
+                  "teil": "Schicht 1: Oben",
+                  "breite": 1000.0,
+                  "hoehe": 500.0,
+                  "x": 0.0,
+                  "y": 0.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 1000.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 1,
+                  "teil": "Schicht 1: Unten",
+                  "breite": 1000.0,
+                  "hoehe": 500.0,
+                  "x": 0.0,
+                  "y": 500.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 1000.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 2,
+                  "teil": "Schicht 1: Rechts",
+                  "breite": 940.0,
+                  "hoehe": 440.0,
+                  "x": 0.0,
+                  "y": 0.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 940.0,
+                  "original_height": 440.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 2,
+                  "teil": "Schicht 1: Vorne",
+                  "breite": 440.0,
+                  "hoehe": 500.0,
+                  "x": 0.0,
+                  "y": 440.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 440.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 2,
+                  "teil": "Schicht 1: Hinten",
+                  "breite": 440.0,
+                  "hoehe": 500.0,
+                  "x": 440.0,
+                  "y": 440.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 440.0,
+                  "original_height": 500.0
+                },
+                {
+                  "material": "Test (35)",
+                  "bin": 3,
+                  "teil": "Schicht 1: Links",
+                  "breite": 940.0,
+                  "hoehe": 440.0,
+                  "x": 0.0,
+                  "y": 0.0,
+                  "rotation": false,
+                  "bin_width": 1000.0,
+                  "bin_height": 1000.0,
+                  "original_width": 940.0,
+                  "original_height": 440.0
+                }
+              ],
+              "summary": [
+                {
+                  "material": "Test (35)",
+                  "count": 3,
+                  "price": 50.0,
+                  "cost": 150.0
+                },
+                {
+                  "material": "Summe",
+                  "count": 3,
+                  "price": null,
+                  "cost": 150.0,
+                  "cost_display": "150.00",
+                  "is_total": true
+                }
+              ],
+              "total_cost": 150.0,
+              "total_bin_count": 3
+            }
+          }
+        },
+        "stoffeigenschaften_luft": {
+          "inputs": {
+            "tab1": {
+              "zustand": "Isobar",
+              "normkubik": false,
+              "heatrix": false,
+              "normkubikmenge": false,
+              "heat_priority": false,
+              "entries": {
+                "Normkubikmeter (m³/h):": "",
+                "Temperatur 1 (°C):": "20",
+                "Volumenstrom 1 (m³/h):": "",
+                "Druck 1 (Pa):": "101325",
+                "Dichte 1 (kg/m³):": "1.20412",
+                "Temperatur 2 (°C):": "",
+                "Volumenstrom 2 (m³/h):": "",
+                "Druck 2 (Pa):": "",
+                "Dichte 2 (kg/m³):": "",
+                "Dynamische Viskosität 1 (Pa·s):": "",
+                "Dynamische Viskosität 2 (Pa·s):": "",
+                "Schallgeschwindigkeit 1 (m/s):": "",
+                "Schallgeschwindigkeit 2 (m/s):": "",
+                "Spezifische Wärmekapazität Cp 1 (J/kg*K):": "",
+                "Spezifische Wärmekapazität Cp 2 (J/kg*K):": "",
+                "Massenstrom 1 (kg/s):": "",
+                "Massenstrom 2 (kg/s):": "",
+                "Wärmeleistung (kW):": ""
+              }
+            },
+            "tab2": {
+              "shape": "Rund",
+              "flow_unit": "m³/h",
+              "normkubik": false,
+              "entries": {
+                "Durchmesser (mm):": "",
+                "Seite a (mm):": "",
+                "Seite b (mm):": "",
+                "Volumenstrom": "",
+                "Temperatur (°C):": "",
+                "Dichte (kg/m³):": "",
+                "Strömungsgeschwindigkeit (m/s):": "",
+                "Reynolds-Zahl:": "",
+                "Strömungsart:": ""
+              }
+            },
+            "tab3": {
+              "use_tab1_power": false,
+              "entries": {
+                "Elektrische Leistung (kW):": "",
+                "Wärmeleistung (kW):": "",
+                "Effizienz (%):": "90"
+              }
+            }
+          },
+          "ui": {
+            "active_tab": 0,
+            "tab1": {
+              "entry_states": {
+                "Normkubikmeter (m³/h):": "disabled",
+                "Temperatur 1 (°C):": "normal",
+                "Volumenstrom 1 (m³/h):": "normal",
+                "Druck 1 (Pa):": "normal",
+                "Dichte 1 (kg/m³):": "normal",
+                "Temperatur 2 (°C):": "normal",
+                "Volumenstrom 2 (m³/h):": "readonly",
+                "Druck 2 (Pa):": "readonly",
+                "Dichte 2 (kg/m³):": "readonly",
+                "Dynamische Viskosität 1 (Pa·s):": "readonly",
+                "Dynamische Viskosität 2 (Pa·s):": "readonly",
+                "Schallgeschwindigkeit 1 (m/s):": "readonly",
+                "Schallgeschwindigkeit 2 (m/s):": "readonly",
+                "Spezifische Wärmekapazität Cp 1 (J/kg*K):": "readonly",
+                "Spezifische Wärmekapazität Cp 2 (J/kg*K):": "readonly",
+                "Massenstrom 1 (kg/s):": "readonly",
+                "Massenstrom 2 (kg/s):": "readonly",
+                "Wärmeleistung (kW):": "normal"
+              }
+            },
+            "tab2": {
+              "entry_states": {
+                "Durchmesser (mm):": "normal",
+                "Seite a (mm):": "normal",
+                "Seite b (mm):": "normal",
+                "Volumenstrom": "normal",
+                "Temperatur (°C):": "normal",
+                "Dichte (kg/m³):": "normal",
+                "Strömungsgeschwindigkeit (m/s):": "readonly",
+                "Reynolds-Zahl:": "readonly",
+                "Strömungsart:": "readonly"
+              }
+            },
+            "tab3": {
+              "entry_states": {
+                "Elektrische Leistung (kW):": "normal",
+                "Wärmeleistung (kW):": "normal",
+                "Effizienz (%):": "normal"
+              }
+            }
+          },
+          "results": {
+            "tab1": {
+              "status": "idle",
+              "message": "",
+              "values": {}
+            },
+            "tab2": {
+              "status": "idle",
+              "message": "",
+              "values": {}
+            },
+            "tab3": {
+              "status": "idle",
+              "message": "",
+              "values": {}
+            }
+          }
+        },
+        "elektrik": {
+          "inputs": {
+            "single_voltage": "",
+            "single_current": "",
+            "three_voltage": "",
+            "three_current": ""
+          },
+          "ui": {
+            "active_tab": 0
+          },
+          "results": {
+            "single_phase": {
+              "value": null,
+              "status": "error",
+              "message": ""
+            },
+            "three_phase": {
+              "value": null,
+              "status": "error",
+              "message": ""
+            }
+          }
+        }
+      },
+      "ui_state": {
+        "active_tab": 0
+      }
+    }
+  ]
+}
