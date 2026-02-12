@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Iterable, Sequence
 
-from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -67,7 +67,6 @@ class IsolierungenDbTab:
     def __init__(self, tab_widget: QTabWidget, title: str = "Isolierungen DB") -> None:
         self._tab_widget = tab_widget
         self._selected_family: str | None = None
-        self._is_new_family_mode = False
         self._selected_variant: str | None = None
         self._material_change_handler = self.refresh_table
         self._listener_registered = False
@@ -278,14 +277,11 @@ class IsolierungenDbTab:
         for row in range(self._family_table.rowCount()):
             item = self._family_table.item(row, 0)
             if item and item.text() == name:
-                with QSignalBlocker(self._family_table):
-                    self._family_table.selectRow(row)
+                self._family_table.selectRow(row)
                 self._selected_family = name
-                self._is_new_family_mode = False
                 self._load_family(name)
                 return
         self._selected_family = None
-        self._is_new_family_mode = True
         self._variant_table.setRowCount(0)
         self._clear_family_form()
         self._clear_variant_form()
@@ -293,28 +289,21 @@ class IsolierungenDbTab:
 
     def new_family(self) -> None:
         self._selected_family = None
-        self._is_new_family_mode = True
-        with QSignalBlocker(self._family_table):
-            self._family_table.clearSelection()
-            self._family_table.setCurrentCell(-1, -1)
+        self._family_table.clearSelection()
         self._clear_family_form()
         self._variant_table.setRowCount(0)
         self._clear_variant_form()
         self.update_plot([], [], None)
 
     def on_family_select(self) -> None:
-        selection_model = self._family_table.selectionModel()
-        if selection_model is None or not selection_model.hasSelection() or not self._family_table.selectedItems():
-            return
         row = self._family_table.currentRow()
         if row < 0:
-            row = self._family_table.selectedItems()[0].row()
+            return
         item = self._family_table.item(row, 0)
         if item is None:
             return
         name = item.text()
         self._selected_family = name
-        self._is_new_family_mode = False
         self._load_family(name)
 
     def _load_family(self, name: str) -> None:
@@ -374,11 +363,6 @@ class IsolierungenDbTab:
         self._variant_width_input.setText(values[3] if len(values) > 3 else "")
         self._variant_price_input.setText(values[4] if len(values) > 4 else "")
 
-    # Regression-Testszenario (manuell):
-    # 1) Vorhandene Familie auswählen.
-    # 2) Auf "Neu" klicken.
-    # 3) Neuen Familiennamen eintragen und speichern.
-    # Erwartung: Create-Pfad (Insert, Count +1), kein Rename der zuvor gewählten Familie.
     def save_family(self) -> None:
         name = self._family_name_input.text().strip()
         if not name:
@@ -397,37 +381,28 @@ class IsolierungenDbTab:
                 )
                 return
 
-            is_new_mode = self._is_new_family_mode
-            if is_new_mode:
-                if self._family_exists(name):
-                    response = QMessageBox.question(
+            if self._selected_family and self._selected_family != name:
+                if not rename_family(self._selected_family, name):
+                    QMessageBox.critical(
                         self.widget,
-                        "Familie überschreiben",
-                        (
-                            f"Die Familie '{name}' existiert bereits. "
-                            "Möchten Sie die Stammdaten überschreiben?"
-                        ),
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                        QMessageBox.StandardButton.No,
-                    )
-                    if response != QMessageBox.Yes:
-                        return
-            else:
-                if not self._selected_family:
-                    QMessageBox.warning(
-                        self.widget,
-                        "Hinweis",
-                        "Bitte zuerst eine Familie auswählen oder über 'Neu' eine neue Familie anlegen.",
+                        "Fehler",
+                        "Familie konnte nicht umbenannt werden. Bitte Namen prüfen.",
                     )
                     return
-                if self._selected_family != name:
-                    if not rename_family(self._selected_family, name):
-                        QMessageBox.critical(
-                            self.widget,
-                            "Fehler",
-                            "Familie konnte nicht umbenannt werden. Bitte Namen prüfen.",
-                        )
-                        return
+
+            elif not self._selected_family and self._family_exists(name):
+                response = QMessageBox.question(
+                    self.widget,
+                    "Familie überschreiben",
+                    (
+                        f"Die Familie '{name}' existiert bereits. "
+                        "Möchten Sie die Stammdaten überschreiben?"
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if response != QMessageBox.Yes:
+                    return
 
             saved = save_family(name, class_temp, density, temps, ks)
             if not saved:
@@ -436,7 +411,6 @@ class IsolierungenDbTab:
                 )
                 return
             self._selected_family = name
-            self._is_new_family_mode = False
             QMessageBox.information(self.widget, "Gespeichert", f"Familie '{name}' wurde gespeichert.")
             self.refresh_table()
         except Exception as exc:
