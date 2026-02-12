@@ -11,7 +11,6 @@ from typing import Dict, List, Optional
 class MaterialVariant:
     """Eine konkrete Ausführung einer Isolierung innerhalb einer Materialfamilie."""
 
-    id: Optional[int] = None
     name: str
     thickness: float
     length: Optional[float] = None
@@ -20,7 +19,6 @@ class MaterialVariant:
 
     def to_dict(self) -> Dict:
         return {
-            "id": self.id,
             "name": self.name,
             "thickness": self.thickness,
             "length": self.length,
@@ -41,7 +39,6 @@ class MaterialMeasurement:
 class Material:
     """Beschreibt eine Isolierung inkl. optionaler Messdaten."""
 
-    id: Optional[int] = None
     name: str
     classification_temp: Optional[float] = None
     density: Optional[float] = None
@@ -55,7 +52,6 @@ class Material:
 
     def to_dict(self, include_measurements: bool = True) -> Dict:
         data = {
-            "id": self.id,
             "name": self.name,
             "classification_temp": self.classification_temp,
             "density": self.density,
