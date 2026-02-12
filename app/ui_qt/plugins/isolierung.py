@@ -53,10 +53,11 @@ from app.ui_qt.ui_helpers import (
     make_vbox,
 )
 from app.core.isolierungen_db.logic import (
+    get_family_by_id,
+    list_families,
     register_material_change_listener,
     unregister_material_change_listener,
 )
-from Isolierung.core.database import list_materials, load_material
 from Isolierung.services.schichtaufbau import BuildResult, LayerResult, Plate, compute_plate_dimensions
 from Isolierung.services.tab1_berechnung import perform_calculation, validate_inputs
 from Isolierung.services.zuschnitt import Placement, color_for, pack_plates
@@ -213,6 +214,7 @@ class IsolierungQtPlugin(QtPlugin):
 
         self._materials = []
         self._material_names: list[str] = []
+        self._family_name_to_id: dict[str, int] = {}
         self._material_change_handler = self._on_materials_changed
         self._listener_registered = False
         self._missing_materials_warning: str | None = None
@@ -1739,8 +1741,16 @@ class IsolierungQtPlugin(QtPlugin):
             self._refresh_zuschnitt_results_view()
 
     def _load_materials(self) -> None:
-        self._materials = list_materials()
-        self._material_names = [material.name for material in self._materials]
+        self._materials = list_families()
+        self._family_name_to_id = {}
+        self._material_names = []
+        for family in self._materials:
+            family_name = self._coerce_str(family.get("name", "")).strip()
+            family_id_raw = family.get("id")
+            if not family_name or not isinstance(family_id_raw, int):
+                continue
+            self._material_names.append(family_name)
+            self._family_name_to_id[family_name] = family_id_raw
 
     def _on_materials_changed(self) -> None:
         if self.widget is None:
@@ -1845,12 +1855,19 @@ class IsolierungQtPlugin(QtPlugin):
             widgets.variant_combo.clear()
             widgets.variant_combo.addItem(self._VARIANT_PLACEHOLDER)
             if family_name and family_name != self._FAMILY_PLACEHOLDER:
-                material = load_material(family_name)
-                if material:
-                    for variant in material.variants:
-                        display = f"{variant.name} ({variant.thickness} mm)"
-                        widgets.variant_combo.addItem(display)
-                        variant_lookup[display] = (variant.name, variant.thickness)
+                family_id = self._family_name_to_id.get(family_name)
+                if family_id is not None:
+                    family = get_family_by_id(family_id)
+                    variants = family.get("variants", [])
+                    if isinstance(variants, list):
+                        for variant in variants:
+                            variant_name = self._coerce_str(variant.get("name", ""))
+                            thickness = self._parse_float(variant.get("thickness"))
+                            if not variant_name or thickness is None:
+                                continue
+                            display = f"{variant_name} ({thickness} mm)"
+                            widgets.variant_combo.addItem(display)
+                            variant_lookup[display] = (variant_name, thickness)
             display_value = selected_variant
             if selected_variant:
                 for display, (name, _thickness) in variant_lookup.items():
