@@ -17,13 +17,19 @@ import numpy as np
 
 from Isolierung.core.database import (
     delete_material,
+    delete_material_by_id,
     delete_material_variant,
+    delete_material_variant_by_id,
     list_materials,
     load_material,
+    load_material_by_id,
     rename_material,
+    rename_material_by_id,
     rename_material_variant,
+    rename_material_variant_by_id,
     save_material_family,
     save_material_variant,
+    save_material_variant_by_id,
 )
 
 
@@ -59,6 +65,7 @@ def get_all_insulations() -> List[Dict]:
     materials = list_materials()
     return [
         {
+            "id": material.id,
             "name": material.name,
             "classification_temp": material.classification_temp,
             "density": material.density,
@@ -70,6 +77,13 @@ def get_all_insulations() -> List[Dict]:
 
 def load_insulation(name: str) -> Dict:
     material = load_material(name)
+    if not material:
+        return {}
+    return material.to_dict(include_measurements=True)
+
+
+def load_insulation_by_id(material_id: int) -> Dict:
+    material = load_material_by_id(material_id)
     if not material:
         return {}
     return material.to_dict(include_measurements=True)
@@ -91,7 +105,7 @@ def save_family(
 
 
 def save_variant(
-    material_name: str,
+    material_id: int,
     variant_name: str,
     thickness: float,
     length: float | None,
@@ -100,14 +114,7 @@ def save_variant(
     *,
     notify: bool = True,
 ) -> bool:
-    saved = save_material_variant(
-        material_name,
-        variant_name,
-        thickness,
-        length,
-        width,
-        price,
-    )
+    saved = save_material_variant_by_id(material_id, variant_name, thickness, length, width, price)
     if saved and notify:
         _notify_material_change_listeners()
     return saved
@@ -120,25 +127,79 @@ def delete_insulation(name: str):
     return deleted
 
 
-def delete_variant(material_name: str, variant_name: str) -> bool:
-    deleted = delete_material_variant(material_name, variant_name)
+def delete_variant(material_id: int, variant_id: int) -> bool:
+    variants = load_insulation_by_id(material_id).get("variants", [])
+    if not any(variant.get("id") == variant_id for variant in variants):
+        return False
+    deleted = delete_material_variant_by_id(variant_id)
     if deleted:
         _notify_material_change_listeners()
     return deleted
 
 
-def rename_family(old_name: str, new_name: str) -> bool:
+def rename_family(material_id: int, new_name: str) -> bool:
+    renamed = rename_material_by_id(material_id, new_name)
+    if renamed:
+        _notify_material_change_listeners()
+    return renamed
+
+
+def rename_variant(material_id: int, variant_id: int, new_name: str) -> bool:
+    variants = load_insulation_by_id(material_id).get("variants", [])
+    if not any(variant.get("id") == variant_id for variant in variants):
+        return False
+    renamed = rename_material_variant_by_id(variant_id, new_name)
+    if renamed:
+        _notify_material_change_listeners()
+    return renamed
+
+
+
+
+# Migrationspfad: Name-basierte APIs bleiben für andere Module temporär erhalten
+# und werden schrittweise auf die ID-API migriert.
+def save_variant_by_name(
+    material_name: str,
+    variant_name: str,
+    thickness: float,
+    length: float | None,
+    width: float | None,
+    price: float | None,
+    *,
+    notify: bool = True,
+) -> bool:
+    saved = save_material_variant(material_name, variant_name, thickness, length, width, price)
+    if saved and notify:
+        _notify_material_change_listeners()
+    return saved
+
+
+def rename_family_by_name(old_name: str, new_name: str) -> bool:
     renamed = rename_material(old_name, new_name)
     if renamed:
         _notify_material_change_listeners()
     return renamed
 
 
-def rename_variant(material_name: str, old_name: str, new_name: str) -> bool:
+def rename_variant_by_name(material_name: str, old_name: str, new_name: str) -> bool:
     renamed = rename_material_variant(material_name, old_name, new_name)
     if renamed:
         _notify_material_change_listeners()
     return renamed
+
+
+def delete_variant_by_name(material_name: str, variant_name: str) -> bool:
+    deleted = delete_material_variant(material_name, variant_name)
+    if deleted:
+        _notify_material_change_listeners()
+    return deleted
+
+
+def delete_insulation_by_id(material_id: int) -> bool:
+    deleted = delete_material_by_id(material_id)
+    if deleted:
+        _notify_material_change_listeners()
+    return deleted
 
 
 def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):
@@ -349,7 +410,7 @@ def import_insulations_from_csv_files(
                             name, class_temp, density, temps, ks, notify=False
                         ):
                             raise ValueError("Stammdaten konnten nicht gespeichert werden.")
-                        if not save_variant(
+                        if not save_variant_by_name(
                             name,
                             variant_name,
                             thickness,

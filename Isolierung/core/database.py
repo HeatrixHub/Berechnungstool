@@ -666,7 +666,7 @@ def _load_variants_for_materials(
     placeholders = ",".join(["?"] * len(material_ids))
     rows = conn.execute(
         f"""
-        SELECT material_id, name, thickness, length, width, price
+        SELECT id, material_id, name, thickness, length, width, price
         FROM material_variants
         WHERE material_id IN ({placeholders})
         ORDER BY thickness ASC
@@ -677,6 +677,7 @@ def _load_variants_for_materials(
     for row in rows:
         variants.setdefault(row["material_id"], []).append(
             MaterialVariant(
+                id=row["id"],
                 name=row["name"],
                 thickness=row["thickness"],
                 length=row["length"],
@@ -706,6 +707,7 @@ def list_materials() -> List[Material]:
             variants = _load_variants_for_materials(conn, [row["id"] for row in rows])
             return [
                 Material(
+                    id=row["id"],
                     name=row["name"],
                     classification_temp=row["classification_temp"],
                     density=row["density"],
@@ -729,9 +731,22 @@ def load_material(name: str) -> Optional[Material]:
             ).fetchone()
             if not row:
                 return None
-            variants = _load_variants_for_materials(conn, [row["id"]]).get(
-                row["id"], []
-            )
+            return load_material_by_id(int(row["id"]))
+    except Exception as exc:
+        print(f"[DB] Fehler beim Laden des Materials '{name}': {exc}")
+        return None
+
+
+def load_material_by_id(material_id: int) -> Optional[Material]:
+    try:
+        with _get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM materials WHERE id = ?",
+                (material_id,),
+            ).fetchone()
+            if not row:
+                return None
+            variants = _load_variants_for_materials(conn, [row["id"]]).get(row["id"], [])
             measurement_rows = conn.execute(
                 "SELECT temperature, conductivity FROM material_measurements WHERE material_id = ? ORDER BY temperature ASC",
                 (row["id"],),
@@ -741,6 +756,7 @@ def load_material(name: str) -> Optional[Material]:
                 for m in measurement_rows
             ]
             return Material(
+                id=row["id"],
                 name=row["name"],
                 classification_temp=row["classification_temp"],
                 density=row["density"],
@@ -750,7 +766,7 @@ def load_material(name: str) -> Optional[Material]:
                 updated_at=row["updated_at"],
             )
     except Exception as exc:
-        print(f"[DB] Fehler beim Laden des Materials '{name}': {exc}")
+        print(f"[DB] Fehler beim Laden des Materials mit ID '{material_id}': {exc}")
         return None
 
 
@@ -776,8 +792,8 @@ def save_material_family(
         return False
 
 
-def save_material_variant(
-    material_name: str,
+def save_material_variant_by_id(
+    material_id: int,
     variant_name: str,
     thickness: float,
     length: Optional[float],
@@ -786,8 +802,7 @@ def save_material_variant(
 ) -> bool:
     try:
         with _get_connection() as conn:
-            cursor = conn.execute("SELECT id FROM materials WHERE name = ?", (material_name,))
-            row = cursor.fetchone()
+            row = conn.execute("SELECT id FROM materials WHERE id = ?", (material_id,)).fetchone()
             if not row:
                 return False
             conn.execute(
@@ -802,14 +817,7 @@ def save_material_variant(
                     price=excluded.price,
                     updated_at=CURRENT_TIMESTAMP
                 """,
-                (
-                    row["id"],
-                    variant_name,
-                    thickness,
-                    length,
-                    width,
-                    price,
-                ),
+                (material_id, variant_name, thickness, length, width, price),
             )
             conn.commit()
             return True
@@ -818,55 +826,87 @@ def save_material_variant(
         return False
 
 
-def delete_material(name: str) -> bool:
+def save_material_variant(
+    material_name: str,
+    variant_name: str,
+    thickness: float,
+    length: Optional[float],
+    width: Optional[float],
+    price: Optional[float],
+) -> bool:
     try:
         with _get_connection() as conn:
-            cursor = conn.cursor()
-            row = cursor.execute(
-                "SELECT id FROM materials WHERE name = ?", (name,),
-            ).fetchone()
+            row = conn.execute("SELECT id FROM materials WHERE name = ?", (material_name,)).fetchone()
             if not row:
                 return False
+        return save_material_variant_by_id(row["id"], variant_name, thickness, length, width, price)
+    except Exception as exc:
+        print(f"[DB] Fehler beim Speichern der Variante '{variant_name}': {exc}")
+        return False
 
-            cursor.execute("DELETE FROM materials WHERE id = ?", (row["id"],))
+
+def delete_material_by_id(material_id: int) -> bool:
+    try:
+        with _get_connection() as conn:
+            cursor = conn.execute("DELETE FROM materials WHERE id = ?", (material_id,))
             conn.commit()
             return cursor.rowcount > 0
     except Exception as exc:
+        print(f"[DB] Fehler beim Löschen der Isolierung mit ID '{material_id}': {exc}")
+        return False
+
+
+def delete_material(name: str) -> bool:
+    try:
+        with _get_connection() as conn:
+            row = conn.execute("SELECT id FROM materials WHERE name = ?", (name,)).fetchone()
+            if not row:
+                return False
+        return delete_material_by_id(row["id"])
+    except Exception as exc:
         print(f"[DB] Fehler beim Löschen der Isolierung '{name}': {exc}")
+        return False
+
+
+def delete_material_variant_by_id(variant_id: int) -> bool:
+    try:
+        with _get_connection() as conn:
+            cursor = conn.execute("DELETE FROM material_variants WHERE id = ?", (variant_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as exc:
+        print(f"[DB] Fehler beim Löschen der Variante mit ID '{variant_id}': {exc}")
         return False
 
 
 def delete_material_variant(material_name: str, variant_name: str) -> bool:
     try:
         with _get_connection() as conn:
-            material_row = conn.execute(
-                "SELECT id FROM materials WHERE name = ?", (material_name,)
+            row = conn.execute(
+                """
+                SELECT mv.id
+                FROM material_variants mv
+                JOIN materials m ON m.id = mv.material_id
+                WHERE m.name = ? AND mv.name = ?
+                """,
+                (material_name, variant_name),
             ).fetchone()
-            if not material_row:
+            if not row:
                 return False
-            cursor = conn.execute(
-                "DELETE FROM material_variants WHERE material_id = ? AND name = ?",
-                (material_row["id"], variant_name),
-            )
-            conn.commit()
-            return cursor.rowcount > 0
+        return delete_material_variant_by_id(row["id"])
     except Exception as exc:
         print(f"[DB] Fehler beim Löschen der Variante '{variant_name}': {exc}")
         return False
 
 
-def rename_material(old_name: str, new_name: str) -> bool:
-    if old_name == new_name:
-        return True
+def rename_material_by_id(material_id: int, new_name: str) -> bool:
     try:
         with _get_connection() as conn:
-            existing = conn.execute(
-                "SELECT id FROM materials WHERE name = ?", (old_name,)
-            ).fetchone()
+            existing = conn.execute("SELECT id FROM materials WHERE id = ?", (material_id,)).fetchone()
             if not existing:
                 return False
             duplicate = conn.execute(
-                "SELECT id FROM materials WHERE name = ?", (new_name,)
+                "SELECT id FROM materials WHERE name = ? AND id != ?", (new_name, material_id)
             ).fetchone()
             if duplicate:
                 return False
@@ -876,12 +916,65 @@ def rename_material(old_name: str, new_name: str) -> bool:
                 SET name = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (new_name, existing["id"]),
+                (new_name, material_id),
             )
             conn.commit()
             return cursor.rowcount > 0
     except Exception as exc:
+        print(f"[DB] Fehler beim Umbenennen des Materials mit ID '{material_id}': {exc}")
+        return False
+
+
+def rename_material(old_name: str, new_name: str) -> bool:
+    if old_name == new_name:
+        return True
+    try:
+        with _get_connection() as conn:
+            row = conn.execute("SELECT id FROM materials WHERE name = ?", (old_name,)).fetchone()
+            if not row:
+                return False
+        return rename_material_by_id(row["id"], new_name)
+    except Exception as exc:
         print(f"[DB] Fehler beim Umbenennen des Materials '{old_name}': {exc}")
+        return False
+
+
+def rename_material_variant_by_id(variant_id: int, new_variant_name: str) -> bool:
+    try:
+        with _get_connection() as conn:
+            existing = conn.execute(
+                """
+                SELECT id, material_id FROM material_variants
+                WHERE id = ?
+                """,
+                (variant_id,),
+            ).fetchone()
+            if not existing:
+                return False
+            duplicate = conn.execute(
+                """
+                SELECT id FROM material_variants
+                WHERE material_id = ? AND name = ? AND id != ?
+                """,
+                (existing["material_id"], new_variant_name, variant_id),
+            ).fetchone()
+            if duplicate:
+                return False
+            cursor = conn.execute(
+                """
+                UPDATE material_variants
+                SET name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (new_variant_name, variant_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as exc:
+        print(
+            "[DB] Fehler beim Umbenennen der Variante mit ID "
+            f"'{variant_id}' in '{new_variant_name}': {exc}"
+        )
         return False
 
 
@@ -892,39 +985,18 @@ def rename_material_variant(
         return True
     try:
         with _get_connection() as conn:
-            material_row = conn.execute(
-                "SELECT id FROM materials WHERE name = ?", (material_name,)
-            ).fetchone()
-            if not material_row:
-                return False
-            existing = conn.execute(
+            row = conn.execute(
                 """
-                SELECT id FROM material_variants
-                WHERE material_id = ? AND name = ?
+                SELECT mv.id
+                FROM material_variants mv
+                JOIN materials m ON m.id = mv.material_id
+                WHERE m.name = ? AND mv.name = ?
                 """,
-                (material_row["id"], old_variant_name),
+                (material_name, old_variant_name),
             ).fetchone()
-            if not existing:
+            if not row:
                 return False
-            duplicate = conn.execute(
-                """
-                SELECT id FROM material_variants
-                WHERE material_id = ? AND name = ?
-                """,
-                (material_row["id"], new_variant_name),
-            ).fetchone()
-            if duplicate:
-                return False
-            cursor = conn.execute(
-                """
-                UPDATE material_variants
-                SET name = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (new_variant_name, existing["id"]),
-            )
-            conn.commit()
-            return cursor.rowcount > 0
+        return rename_material_variant_by_id(row["id"], new_variant_name)
     except Exception as exc:
         print(
             "[DB] Fehler beim Umbenennen der Variante "
