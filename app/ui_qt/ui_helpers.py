@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui_qt.style.assets import APP_HEADER_LOGO_SVG_PATH
+from app.ui_qt.style.assets import APP_HEADER_LOGO_PATH
 
 ROOT_MARGINS = (16, 16, 16, 16)
 ROOT_SPACING = 12
@@ -166,21 +166,28 @@ def apply_app_style(app: object) -> None:
 
 
 def _load_logo_pixmap(logo_path: Path, height: int) -> QPixmap | None:
-    if not logo_path.exists() or logo_path.suffix.lower() != ".svg":
+    if not logo_path.exists():
         return None
-    renderer = QSvgRenderer(str(logo_path))
-    if not renderer.isValid():
+
+    if logo_path.suffix.lower() == ".svg":
+        renderer = QSvgRenderer(str(logo_path))
+        if not renderer.isValid():
+            return None
+        size = renderer.defaultSize()
+        if size.isEmpty():
+            size = QSize(height * 4, height)
+        width = int(size.width() * height / size.height()) if size.height() else height
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return pixmap
+
+    pixmap = QPixmap(str(logo_path))
+    if pixmap.isNull():
         return None
-    size = renderer.defaultSize()
-    if size.isEmpty():
-        size = QSize(height * 4, height)
-    width = int(size.width() * height / size.height()) if size.height() else height
-    pixmap = QPixmap(width, height)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.end()
-    return pixmap
+    return pixmap.scaledToHeight(height, Qt.SmoothTransformation)
 
 
 def create_page_header(
@@ -225,7 +232,7 @@ def create_page_header(
     layout.addStretch()
 
     if show_logo:
-        resolved_logo = Path(logo_path) if logo_path is not None else APP_HEADER_LOGO_SVG_PATH
+        resolved_logo = Path(logo_path) if logo_path is not None else APP_HEADER_LOGO_PATH
         logo_pixmap = _load_logo_pixmap(resolved_logo, PAGE_HEADER_LOGO_HEIGHT)
         if logo_pixmap is not None:
             logo_label = QLabel()
