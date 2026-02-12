@@ -1,93 +1,169 @@
-"""
-Gemeinsame Logik für die Verwaltung von Isolierungen.
-Ermöglicht das Speichern, Laden, Bearbeiten und Löschen von Isolierungen
-sowie die Interpolation der Wärmeleitfähigkeit.
-"""
+"""Business logic for robust insulation DB CRUD using stable IDs."""
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Tuple
-
-import csv
-import re
-from datetime import datetime
-from pathlib import Path
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
+import sqlite3
 
-from Isolierung.core.database import (
-    delete_material,
-    delete_material_variant,
-    list_materials,
-    load_material,
-    rename_material,
-    rename_material_variant,
-    save_material_family,
-    save_material_variant,
-)
+from .repository import IsolierungRepository
 
+repo = IsolierungRepository()
 
 _material_change_listeners: set[Callable[[], None]] = set()
 
 
 def register_material_change_listener(callback: Callable[[], None]) -> None:
-    """Registriert eine Callback-Funktion, die bei Materialänderungen aufgerufen wird."""
-
     _material_change_listeners.add(callback)
 
 
 def unregister_material_change_listener(callback: Callable[[], None]) -> None:
-    """Hebt die Registrierung eines Material-Listeners auf (falls vorhanden)."""
-
     _material_change_listeners.discard(callback)
 
 
 def _notify_material_change_listeners() -> None:
-    """Benachrichtigt alle registrierten Listener über geänderte Materialien."""
-
     for listener in list(_material_change_listeners):
         try:
             listener()
         except Exception:
-            # Wir protokollieren Fehler nur in der Konsole, um die GUI reaktionsfähig zu halten.
             import traceback
 
             traceback.print_exc()
 
 
-def get_all_insulations() -> List[Dict]:
-    materials = list_materials()
-    return [
-        {
-            "name": material.name,
-            "classification_temp": material.classification_temp,
-            "density": material.density,
-            "variant_count": len(material.variants),
-        }
-        for material in materials
-    ]
+def list_families() -> list[dict]:
+    return repo.list_families()
 
 
-def load_insulation(name: str) -> Dict:
-    material = load_material(name)
-    if not material:
-        return {}
-    return material.to_dict(include_measurements=True)
+def get_family_by_id(family_id: int) -> dict:
+    data = repo.get_family(family_id)
+    if not data:
+        raise ValueError("Materialfamilie nicht gefunden.")
+    return data
+
+
+def create_family(name: str, classification_temp: float, density: float, temps: list[float], ks: list[float]) -> int:
+    _validate_family(name, classification_temp, density, temps, ks)
+    try:
+        family_id = repo.create_family(name, classification_temp, density, temps, ks)
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(f"Materialfamilie '{name}' existiert bereits.") from exc
+    _notify_material_change_listeners()
+    return family_id
+
+
+def update_family(
+    family_id: int,
+    name: str,
+    classification_temp: float,
+    density: float,
+    temps: list[float],
+    ks: list[float],
+) -> None:
+    _validate_family(name, classification_temp, density, temps, ks)
+    try:
+        repo.update_family(family_id, name, classification_temp, density, temps, ks)
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(f"Materialfamilie '{name}' existiert bereits.") from exc
+    _notify_material_change_listeners()
+
+
+def delete_family_by_id(family_id: int) -> bool:
+    deleted = repo.delete_family(family_id)
+    if deleted:
+        _notify_material_change_listeners()
+    return deleted
+
+
+def create_variant(
+    family_id: int,
+    name: str,
+    thickness: float,
+    length: float | None,
+    width: float | None,
+    price: float | None,
+) -> int:
+    _validate_variant(name, thickness)
+    try:
+        variant_id = repo.create_variant(family_id, name, thickness, length, width, price)
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(f"Variante '{name}' existiert in dieser Familie bereits.") from exc
+    _notify_material_change_listeners()
+    return variant_id
+
+
+def update_variant(
+    variant_id: int,
+    name: str,
+    thickness: float,
+    length: float | None,
+    width: float | None,
+    price: float | None,
+) -> None:
+    _validate_variant(name, thickness)
+    try:
+        repo.update_variant(variant_id, name, thickness, length, width, price)
+    except sqlite3.IntegrityError as exc:
+        raise ValueError(f"Variante '{name}' existiert in dieser Familie bereits.") from exc
+    _notify_material_change_listeners()
+
+
+def delete_variant_by_id(variant_id: int) -> bool:
+    deleted = repo.delete_variant(variant_id)
+    if deleted:
+        _notify_material_change_listeners()
+    return deleted
+
+
+def _validate_family(
+    name: str, classification_temp: float, density: float, temps: list[float], ks: list[float]
+) -> None:
+    if not name.strip():
+        raise ValueError("Familienname darf nicht leer sein.")
+    if classification_temp <= 0:
+        raise ValueError("Klassifikationstemperatur muss größer als 0 sein.")
+    if density <= 0:
+        raise ValueError("Dichte muss größer als 0 sein.")
+    if len(temps) != len(ks):
+        raise ValueError("Temperatur- und k-Werte müssen gleich viele Einträge haben.")
+
+
+def _validate_variant(name: str, thickness: float) -> None:
+    if not name.strip():
+        raise ValueError("Variantenname darf nicht leer sein.")
+    if thickness <= 0:
+        raise ValueError("Dicke muss größer als 0 sein.")
+
+
+def get_all_insulations() -> list[dict]:
+    return list_families()
+
+
+def load_insulation(name: str) -> dict:
+    data = repo.get_family_by_name(name)
+    return data or {}
 
 
 def save_family(
     name: str,
     classification_temp: float | None,
     density: float | None,
-    temps: List[float],
-    ks: List[float],
+    temps: list[float],
+    ks: list[float],
     *,
     notify: bool = True,
 ) -> bool:
-    saved = save_material_family(name, classification_temp, density, temps, ks)
-    if saved and notify:
-        _notify_material_change_listeners()
-    return saved
+    if classification_temp is None or density is None:
+        raise ValueError("Klass.-Temp und Dichte sind Pflichtfelder.")
+    existing = repo.get_family_by_name(name)
+    if existing:
+        update_family(existing["id"], name, classification_temp, density, temps, ks)
+    else:
+        create_family(name, classification_temp, density, temps, ks)
+    if not notify:
+        return True
+    return True
 
 
 def save_variant(
@@ -100,55 +176,68 @@ def save_variant(
     *,
     notify: bool = True,
 ) -> bool:
-    saved = save_material_variant(
-        material_name,
-        variant_name,
-        thickness,
-        length,
-        width,
-        price,
-    )
-    if saved and notify:
-        _notify_material_change_listeners()
-    return saved
+    family = repo.get_family_by_name(material_name)
+    if not family:
+        return False
+    existing = next((row for row in family["variants"] if row["name"] == variant_name), None)
+    if existing:
+        update_variant(existing["id"], variant_name, thickness, length, width, price)
+    else:
+        create_variant(family["id"], variant_name, thickness, length, width, price)
+    return True
 
 
 def delete_insulation(name: str):
-    deleted = delete_material(name)
-    if deleted:
-        _notify_material_change_listeners()
-    return deleted
+    family = repo.get_family_by_name(name)
+    if not family:
+        return False
+    return delete_family_by_id(family["id"])
 
 
 def delete_variant(material_name: str, variant_name: str) -> bool:
-    deleted = delete_material_variant(material_name, variant_name)
-    if deleted:
-        _notify_material_change_listeners()
-    return deleted
+    family = repo.get_family_by_name(material_name)
+    if not family:
+        return False
+    variant = next((row for row in family["variants"] if row["name"] == variant_name), None)
+    if not variant:
+        return False
+    return delete_variant_by_id(variant["id"])
 
 
 def rename_family(old_name: str, new_name: str) -> bool:
-    renamed = rename_material(old_name, new_name)
-    if renamed:
-        _notify_material_change_listeners()
-    return renamed
+    family = repo.get_family_by_name(old_name)
+    if not family:
+        return False
+    update_family(
+        family["id"],
+        new_name,
+        family["classification_temp"],
+        family["density"],
+        family["temps"],
+        family["ks"],
+    )
+    return True
 
 
 def rename_variant(material_name: str, old_name: str, new_name: str) -> bool:
-    renamed = rename_material_variant(material_name, old_name, new_name)
-    if renamed:
-        _notify_material_change_listeners()
-    return renamed
+    family = repo.get_family_by_name(material_name)
+    if not family:
+        return False
+    variant = next((row for row in family["variants"] if row["name"] == old_name), None)
+    if not variant:
+        return False
+    update_variant(
+        variant["id"],
+        new_name,
+        float(variant["thickness"]),
+        variant.get("length"),
+        variant.get("width"),
+        variant.get("price"),
+    )
+    return True
 
 
-def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):
-    """
-    Interpoliert/approximiert Wärmeleitfähigkeit k(T) über x_range.
-    - >=3 Messpunkte: quadratische Anpassung (Polyfit deg=2)
-    - 2 Messpunkte: lineare Anpassung
-    - 1 Messpunkt: konstante k
-    Rückgabe: np.ndarray mit k-Werten für x_range (gleiche Länge)
-    """
+def interpolate_k(temps: list[float], ks: list[float], x_range: np.ndarray):
     if len(temps) == 0 or len(ks) == 0:
         raise ValueError("Keine Temperatur- oder k-Werte übergeben.")
 
@@ -158,8 +247,8 @@ def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):
     temps_arr = temps_arr[order]
     ks_arr = ks_arr[order]
 
-    unique_temps: List[float] = []
-    unique_ks: List[float] = []
+    unique_temps: list[float] = []
+    unique_ks: list[float] = []
     i = 0
     n = len(temps_arr)
     while i < n:
@@ -191,300 +280,30 @@ def interpolate_k(temps: List[float], ks: List[float], x_range: np.ndarray):
     return k_fit
 
 
-CSV_HEADERS = [
-    "name",
-    "classification_temp",
-    "density",
-    "temps",
-    "ks",
-    "variant_name",
-    "thickness",
-    "length",
-    "width",
-    "price",
-]
-LEGACY_HEADERS = {"height"}
-
-REQUIRED_HEADERS = {"name", "variant_name", "thickness", "temps", "ks"}
+CSV_HEADERS: list[str] = []
+LEGACY_HEADERS: set[str] = set()
+REQUIRED_HEADERS: set[str] = set()
 
 
 @dataclass
 class FileImportResult:
     file_path: str
     imported: int
-    errors: List[str]
+    errors: list[str]
     skipped_reason: str | None = None
 
 
-def export_insulations_to_csv(names: List[str], file_path: str) -> Tuple[int, List[str]]:
-    """Exportiert ausgewählte Isolierungen in eine einzige CSV-Datei.
-
-    Returns:
-        Tuple[int, List[str]]: Anzahl erfolgreich exportierter Datensätze und Namen,
-        die nicht geladen werden konnten.
-    """
-
-    failed: List[str] = []
-    exported = 0
-    with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
-        writer.writeheader()
-        for name in names:
-            rows = _build_insulation_rows(name)
-            if rows is None:
-                failed.append(name)
-                continue
-            for row in rows:
-                writer.writerow(row)
-                exported += 1
-    return exported, failed
+def export_insulations_to_csv(names: list[str], file_path: str):
+    raise NotImplementedError("Export wurde in der Neufassung bewusst entfernt.")
 
 
-def export_insulations_to_folder(
-    names: List[str], target_directory: str
-) -> Tuple[int, List[str], str]:
-    """Exportiert mehrere Isolierungen als einzelne CSV-Dateien in einem neuen Ordner."""
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_dir = Path(target_directory)
-    export_dir = base_dir / f"isolierungen_export_{timestamp}"
-    export_dir.mkdir(parents=True, exist_ok=False)
-
-    failed: List[str] = []
-    exported = 0
-    used_names: set[str] = set()
-
-    for name in names:
-        rows = _build_insulation_rows(name)
-        if rows is None:
-            failed.append(name)
-            continue
-
-        safe_name = _sanitize_filename(name)
-        candidate = safe_name
-        counter = 1
-        while candidate in used_names or (export_dir / f"{candidate}.csv").exists():
-            candidate = f"{safe_name}_{counter}"
-            counter += 1
-        used_names.add(candidate)
-
-        file_path = export_dir / f"{candidate}.csv"
-        with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow(row)
-        exported += len(rows)
-
-    return exported, failed, str(export_dir)
+def export_insulations_to_folder(names: list[str], target_directory: str):
+    raise NotImplementedError("Export wurde in der Neufassung bewusst entfernt.")
 
 
-def import_insulations_from_csv_files(
-    file_paths: List[str],
-) -> Tuple[int, List[FileImportResult]]:
-    """Importiert Isolierungen aus mehreren CSV-Dateien.
-
-    Jeder Dateipfad wird einzeln validiert (Encoding, Kopfzeilen, Pflichtfelder).
-    Bei Dateifehlern wird die Datei übersprungen, gültige Dateien werden Zeile für
-    Zeile verarbeitet. Pro Zeile wird entweder ein vollständiger Datensatz
-    gespeichert oder verworfen.
-
-    Returns:
-        Gesamtzahl importierter Datensätze und eine Liste mit Dateiergebnissen.
-    """
-
-    existing_names = {material.name for material in list_materials()}
-    canonical_names: dict[str, str] = {}
-    results: List[FileImportResult] = []
-    total_imported = 0
-
-    for file_path in file_paths:
-        imported = 0
-        errors: List[str] = []
-
-        try:
-            with open(file_path, newline="", encoding="utf-8") as csvfile:
-                reader = csv.DictReader(csvfile)
-                validation_error = _validate_csv_headers(reader.fieldnames)
-                if validation_error:
-                    results.append(
-                        FileImportResult(
-                            file_path=file_path,
-                            imported=0,
-                            errors=[],
-                            skipped_reason=validation_error,
-                        )
-                    )
-                    continue
-
-                for idx, row in enumerate(reader, start=2):
-                    base_name = (row.get("name") or "").strip()
-                    variant_name = (row.get("variant_name") or "").strip() or "Standard"
-                    try:
-                        _ensure_required_fields(base_name, variant_name)
-                        class_temp = _parse_optional_float(
-                            row.get("classification_temp")
-                        )
-                        density = _parse_optional_float(row.get("density"))
-                        length = _parse_optional_float(row.get("length"))
-                        width = _parse_optional_float(row.get("width"))
-                        price = _parse_optional_float(row.get("price"))
-                        thickness = _parse_optional_float(row.get("thickness"))
-                        if thickness is None:
-                            raise ValueError("Pflichtfeld 'thickness' fehlt oder ist leer.")
-                        temps = _parse_numeric_list(row.get("temps", ""))
-                        ks = _parse_numeric_list(row.get("ks", ""))
-                        if len(temps) != len(ks):
-                            raise ValueError(
-                                "Temperatur- und k-Liste müssen gleich lang sein."
-                            )
-
-                        if base_name not in canonical_names:
-                            canonical_names[base_name] = _generate_unique_name(
-                                base_name, existing_names
-                            )
-                        name = canonical_names[base_name]
-
-                        if not save_family(
-                            name, class_temp, density, temps, ks, notify=False
-                        ):
-                            raise ValueError("Stammdaten konnten nicht gespeichert werden.")
-                        if not save_variant(
-                            name,
-                            variant_name,
-                            thickness,
-                            length,
-                            width,
-                            price,
-                            notify=False,
-                        ):
-                            raise ValueError("Variante konnte nicht gespeichert werden.")
-                        imported += 1
-                    except Exception as exc:  # pragma: no cover - Laufzeitvalidierung
-                        display_name = base_name or "<unbenannt>"
-                        errors.append(f"Zeile {idx} ({display_name}): {exc}")
-
-        except UnicodeDecodeError as exc:
-            results.append(
-                FileImportResult(
-                    file_path=file_path,
-                    imported=0,
-                    errors=[],
-                    skipped_reason=f"Ungültiges Encoding: {exc}",
-                )
-            )
-            continue
-        except Exception as exc:
-            results.append(
-                FileImportResult(
-                    file_path=file_path,
-                    imported=0,
-                    errors=[],
-                    skipped_reason=f"Datei konnte nicht gelesen werden: {exc}",
-                )
-            )
-            continue
-
-        total_imported += imported
-        results.append(
-            FileImportResult(
-                file_path=file_path, imported=imported, errors=errors, skipped_reason=None
-            )
-        )
-
-    if total_imported:
-        _notify_material_change_listeners()
-
-    return total_imported, results
+def import_insulations_from_csv_files(file_paths: list[str]):
+    raise NotImplementedError("Import wurde in der Neufassung bewusst entfernt.")
 
 
-def import_insulations_from_csv(
-    file_path: str,
-) -> Tuple[int, List[FileImportResult]]:
-    """Importiert Isolierungen aus einer einzelnen CSV-Datei."""
-
-    return import_insulations_from_csv_files([file_path])
-
-
-def _parse_optional_float(value: str | None) -> float | None:
-    if value is None:
-        return None
-    cleaned = str(value).strip()
-    if not cleaned:
-        return None
-    cleaned = cleaned.replace(",", ".")
-    return float(cleaned)
-
-
-def _parse_numeric_list(value: str) -> List[float]:
-    cleaned = (value or "").strip()
-    if not cleaned:
-        return []
-    separator = ";" if ";" in cleaned else ","
-    parts = [item.strip() for item in cleaned.split(separator) if item.strip()]
-    return [float(item.replace(",", ".")) for item in parts]
-
-
-def _ensure_required_fields(name: str, variant_name: str) -> None:
-    if not name:
-        raise ValueError("Pflichtfeld 'name' fehlt.")
-    if not variant_name:
-        raise ValueError("Pflichtfeld 'variant_name' fehlt.")
-
-
-def _validate_csv_headers(headers: List[str] | None) -> str | None:
-    if not headers:
-        return "Datei enthält keine Kopfzeile."
-    missing = REQUIRED_HEADERS.difference({header.strip() for header in headers})
-    if missing:
-        return f"Pflichtspalten fehlen: {', '.join(sorted(missing))}"
-    allowed_headers = set(CSV_HEADERS).union(LEGACY_HEADERS)
-    unexpected = [h for h in headers if h not in allowed_headers]
-    if unexpected:
-        return "Unbekannte Spalten gefunden. Bitte Schema prüfen."
-    return None
-
-
-def _generate_unique_name(base_name: str, used_names: set[str]) -> str:
-    name = base_name
-    counter = 1
-    while name in used_names:
-        name = f"{base_name} ({counter})"
-        counter += 1
-    used_names.add(name)
-    return name
-
-
-def _build_insulation_rows(name: str) -> List[Dict[str, str | float]] | None:
-    data = load_insulation(name)
-    if not data:
-        return None
-    temps = data.get("temps", [])
-    ks = data.get("ks", [])
-    variants = data.get("variants", []) or [
-        {"name": "Standard", "thickness": "", "length": "", "width": "", "price": ""}
-    ]
-    rows: List[Dict[str, str | float]] = []
-    for variant in variants:
-        rows.append(
-            {
-                "name": data.get("name", ""),
-                "classification_temp": data.get("classification_temp"),
-                "density": data.get("density"),
-                "temps": ";".join(map(str, temps)),
-                "ks": ";".join(map(str, ks)),
-                "variant_name": variant.get("name", ""),
-                "thickness": variant.get("thickness"),
-                "length": variant.get("length"),
-                "width": variant.get("width"),
-                "price": variant.get("price"),
-            }
-        )
-    return rows
-
-
-def _sanitize_filename(name: str) -> str:
-    cleaned = re.sub(r"[\\/]+", "_", name).strip()
-    cleaned = re.sub(r"[^A-Za-z0-9 _.-]", "_", cleaned)
-    cleaned = cleaned or "isolierung"
-    return cleaned
+def import_insulations_from_csv(file_path: str):
+    raise NotImplementedError("Import wurde in der Neufassung bewusst entfernt.")
