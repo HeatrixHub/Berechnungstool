@@ -69,7 +69,7 @@ class _LayerWidgets:
     thickness_input: QLineEdit
     family_combo: QComboBox
     variant_combo: QComboBox
-    variant_lookup: dict[str, tuple[str, float]]
+    variant_lookup: dict[str, tuple[str, float, int]]
 
 
 @dataclass
@@ -1752,42 +1752,78 @@ class IsolierungQtPlugin(QtPlugin):
             self._material_names.append(family_name)
             self._family_name_to_id[family_name] = family_id_raw
 
+    def _resolve_family_selection(
+        self,
+        selected_family_id: int | None,
+        selected_family_name: str,
+    ) -> str:
+        if isinstance(selected_family_id, int):
+            for family_name, family_id in self._family_name_to_id.items():
+                if family_id == selected_family_id:
+                    return family_name
+        if selected_family_name in self._family_name_to_id:
+            return selected_family_name
+        return ""
+
     def _on_materials_changed(self) -> None:
         if self.widget is None:
             return
+
+        self._sync_internal_state_from_widgets()
         self._load_materials()
+
+        layers = self._calc_inputs.get("layers", [])
         for index, widgets in enumerate(self._layer_widgets):
-            current_family = widgets.family_combo.currentText()
-            current_family = (
-                current_family if current_family in self._material_names else ""
-            )
+            previous_family_id = widgets.family_combo.currentData(Qt.UserRole)
+            previous_family_name = widgets.family_combo.currentText()
+            current_family = self._resolve_family_selection(previous_family_id, previous_family_name)
             self._populate_family_combo(widgets.family_combo)
-            self._select_combo_value(
-                widgets.family_combo, current_family, self._FAMILY_PLACEHOLDER
-            )
+
+            with QSignalBlocker(widgets.family_combo):
+                family_found = self._select_combo_value_by_data(
+                    widgets.family_combo,
+                    current_family,
+                    self._FAMILY_PLACEHOLDER,
+                    Qt.UserRole,
+                )
+
             selected_variant = ""
-            layers = self._calc_inputs.get("layers", [])
             if isinstance(layers, list) and index < len(layers):
                 selected_variant = self._coerce_str(layers[index].get("variant", ""))
+
+            previous_variant_id = widgets.variant_combo.currentData(Qt.UserRole)
             variant_found = self._populate_variant_combo(
-                widgets, current_family, selected_variant
+                widgets,
+                current_family if family_found else "",
+                selected_variant,
+                previous_variant_id,
             )
-            if not variant_found and isinstance(layers, list) and index < len(layers):
-                layers[index]["variant"] = ""
+
+            if isinstance(layers, list) and index < len(layers):
+                layers[index]["family"] = current_family if family_found else ""
+                if not variant_found:
+                    layers[index]["variant"] = ""
+
+        build_layers = self._build_inputs.get("layers", [])
         for index, widgets in enumerate(self._build_layer_widgets):
-            current_family = widgets.family_combo.currentText()
-            current_family = (
-                current_family if current_family in self._material_names else ""
-            )
+            previous_family_id = widgets.family_combo.currentData(Qt.UserRole)
+            previous_family_name = widgets.family_combo.currentText()
+            current_family = self._resolve_family_selection(previous_family_id, previous_family_name)
             self._populate_build_family_combo(widgets.family_combo)
-            self._select_combo_value(
-                widgets.family_combo, current_family, self._FAMILY_PLACEHOLDER
-            )
-            build_layers = self._build_inputs.get("layers", [])
+            with QSignalBlocker(widgets.family_combo):
+                family_found = self._select_combo_value_by_data(
+                    widgets.family_combo,
+                    current_family,
+                    self._FAMILY_PLACEHOLDER,
+                    Qt.UserRole,
+                )
             if isinstance(build_layers, list) and index < len(build_layers):
-                if current_family != build_layers[index].get("family", ""):
-                    build_layers[index]["family"] = current_family
+                build_layers[index]["family"] = current_family if family_found else ""
+
         self._sync_internal_state_from_widgets()
+        self._calc_results["message"] = "Materialdaten aktualisiert"
+        if self._build_results.get("status") == "idle":
+            self._build_results["message"] = "Materialdaten aktualisiert"
         self._invalidate_zuschnitt_results(
             "Isolierung DB wurde aktualisiert. Bitte Zuschnitt neu berechnen."
         )
@@ -1842,18 +1878,22 @@ class IsolierungQtPlugin(QtPlugin):
     def _populate_family_combo(self, combo: QComboBox) -> None:
         with QSignalBlocker(combo):
             combo.clear()
-            combo.addItem(self._FAMILY_PLACEHOLDER)
+            combo.addItem(self._FAMILY_PLACEHOLDER, "")
             for name in self._material_names:
-                combo.addItem(name)
+                combo.addItem(name, self._family_name_to_id.get(name))
 
     def _populate_variant_combo(
-        self, widgets: _LayerWidgets, family_name: str, selected_variant: str
+        self,
+        widgets: _LayerWidgets,
+        family_name: str,
+        selected_variant: str,
+        selected_variant_id: int | None = None,
     ) -> bool:
-        variant_lookup: dict[str, tuple[str, float]] = {}
+        variant_lookup: dict[str, tuple[str, float, int]] = {}
         found = False
         with QSignalBlocker(widgets.variant_combo):
             widgets.variant_combo.clear()
-            widgets.variant_combo.addItem(self._VARIANT_PLACEHOLDER)
+            widgets.variant_combo.addItem(self._VARIANT_PLACEHOLDER, "")
             if family_name and family_name != self._FAMILY_PLACEHOLDER:
                 family_id = self._family_name_to_id.get(family_name)
                 if family_id is not None:
@@ -1861,23 +1901,34 @@ class IsolierungQtPlugin(QtPlugin):
                     variants = family.get("variants", [])
                     if isinstance(variants, list):
                         for variant in variants:
+                            variant_id = variant.get("id")
                             variant_name = self._coerce_str(variant.get("name", ""))
                             thickness = self._parse_float(variant.get("thickness"))
-                            if not variant_name or thickness is None:
+                            if not variant_name or thickness is None or not isinstance(variant_id, int):
                                 continue
                             display = f"{variant_name} ({thickness} mm)"
-                            widgets.variant_combo.addItem(display)
-                            variant_lookup[display] = (variant_name, thickness)
+                            widgets.variant_combo.addItem(display, variant_id)
+                            variant_lookup[display] = (variant_name, thickness, variant_id)
+
+            if isinstance(selected_variant_id, int):
+                found = self._select_combo_value_by_data(
+                    widgets.variant_combo,
+                    selected_variant_id,
+                    self._VARIANT_PLACEHOLDER,
+                    Qt.UserRole,
+                )
+
             display_value = selected_variant
-            if selected_variant:
-                for display, (name, _thickness) in variant_lookup.items():
+            if selected_variant and not found:
+                for display, (name, _thickness, _variant_id) in variant_lookup.items():
                     if name == selected_variant:
                         display_value = display
                         found = True
                         break
-            self._select_combo_value(
-                widgets.variant_combo, display_value, self._VARIANT_PLACEHOLDER
-            )
+
+            if found and isinstance(selected_variant_id, int):
+                display_value = widgets.variant_combo.currentText()
+            self._select_combo_value(widgets.variant_combo, display_value, self._VARIANT_PLACEHOLDER)
         widgets.variant_lookup = variant_lookup
         if not selected_variant:
             return True
@@ -1921,7 +1972,7 @@ class IsolierungQtPlugin(QtPlugin):
             self._ensure_calc_ui_layer_state(index)
             self._calc_ui["layers"][index]["variant_index"] = widgets.variant_combo.currentIndex()
             return
-        variant_name, thickness = widgets.variant_lookup.get(display, ("", 0.0))
+        variant_name, thickness, _variant_id = widgets.variant_lookup.get(display, ("", 0.0, -1))
         self._calc_inputs["layers"][index]["variant"] = variant_name
         self._ensure_calc_ui_layer_state(index)
         self._calc_ui["layers"][index]["variant_index"] = widgets.variant_combo.currentIndex()
@@ -1991,9 +2042,9 @@ class IsolierungQtPlugin(QtPlugin):
     def _populate_build_family_combo(self, combo: QComboBox) -> None:
         with QSignalBlocker(combo):
             combo.clear()
-            combo.addItem(self._FAMILY_PLACEHOLDER)
+            combo.addItem(self._FAMILY_PLACEHOLDER, "")
             for name in self._material_names:
-                combo.addItem(name)
+                combo.addItem(name, self._family_name_to_id.get(name))
 
     def _set_build_layer_count(self, count: int) -> None:
         if self._build_layers_layout is None:
@@ -2458,6 +2509,23 @@ class IsolierungQtPlugin(QtPlugin):
             combo.setCurrentIndex(0)
         else:
             combo.setCurrentIndex(index)
+
+    @staticmethod
+    def _select_combo_value_by_data(
+        combo: QComboBox,
+        value: object,
+        placeholder: str,
+        role: int = Qt.UserRole,
+    ) -> bool:
+        if value in (None, "", placeholder):
+            combo.setCurrentIndex(0)
+            return False
+        index = combo.findData(value, role)
+        if index == -1:
+            combo.setCurrentIndex(0)
+            return False
+        combo.setCurrentIndex(index)
+        return True
 
     def _get_active_tab_index(self) -> int:
         if self._tab_widget is None:
