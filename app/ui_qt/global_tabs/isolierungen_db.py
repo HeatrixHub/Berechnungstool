@@ -100,8 +100,10 @@ class IsolierungenDbTab:
         root_layout.addWidget(scroll_area, 1)
 
         tables_row = make_hbox()
-        tables_row.addWidget(self._build_family_section(), 1)
-        tables_row.addWidget(self._build_variant_section(), 1)
+        self._family_section = self._build_family_section()
+        self._variant_section = self._build_variant_section()
+        tables_row.addWidget(self._family_section, 1)
+        tables_row.addWidget(self._variant_section, 1)
         self._content_layout.addLayout(tables_row, 4)
 
         forms_row = make_hbox()
@@ -109,7 +111,7 @@ class IsolierungenDbTab:
         forms_row.addWidget(self._build_variant_form(), 1)
         self._content_layout.addLayout(forms_row, 0)
 
-        self._content_layout.addWidget(self._build_plot_section(), 2)
+        self._content_layout.addWidget(self._build_plot_section(), 0)
 
         self.refresh_table(preserve_selection=False)
         register_material_change_listener(self._material_change_handler)
@@ -153,11 +155,15 @@ class IsolierungenDbTab:
         self._family_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self._family_table.setSortingEnabled(True)
         self._family_table.verticalHeader().setVisible(False)
+        self._family_table.setMinimumHeight(260)
+        self._family_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout.addLayout(search_row)
         layout.addLayout(button_row)
         layout.addWidget(self._family_table, 1)
         section.setLayout(layout)
+        section.setMinimumHeight(340)
+        section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self._family_search.textChanged.connect(self._family_proxy.setFilterFixedString)
         self._family_table.selectionModel().selectionChanged.connect(self.on_family_select)
@@ -202,11 +208,15 @@ class IsolierungenDbTab:
         self._variant_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self._variant_table.setSortingEnabled(True)
         self._variant_table.verticalHeader().setVisible(False)
+        self._variant_table.setMinimumHeight(260)
+        self._variant_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         layout.addLayout(search_row)
         layout.addLayout(button_row)
         layout.addWidget(self._variant_table, 1)
         section.setLayout(layout)
+        section.setMinimumHeight(340)
+        section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self._variant_search.textChanged.connect(self._variant_proxy.setFilterFixedString)
         self._variant_table.selectionModel().selectionChanged.connect(self.on_variant_select)
@@ -237,6 +247,7 @@ class IsolierungenDbTab:
         grid.addWidget(self._family_save_button, 5, 0, 1, 2, alignment=Qt.AlignRight)
         apply_form_layout_defaults(grid)
         section.setLayout(grid)
+        section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._family_save_button.clicked.connect(self.save_family)
         return section
 
@@ -263,6 +274,7 @@ class IsolierungenDbTab:
         grid.addWidget(self._variant_save_button, 3, 0, 1, 4, alignment=Qt.AlignRight)
         apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
         section.setLayout(grid)
+        section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._variant_save_button.clicked.connect(self.save_variant)
         return section
 
@@ -270,7 +282,7 @@ class IsolierungenDbTab:
         self._plot_section = QGroupBox("Interpolierte Wärmeleitfähigkeit")
         self._plot_layout = QVBoxLayout(self._plot_section)
         self._plot_section.setMinimumHeight(280)
-        self._plot_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._plot_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         return self._plot_section
 
     def refresh_table(self, preserve_selection: bool = True) -> None:
