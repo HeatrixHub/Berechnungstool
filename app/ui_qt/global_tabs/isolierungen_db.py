@@ -6,7 +6,7 @@ from typing import Sequence
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -341,12 +341,14 @@ class IsolierungenDbTab:
         self.update_plot(data.get("temps", []), data.get("ks", []), data.get("classification_temp"))
 
     def on_family_select(self) -> None:
-        index = self._family_table.currentIndex()
-        if not index.isValid():
+        selected_rows = self._family_table.selectionModel().selectedRows()
+        if not selected_rows:
+            self._selected_family_id = None
             return
-        source_index = self._family_proxy.mapToSource(index)
+        source_index = self._family_proxy.mapToSource(selected_rows[0])
         row = self._family_model.get_row(source_index.row())
         if not row:
+            self._selected_family_id = None
             return
         self._selected_family_id = int(row["id"])
         self._load_family(self._selected_family_id)
@@ -373,10 +375,12 @@ class IsolierungenDbTab:
             density = parse_required_float(self._family_density_input.text(), "Dichte")
             temps = self._parse_float_list(self._family_temps_input.text())
             ks = self._parse_float_list(self._family_ks_input.text())
-            if self._selected_family_id is None:
+            selected_family_id = self._get_selected_family_id()
+            if selected_family_id is None:
                 self._selected_family_id = create_family(name, class_temp, density, temps, ks)
             else:
-                update_family(self._selected_family_id, name, class_temp, density, temps, ks)
+                self._selected_family_id = selected_family_id
+                update_family(selected_family_id, name, class_temp, density, temps, ks)
             self.refresh_table()
             QMessageBox.information(self.widget, "Gespeichert", "Familie wurde gespeichert.")
         except Exception as exc:
@@ -418,13 +422,21 @@ class IsolierungenDbTab:
             self.refresh_table()
 
     def new_family(self) -> None:
+        blockers = [
+            QSignalBlocker(self._family_table.selectionModel()),
+            QSignalBlocker(self._variant_table.selectionModel()),
+        ]
         self._selected_family_id = None
         self._selected_variant_id = None
+        self._family_table.setCurrentIndex(QModelIndex())
         self._family_table.clearSelection()
+        self._variant_table.setCurrentIndex(QModelIndex())
+        self._variant_table.clearSelection()
         self._variant_model.set_rows([])
         self._clear_family_form()
         self._clear_variant_form()
         self.update_plot([], [], None)
+        del blockers
 
     def new_variant(self) -> None:
         self._selected_variant_id = None
@@ -473,6 +485,16 @@ class IsolierungenDbTab:
             return []
         separator = ";" if ";" in cleaned else ","
         return [float(part.strip().replace(",", ".")) for part in cleaned.split(separator) if part.strip()]
+
+    def _get_selected_family_id(self) -> int | None:
+        selected_rows = self._family_table.selectionModel().selectedRows()
+        if not selected_rows:
+            return None
+        source_index = self._family_proxy.mapToSource(selected_rows[0])
+        row = self._family_model.get_row(source_index.row())
+        if not row:
+            return None
+        return int(row["id"])
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
