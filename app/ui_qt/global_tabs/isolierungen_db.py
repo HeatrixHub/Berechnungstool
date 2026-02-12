@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFrame,
-    QGroupBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -23,6 +22,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QWidget,
+    QVBoxLayout,
 )
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -54,6 +54,7 @@ from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
     create_page_header,
+    create_section_header,
     make_grid,
     make_hbox,
     make_root_vbox,
@@ -108,9 +109,14 @@ class IsolierungenDbTab:
         if hasattr(self._tab_widget, "addTab"):
             self._tab_widget.addTab(self.widget, title)
 
-    def _build_family_section(self) -> QGroupBox:
-        section = QGroupBox("Materialfamilien")
-        layout = make_vbox()
+    def _create_section_container(self, title: str) -> tuple[QWidget, QVBoxLayout]:
+        section = QWidget()
+        layout = make_vbox(section)
+        layout.addWidget(create_section_header(title))
+        return section, layout
+
+    def _build_family_section(self) -> QWidget:
+        section, layout = self._create_section_container("Materialfamilien")
 
         self._new_family_button = QPushButton("Neu")
         self._delete_family_button = QPushButton("Familie löschen")
@@ -139,7 +145,6 @@ class IsolierungenDbTab:
 
         layout.addLayout(action_bar)
         layout.addWidget(self._family_table, 1)
-        section.setLayout(layout)
         section.setMinimumHeight(360)
         section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._new_family_button.clicked.connect(self.new_family)
@@ -149,9 +154,8 @@ class IsolierungenDbTab:
         self._family_table.itemSelectionChanged.connect(self.on_family_select)
         return section
 
-    def _build_variant_section(self) -> QGroupBox:
-        section = QGroupBox("Varianten")
-        layout = make_vbox()
+    def _build_variant_section(self) -> QWidget:
+        section, layout = self._create_section_container("Varianten")
 
         self._new_variant_button = QPushButton("Neue Variante")
         self._delete_variant_button = QPushButton("Variante löschen")
@@ -171,7 +175,6 @@ class IsolierungenDbTab:
 
         layout.addLayout(action_bar)
         layout.addWidget(self._variant_table, 1)
-        section.setLayout(layout)
         section.setMinimumHeight(360)
         section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._new_variant_button.clicked.connect(self.new_variant)
@@ -179,8 +182,8 @@ class IsolierungenDbTab:
         self._variant_table.itemSelectionChanged.connect(self.on_variant_select)
         return section
 
-    def _build_family_form(self) -> QGroupBox:
-        section = QGroupBox("Stammdaten")
+    def _build_family_form(self) -> QWidget:
+        section, layout = self._create_section_container("Stammdaten")
         grid = make_grid()
 
         self._family_name_input = QLineEdit()
@@ -203,13 +206,13 @@ class IsolierungenDbTab:
         grid.addWidget(self._family_save_button, 5, 0, 1, 2, alignment=Qt.AlignRight)
 
         apply_form_layout_defaults(grid)
-        section.setLayout(grid)
+        layout.addLayout(grid)
         section.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         self._family_save_button.clicked.connect(self.save_family)
         return section
 
-    def _build_variant_form(self) -> QGroupBox:
-        section = QGroupBox("Variante bearbeiten")
+    def _build_variant_form(self) -> QWidget:
+        section, layout = self._create_section_container("Variante bearbeiten")
         grid = make_grid()
 
         self._variant_name_input = QLineEdit()
@@ -232,17 +235,17 @@ class IsolierungenDbTab:
         grid.addWidget(self._variant_save_button, 3, 0, 1, 4, alignment=Qt.AlignRight)
 
         apply_form_layout_defaults(grid, label_columns=(0, 2), field_columns=(1, 3))
-        section.setLayout(grid)
+        layout.addLayout(grid)
         section.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         self._variant_save_button.clicked.connect(self.save_variant)
         return section
 
-    def _build_plot_section(self) -> QGroupBox:
-        self._plot_section = QGroupBox("Interpolierte Wärmeleitfähigkeit")
-        self._plot_layout = make_vbox()
+    def _build_plot_section(self) -> QWidget:
+        self._plot_section, self._plot_layout = self._create_section_container(
+            "Interpolierte Wärmeleitfähigkeit"
+        )
         self._plot_section.setMinimumHeight(260)
         self._plot_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self._plot_section.setLayout(self._plot_layout)
         return self._plot_section
 
     def refresh_table(self, preserve_selection: bool = True) -> None:
