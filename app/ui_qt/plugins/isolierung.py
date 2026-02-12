@@ -575,12 +575,13 @@ class IsolierungQtPlugin(QtPlugin):
             self._calc_inputs["layers"] = layers
         self._set_layer_count(len(layers))
 
+        family_names, family_list_fresh = self._get_available_family_names()
         missing_families: list[str] = []
         for layer, widgets in zip(layers, self._layer_widgets, strict=False):
             thickness = self._coerce_str(layer.get("thickness", ""))
             family = self._coerce_str(layer.get("family", ""))
             variant = self._coerce_str(layer.get("variant", ""))
-            if family and family not in self._material_names:
+            if family and family_list_fresh and family not in family_names:
                 missing_families.append(family)
                 family = ""
                 variant = ""
@@ -597,7 +598,9 @@ class IsolierungQtPlugin(QtPlugin):
         if missing_families:
             unique_missing = sorted(set(missing_families))
             self._missing_materials_warning = (
-                "Fehlende Materialfamilien: " + ", ".join(unique_missing)
+                "Materialfamilie nicht mehr in Isolierungen DB vorhanden "
+                "(evtl. dort gelöscht): "
+                + ", ".join(unique_missing)
             )
         else:
             self._missing_materials_warning = None
@@ -632,11 +635,12 @@ class IsolierungQtPlugin(QtPlugin):
         self._set_build_layer_count(len(layers))
         self._refresh_build_layer_labels()
 
+        family_names, family_list_fresh = self._get_available_family_names()
         missing_families: list[str] = []
         for layer, widgets in zip(layers, self._build_layer_widgets, strict=False):
             thickness = self._coerce_str(layer.get("thickness", ""))
             family = self._coerce_str(layer.get("family", ""))
-            if family and family not in self._material_names:
+            if family and family_list_fresh and family not in family_names:
                 missing_families.append(family)
                 family = ""
                 layer["family"] = ""
@@ -648,7 +652,9 @@ class IsolierungQtPlugin(QtPlugin):
         if missing_families:
             unique_missing = sorted(set(missing_families))
             self._build_missing_materials_warning = (
-                "Fehlende Materialfamilien: " + ", ".join(unique_missing)
+                "Materialfamilie nicht mehr in Isolierungen DB vorhanden "
+                "(evtl. dort gelöscht): "
+                + ", ".join(unique_missing)
             )
         else:
             self._build_missing_materials_warning = None
@@ -1751,6 +1757,27 @@ class IsolierungQtPlugin(QtPlugin):
                 continue
             self._material_names.append(family_name)
             self._family_name_to_id[family_name] = family_id_raw
+
+    def _get_available_family_names(self) -> tuple[set[str], bool]:
+        """Liefert die aktuelle Familienliste aus Isolierungen DB.
+
+        Rückgabe: (Namen, ist_frisch_aus_db). Wenn der DB-Call fehlschlägt,
+        wird auf die zuletzt geladenen Namen zurückgefallen und `False`
+        geliefert, damit bestehende Projektwerte nicht fälschlich gelöscht
+        werden.
+        """
+        try:
+            families = list_families()
+        except Exception:
+            return set(self._material_names), False
+        names: set[str] = set()
+        for family in families:
+            family_name = self._coerce_str(family.get("name", "")).strip()
+            if family_name:
+                names.add(family_name)
+        self._materials = families
+        self._material_names = sorted(names)
+        return names, True
 
     def _resolve_family_selection(
         self,
