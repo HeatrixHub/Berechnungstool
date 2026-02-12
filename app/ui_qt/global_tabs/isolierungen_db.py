@@ -30,14 +30,14 @@ from matplotlib.figure import Figure
 import numpy as np
 
 from app.core.isolierungen_db.logic import (
-    delete_insulation,
+    delete_insulation_by_id,
     delete_variant,
     export_insulations_to_csv,
     export_insulations_to_folder,
     get_all_insulations,
     import_insulations_from_csv_files,
     interpolate_k,
-    load_insulation,
+    load_insulation_by_id,
     register_material_change_listener,
     unregister_material_change_listener,
     rename_family,
@@ -66,9 +66,9 @@ class IsolierungenDbTab:
 
     def __init__(self, tab_widget: QTabWidget, title: str = "Isolierungen DB") -> None:
         self._tab_widget = tab_widget
-        self._selected_family: str | None = None
+        self._selected_family: int | None = None
         self._is_new_family_mode = False
-        self._selected_variant: str | None = None
+        self._selected_variant: int | None = None
         self._material_change_handler = self.refresh_table
         self._listener_registered = False
 
@@ -248,14 +248,14 @@ class IsolierungenDbTab:
 
     def refresh_table(self, preserve_selection: bool = True) -> None:
         selected_family = self._selected_family if preserve_selection else None
-        if not selected_family:
-            selected_family = self._family_name_input.text().strip()
 
         self._family_table.setRowCount(0)
         for insulation in get_all_insulations():
             row = self._family_table.rowCount()
             self._family_table.insertRow(row)
-            self._family_table.setItem(row, 0, QTableWidgetItem(str(insulation.get("name", ""))))
+            family_item = QTableWidgetItem(str(insulation.get("name", "")))
+            family_item.setData(Qt.UserRole, insulation.get("id"))
+            self._family_table.setItem(row, 0, family_item)
             self._family_table.setItem(
                 row, 1, QTableWidgetItem(str(insulation.get("classification_temp", "")))
             )
@@ -266,23 +266,23 @@ class IsolierungenDbTab:
 
         self._family_table.resizeColumnsToContents()
 
-        if selected_family:
-            self._select_family_by_name(selected_family)
+        if selected_family is not None:
+            self._select_family_by_id(selected_family)
         else:
             self._variant_table.setRowCount(0)
             self._clear_family_form()
             self._clear_variant_form()
             self.update_plot([], [], None)
 
-    def _select_family_by_name(self, name: str) -> None:
+    def _select_family_by_id(self, family_id: int) -> None:
         for row in range(self._family_table.rowCount()):
             item = self._family_table.item(row, 0)
-            if item and item.text() == name:
+            if item and item.data(Qt.UserRole) == family_id:
                 with QSignalBlocker(self._family_table):
                     self._family_table.selectRow(row)
-                self._selected_family = name
+                self._selected_family = family_id
                 self._is_new_family_mode = False
-                self._load_family(name)
+                self._load_family(family_id)
                 return
         self._selected_family = None
         self._is_new_family_mode = True
@@ -312,13 +312,15 @@ class IsolierungenDbTab:
         item = self._family_table.item(row, 0)
         if item is None:
             return
-        name = item.text()
-        self._selected_family = name
+        family_id = item.data(Qt.UserRole)
+        if family_id is None:
+            return
+        self._selected_family = int(family_id)
         self._is_new_family_mode = False
-        self._load_family(name)
+        self._load_family(self._selected_family)
 
-    def _load_family(self, name: str) -> None:
-        data = load_insulation(name)
+    def _load_family(self, family_id: int) -> None:
+        data = load_insulation_by_id(family_id)
         if not data:
             return
         self._fill_family_form(data)
@@ -341,7 +343,9 @@ class IsolierungenDbTab:
         for variant in variants:
             row = self._variant_table.rowCount()
             self._variant_table.insertRow(row)
-            self._variant_table.setItem(row, 0, QTableWidgetItem(str(variant.get("name", ""))))
+            variant_item = QTableWidgetItem(str(variant.get("name", "")))
+            variant_item.setData(Qt.UserRole, variant.get("id"))
+            self._variant_table.setItem(row, 0, variant_item)
             self._variant_table.setItem(
                 row, 1, QTableWidgetItem(str(variant.get("thickness", "")))
             )
@@ -367,7 +371,10 @@ class IsolierungenDbTab:
             self._variant_table.item(row, col).text() if self._variant_table.item(row, col) else ""
             for col in range(self._variant_table.columnCount())
         ]
-        self._selected_variant = values[0]
+        variant_id = name_item.data(Qt.UserRole)
+        if variant_id is None:
+            return
+        self._selected_variant = int(variant_id)
         self._variant_name_input.setText(values[0])
         self._variant_thickness_input.setText(values[1] if len(values) > 1 else "")
         self._variant_length_input.setText(values[2] if len(values) > 2 else "")
@@ -413,14 +420,16 @@ class IsolierungenDbTab:
                     if response != QMessageBox.Yes:
                         return
             else:
-                if not self._selected_family:
+                if self._selected_family is None:
                     QMessageBox.warning(
                         self.widget,
                         "Hinweis",
                         "Bitte zuerst eine Familie auswählen oder über 'Neu' eine neue Familie anlegen.",
                     )
                     return
-                if self._selected_family != name:
+                current = load_insulation_by_id(self._selected_family)
+                current_name = current.get("name", "")
+                if current_name and current_name != name:
                     if not rename_family(self._selected_family, name):
                         QMessageBox.critical(
                             self.widget,
@@ -431,11 +440,11 @@ class IsolierungenDbTab:
 
             saved = save_family(name, class_temp, density, temps, ks)
             if not saved:
-                QMessageBox.critical(
-                    self.widget, "Fehler", "Familie konnte nicht gespeichert werden."
-                )
+                QMessageBox.critical(self.widget, "Fehler", "Familie konnte nicht gespeichert werden.")
                 return
-            self._selected_family = name
+            materials = get_all_insulations()
+            chosen = next((m for m in materials if m.get("name") == name), None)
+            self._selected_family = int(chosen["id"]) if chosen and chosen.get("id") is not None else None
             self._is_new_family_mode = False
             QMessageBox.information(self.widget, "Gespeichert", f"Familie '{name}' wurde gespeichert.")
             self.refresh_table()
@@ -443,11 +452,10 @@ class IsolierungenDbTab:
             QMessageBox.critical(self.widget, "Fehler", str(exc))
 
     def save_variant(self) -> None:
+        family_id = self._selected_family
         family_name = self._family_name_input.text().strip()
-        if not family_name:
-            QMessageBox.warning(
-                self.widget, "Fehler", "Bitte zuerst eine Familie auswählen."
-            )
+        if family_id is None or not family_name:
+            QMessageBox.warning(self.widget, "Fehler", "Bitte zuerst eine Familie auswählen.")
             return
         variant_name = self._variant_name_input.text().strip() or "Standard"
         try:
@@ -456,11 +464,14 @@ class IsolierungenDbTab:
             width = parse_optional_float(self._variant_width_input.text())
             price = parse_optional_float(self._variant_price_input.text())
 
-            existing_variants = {
-                variant.get("name", "")
-                for variant in load_insulation(family_name).get("variants", [])
-            }
-            if self._selected_variant and self._selected_variant != variant_name:
+            variant_data = load_insulation_by_id(family_id).get("variants", [])
+            existing_variants = {variant.get("name", "") for variant in variant_data}
+            selected_variant = next(
+                (v for v in variant_data if v.get("id") == self._selected_variant),
+                None,
+            )
+
+            if selected_variant and selected_variant.get("name") != variant_name:
                 if variant_name in existing_variants:
                     QMessageBox.critical(
                         self.widget,
@@ -468,7 +479,7 @@ class IsolierungenDbTab:
                         "Der Variantenname existiert bereits in dieser Familie.",
                     )
                     return
-            elif not self._selected_variant and variant_name in existing_variants:
+            elif not selected_variant and variant_name in existing_variants:
                 response = QMessageBox.question(
                     self.widget,
                     "Variante überschreiben",
@@ -482,8 +493,8 @@ class IsolierungenDbTab:
                 if response != QMessageBox.Yes:
                     return
 
-            if self._selected_variant and self._selected_variant != variant_name:
-                if not rename_variant(family_name, self._selected_variant, variant_name):
+            if selected_variant and selected_variant.get("name") != variant_name:
+                if not rename_variant(family_id, self._selected_variant, variant_name):
                     QMessageBox.critical(
                         self.widget,
                         "Fehler",
@@ -491,7 +502,7 @@ class IsolierungenDbTab:
                     )
                     return
 
-            saved = save_variant(family_name, variant_name, thickness, length, width, price)
+            saved = save_variant(family_id, variant_name, thickness, length, width, price)
             if not saved:
                 QMessageBox.critical(
                     self.widget,
@@ -500,19 +511,22 @@ class IsolierungenDbTab:
                 )
                 return
 
-            self._selected_variant = variant_name
+            variants = load_insulation_by_id(family_id).get("variants", [])
+            chosen_variant = next((v for v in variants if v.get("name") == variant_name), None)
+            self._selected_variant = int(chosen_variant["id"]) if chosen_variant and chosen_variant.get("id") is not None else None
             QMessageBox.information(
                 self.widget,
                 "Gespeichert",
                 f"Variante '{variant_name}' wurde für '{family_name}' gespeichert.",
             )
-            self._load_family(family_name)
+            self._load_family(family_id)
         except Exception as exc:
             QMessageBox.critical(self.widget, "Fehler", str(exc))
 
     def delete_family(self) -> None:
-        name = self._selected_family or self._family_name_input.text().strip()
-        if not name:
+        family_id = self._selected_family
+        name = self._family_name_input.text().strip()
+        if family_id is None:
             QMessageBox.information(self.widget, "Hinweis", "Bitte eine Isolierung auswählen.")
             return
         response = QMessageBox.question(
@@ -527,7 +541,7 @@ class IsolierungenDbTab:
         )
         if response != QMessageBox.Yes:
             return
-        if delete_insulation(name):
+        if delete_insulation_by_id(family_id):
             self._selected_family = None
             self.refresh_table(preserve_selection=False)
             self._clear_family_form()
@@ -536,9 +550,10 @@ class IsolierungenDbTab:
             QMessageBox.critical(self.widget, "Löschen fehlgeschlagen", "Das Material konnte nicht gelöscht werden.")
 
     def delete_variant(self) -> None:
+        family_id = self._selected_family
         family_name = self._family_name_input.text().strip()
-        variant_name = self._selected_variant
-        if not family_name or not variant_name:
+        variant_id = self._selected_variant
+        if family_id is None or not family_name or variant_id is None:
             QMessageBox.information(
                 self.widget, "Hinweis", "Bitte zuerst eine Familie und Variante auswählen."
             )
@@ -546,21 +561,21 @@ class IsolierungenDbTab:
         response = QMessageBox.question(
             self.widget,
             "Variante löschen",
-            f"Soll die Variante '{variant_name}' aus '{family_name}' gelöscht werden?",
+            f"Soll die ausgewählte Variante aus '{family_name}' gelöscht werden?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if response != QMessageBox.Yes:
             return
-        if delete_variant(family_name, variant_name):
+        if delete_variant(family_id, variant_id):
             self._selected_variant = None
-            self._load_family(family_name)
+            self._load_family(family_id)
             self._clear_variant_form()
         else:
             QMessageBox.critical(self.widget, "Löschen fehlgeschlagen", "Die Variante konnte nicht gelöscht werden.")
 
     def export_selected(self) -> None:
-        preselected = {self._selected_family} if self._selected_family else set()
+        preselected = {self._family_name_input.text().strip()} if self._selected_family else set()
         names = self._choose_export_names(preselected)
         if not names:
             return
