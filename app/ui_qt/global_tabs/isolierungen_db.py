@@ -354,10 +354,10 @@ class IsolierungenDbTab:
         self._load_family(self._selected_family_id)
 
     def on_variant_select(self) -> None:
-        index = self._variant_table.currentIndex()
-        if not index.isValid():
+        selected_rows = self._variant_table.selectionModel().selectedRows()
+        if not selected_rows:
             return
-        source_index = self._variant_proxy.mapToSource(index)
+        source_index = self._variant_proxy.mapToSource(selected_rows[0])
         row = self._variant_model.get_row(source_index.row())
         if not row:
             return
@@ -439,9 +439,12 @@ class IsolierungenDbTab:
         del blockers
 
     def new_variant(self) -> None:
+        blockers = [QSignalBlocker(self._variant_table.selectionModel())]
         self._selected_variant_id = None
+        self._variant_table.setCurrentIndex(QModelIndex())
         self._variant_table.clearSelection()
         self._clear_variant_form()
+        del blockers
 
     def update_plot(self, temps: Sequence[float], ks: Sequence[float], class_temp: float | None) -> None:
         self._clear_layout(self._plot_layout)
