@@ -9,14 +9,12 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QTabWidget,
     QTableView,
@@ -38,7 +36,13 @@ from app.core.isolierungen_db.logic import (
     update_variant,
 )
 from app.core.isolierungen_db.services import parse_optional_float, parse_required_float
-from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
+from app.ui_qt.ui_helpers import (
+    apply_form_layout_defaults,
+    create_scrollable_page_layout,
+    make_grid,
+    make_hbox,
+    make_vbox,
+)
 
 
 class DictTableModel(QAbstractTableModel):
@@ -89,17 +93,11 @@ class IsolierungenDbTab:
         self._material_change_handler = self.refresh_table
 
         self.widget = QWidget()
-        root_layout = make_root_vbox(self.widget)
-        root_layout.addWidget(create_page_header("Isolierungen DB", show_logo=True, parent=self.widget))
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-        content = QWidget()
-        self._content_layout = make_vbox(content)
-        self._content_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_area.setWidget(content)
-        root_layout.addWidget(scroll_area, 1)
+        self._content_layout = create_scrollable_page_layout(
+            self.widget,
+            "Isolierungen DB",
+            show_logo=True,
+        )
 
         tables_row = make_hbox()
         self._family_section = self._build_family_section()
@@ -113,7 +111,7 @@ class IsolierungenDbTab:
         forms_row.addWidget(self._build_variant_form(), 1)
         self._content_layout.addLayout(forms_row, 0)
 
-        self._content_layout.addWidget(self._build_plot_section(), 0)
+        self._content_layout.addWidget(self._build_plot_section(), 1)
 
         self.refresh_table(preserve_selection=False)
         register_material_change_listener(self._material_change_handler)
