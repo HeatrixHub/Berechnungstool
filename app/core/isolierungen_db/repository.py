@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import logging
+from pathlib import Path
 import sqlite3
 from typing import Any, Iterator
 
 from Isolierung.core.database import DB_PATH
 
 SCHEMA_VERSION = 2
+
+LOGGER = logging.getLogger(__name__)
 
 
 class IsolierungRepository:
@@ -35,17 +39,138 @@ class IsolierungRepository:
                 )
                 """
             )
-            row = conn.execute(
-                "SELECT value FROM isolierung_meta WHERE key = 'schema_version'"
-            ).fetchone()
-            current_version = int(row["value"]) if row else None
-            if current_version != SCHEMA_VERSION:
+            current_version = self._read_schema_version(conn)
+            reset_executed = False
+            reset_reason: str | None = None
+
+            try:
+                if current_version is None:
+                    if self._has_any_core_table(conn):
+                        reset_executed = True
+                        reset_reason = "Inkonsistente Meta-Information (schema_version fehlt bei vorhandenen Kern-Tabellen)."
+                        LOGGER.warning("Isolierungen-DB Reset erforderlich: %s", reset_reason)
+                        self._reset_schema(conn)
+                    else:
+                        self._reset_schema(conn)
+                    self._write_schema_version(conn, SCHEMA_VERSION)
+                elif current_version < SCHEMA_VERSION:
+                    self.migrate_schema(conn, current_version, SCHEMA_VERSION)
+                    self._write_schema_version(conn, SCHEMA_VERSION)
+                elif current_version > SCHEMA_VERSION:
+                    reset_executed = True
+                    reset_reason = (
+                        f"Nicht unterstützte schema_version={current_version} (Code unterstützt bis {SCHEMA_VERSION})."
+                    )
+                    LOGGER.warning("Isolierungen-DB Reset erforderlich: %s", reset_reason)
+                    self._reset_schema(conn)
+                    self._write_schema_version(conn, SCHEMA_VERSION)
+                elif not self._is_schema_consistent(conn, current_version):
+                    reset_executed = True
+                    reset_reason = "Schema inkonsistent oder Kern-Tabellen fehlen."
+                    LOGGER.warning("Isolierungen-DB Reset erforderlich: %s", reset_reason)
+                    self._reset_schema(conn)
+                    self._write_schema_version(conn, SCHEMA_VERSION)
+            except sqlite3.DatabaseError as exc:
+                reset_executed = True
+                reset_reason = f"DB-Fehler während Schema-Check/Migration: {exc}"
+                LOGGER.warning("Isolierungen-DB Reset erforderlich: %s", reset_reason)
                 self._reset_schema(conn)
-                conn.execute(
-                    "INSERT OR REPLACE INTO isolierung_meta (key, value) VALUES ('schema_version', ?)",
-                    (str(SCHEMA_VERSION),),
-                )
+                self._write_schema_version(conn, SCHEMA_VERSION)
+
             conn.commit()
+            row_counts = self._collect_row_counts(conn)
+            LOGGER.info(
+                "Isolierungen-DB bereit. path=%s schema_version=%s reset=%s reason=%s counts=%s",
+                Path(self._db_path).resolve(),
+                self._read_schema_version(conn),
+                reset_executed,
+                reset_reason or "-",
+                row_counts,
+            )
+
+    def migrate_schema(self, conn: sqlite3.Connection, from_version: int, to_version: int) -> None:
+        current = from_version
+        while current < to_version:
+            next_version = current + 1
+            migration = getattr(self, f"_migrate_{current}_to_{next_version}", None)
+            if migration is None:
+                raise sqlite3.DatabaseError(
+                    f"Keine Migration von schema_version {current} nach {next_version} vorhanden."
+                )
+            LOGGER.info("Isolierungen-DB Migration gestartet: %s -> %s", current, next_version)
+            conn.execute("BEGIN")
+            try:
+                migration(conn)
+                self._write_schema_version(conn, next_version)
+                conn.commit()
+                LOGGER.info("Isolierungen-DB Migration abgeschlossen: %s -> %s", current, next_version)
+            except Exception:
+                conn.rollback()
+                raise
+            current = next_version
+
+    def _migrate_1_to_2(self, conn: sqlite3.Connection) -> None:
+        for table in ("isolierung_families", "isolierung_variants", "isolierung_measurements"):
+            if not self._table_exists(conn, table):
+                raise sqlite3.DatabaseError(f"Migration 1->2 nicht möglich: Tabelle '{table}' fehlt.")
+        self._add_column_if_missing(conn, "isolierung_families", "max_temp", "REAL")
+
+    def _read_schema_version(self, conn: sqlite3.Connection) -> int | None:
+        row = conn.execute(
+            "SELECT value FROM isolierung_meta WHERE key = 'schema_version'"
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            return int(row["value"])
+        except (TypeError, ValueError) as exc:
+            raise sqlite3.DatabaseError("Ungültige schema_version in isolierung_meta.") from exc
+
+    def _write_schema_version(self, conn: sqlite3.Connection, version: int) -> None:
+        conn.execute(
+            "INSERT OR REPLACE INTO isolierung_meta (key, value) VALUES ('schema_version', ?)",
+            (str(version),),
+        )
+
+    def _table_exists(self, conn: sqlite3.Connection, table_name: str) -> bool:
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
+
+    def _has_any_core_table(self, conn: sqlite3.Connection) -> bool:
+        return any(
+            self._table_exists(conn, table)
+            for table in ("isolierung_families", "isolierung_variants", "isolierung_measurements")
+        )
+
+    def _is_schema_consistent(self, conn: sqlite3.Connection, schema_version: int) -> bool:
+        required_tables = ("isolierung_families", "isolierung_variants", "isolierung_measurements")
+        if any(not self._table_exists(conn, table) for table in required_tables):
+            return False
+        if schema_version >= 2 and not self._column_exists(conn, "isolierung_families", "max_temp"):
+            return False
+        return True
+
+    def _column_exists(self, conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return any(row["name"] == column_name for row in rows)
+
+    def _add_column_if_missing(
+        self, conn: sqlite3.Connection, table_name: str, column_name: str, definition: str
+    ) -> None:
+        if not self._column_exists(conn, table_name, column_name):
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+    def _collect_row_counts(self, conn: sqlite3.Connection) -> dict[str, int | str]:
+        counts: dict[str, int | str] = {}
+        for table in ("isolierung_families", "isolierung_variants", "isolierung_measurements"):
+            if not self._table_exists(conn, table):
+                counts[table] = "missing"
+                continue
+            counts[table] = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        return counts
 
     def _reset_schema(self, conn: sqlite3.Connection) -> None:
         conn.executescript(
