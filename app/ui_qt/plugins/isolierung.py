@@ -12,8 +12,10 @@ import tempfile
 from typing import Any, Callable, Iterable
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.figure import Figure
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, Qt
 from PySide6.QtGui import QBrush, QColor, QFont, QPen
 from PySide6.QtWidgets import (
@@ -178,6 +180,8 @@ class IsolierungQtPlugin(QtPlugin):
         self._layers_layout: QGridLayout | None = None
         self._layer_widgets: list[_LayerWidgets] = []
         self._result_label: QLabel | None = None
+        self._calc_plot_figure: Figure | None = None
+        self._calc_plot_canvas: FigureCanvasQTAgg | None = None
 
         self._build_measure_outer: QRadioButton | None = None
         self._build_measure_inner: QRadioButton | None = None
@@ -607,6 +611,7 @@ class IsolierungQtPlugin(QtPlugin):
 
         result_text = self._format_result_text()
         self._set_label_text(self._result_label, result_text)
+        self._refresh_calculation_plot()
 
         if self._layer_count_input is not None:
             with QSignalBlocker(self._layer_count_input):
@@ -721,7 +726,143 @@ class IsolierungQtPlugin(QtPlugin):
         result_group.setLayout(result_layout)
         layout.addWidget(result_group)
 
+        plot_group = QGroupBox("Temperaturverlauf")
+        plot_layout = make_vbox()
+        self._calc_plot_figure = Figure(figsize=(6.4, 4.0), dpi=100, facecolor="#ffffff")
+        self._calc_plot_canvas = FigureCanvasQTAgg(self._calc_plot_figure)
+        self._calc_plot_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._calc_plot_canvas.setMinimumHeight(280)
+        plot_layout.addWidget(self._calc_plot_canvas)
+        plot_group.setLayout(plot_layout)
+        plot_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(plot_group)
+
+        self._render_empty_calculation_plot("Noch keine Berechnungsdaten verfügbar.")
+
         return tab
+
+    def _refresh_calculation_plot(self) -> None:
+        if self._calc_plot_canvas is None or self._calc_plot_figure is None:
+            return
+
+        plot_data = self._collect_calculation_plot_data()
+        if plot_data is None:
+            self._render_empty_calculation_plot("Noch keine Berechnungsdaten verfügbar.")
+            return
+
+        thicknesses, interfaces = plot_data
+        self._calc_plot_figure.clear()
+        ax = self._calc_plot_figure.add_subplot(111)
+        self._render_temperature_plot(ax, thicknesses, interfaces)
+        self._calc_plot_figure.tight_layout()
+        self._calc_plot_canvas.draw_idle()
+
+    def _collect_calculation_plot_data(self) -> tuple[list[float], list[float]] | None:
+        if self._calc_results.get("status") != "ok":
+            return None
+        result = self._calc_results.get("data")
+        if not isinstance(result, dict):
+            return None
+
+        interfaces_raw = result.get("interface_temperatures")
+        if not isinstance(interfaces_raw, list) or len(interfaces_raw) < 2:
+            return None
+        try:
+            interfaces = [float(value) for value in interfaces_raw]
+        except (TypeError, ValueError):
+            return None
+
+        layers = self._calc_inputs.get("layers", [])
+        if not isinstance(layers, list) or not layers:
+            return None
+        thicknesses: list[float] = []
+        for layer in layers:
+            if not isinstance(layer, dict):
+                return None
+            parsed = self._parse_float(layer.get("thickness", ""))
+            if parsed is None or parsed <= 0:
+                return None
+            thicknesses.append(float(parsed))
+
+        if len(interfaces) != len(thicknesses) + 1:
+            return None
+        return thicknesses, interfaces
+
+    def _render_empty_calculation_plot(self, message: str) -> None:
+        if self._calc_plot_canvas is None or self._calc_plot_figure is None:
+            return
+        self._calc_plot_figure.clear()
+        ax = self._calc_plot_figure.add_subplot(111)
+        ax.set_facecolor("#ffffff")
+        ax.text(
+            0.5,
+            0.5,
+            message,
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            color="#6b7280",
+            fontsize=9,
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+            spine.set_color("#d1d5db")
+        self._calc_plot_figure.tight_layout()
+        self._calc_plot_canvas.draw_idle()
+
+    def _render_temperature_plot(
+        self,
+        ax: Any,
+        thicknesses: Iterable[float],
+        temperatures: Iterable[float],
+    ) -> None:
+        ax.set_facecolor("#ffffff")
+
+        thickness_list = [float(value) for value in thicknesses]
+        temperature_list = [float(value) for value in temperatures]
+
+        total_x = [0.0]
+        for thickness in thickness_list:
+            total_x.append(total_x[-1] + thickness)
+
+        colors = ["#e81919", "#fce6e6"]
+        cmap = LinearSegmentedColormap.from_list("report_cmap", colors, N=256)
+        ax.plot(total_x, temperature_list, linewidth=2, marker="o", color="#111827", zorder=3)
+
+        x_pos = 0.0
+        for index, thickness in enumerate(thickness_list):
+            color_value = index / max(len(thickness_list) - 1, 1)
+            ax.axvspan(x_pos, x_pos + thickness, color=cmap(color_value), alpha=0.35, zorder=1)
+            x_pos += thickness
+
+        t_min = min(temperature_list)
+        t_max = max(temperature_list)
+        t_span = max(t_max - t_min, 1.0)
+        label_offset = max(1.5, t_span * 0.05)
+        y_margin = max(4.0, t_span * 0.15)
+
+        for x, temp in zip(total_x, temperature_list, strict=False):
+            ax.text(
+                x,
+                temp + label_offset,
+                f"{temp:.1f}°C",
+                ha="center",
+                fontsize=8,
+                bbox=dict(facecolor="#ffffff", alpha=0.85, edgecolor="none", pad=1.0),
+                color="#111827",
+                zorder=4,
+                clip_on=False,
+            )
+
+        ax.set_xlim(0.0, total_x[-1])
+        ax.set_ylim(t_min - y_margin, t_max + y_margin + label_offset)
+        ax.set_xlabel("Dicke [mm]", color="#111827")
+        ax.set_ylabel("Temperatur [°C]", color="#111827")
+        ax.set_title("Temperaturverlauf durch die Isolierung", fontsize=11, color="#111827")
+        ax.grid(True, linestyle="--", alpha=0.5, color="#9ca3af")
+        ax.tick_params(axis="x", colors="#111827", labelsize=8)
+        ax.tick_params(axis="y", colors="#111827", labelsize=8)
 
     def _build_schichtaufbau_tab(self) -> QWidget:
         tab = QWidget()
@@ -1433,40 +1574,7 @@ class IsolierungQtPlugin(QtPlugin):
     ) -> None:
         plt.switch_backend("Agg")
         fig, ax = plt.subplots(figsize=(6.4, 4.0), dpi=150, facecolor="#ffffff")
-        ax.set_facecolor("#ffffff")
-
-        total_x = [0.0]
-        for thickness in thicknesses:
-            total_x.append(total_x[-1] + float(thickness))
-
-        colors = ["#e81919", "#fce6e6"]
-        cmap = LinearSegmentedColormap.from_list("report_cmap", colors, N=256)
-        ax.plot(total_x, list(temperatures), linewidth=2, marker="o", color="#111827")
-
-        x_pos = 0.0
-        thickness_list = list(thicknesses)
-        for index, thickness in enumerate(thickness_list):
-            color_value = index / max(len(thickness_list) - 1, 1)
-            ax.axvspan(x_pos, x_pos + thickness, color=cmap(color_value), alpha=0.35)
-            x_pos += thickness
-
-        for x, temp in zip(total_x, temperatures):
-            ax.text(
-                x,
-                temp + 5,
-                f"{float(temp):.0f}°C",
-                ha="center",
-                fontsize=8,
-                bbox=dict(facecolor="#ffffff", alpha=0.8, edgecolor="none"),
-                color="#111827",
-            )
-
-        ax.set_xlabel("Dicke [mm]", color="#111827")
-        ax.set_ylabel("Temperatur [°C]", color="#111827")
-        ax.set_title("Temperaturverlauf durch die Isolierung", fontsize=11, color="#111827")
-        ax.grid(True, linestyle="--", alpha=0.5, color="#9ca3af")
-        ax.tick_params(axis="x", colors="#111827", labelsize=8)
-        ax.tick_params(axis="y", colors="#111827", labelsize=8)
+        self._render_temperature_plot(ax, thicknesses, temperatures)
         fig.tight_layout()
         fig.savefig(target, bbox_inches="tight")
         plt.close(fig)
@@ -2573,11 +2681,13 @@ class IsolierungQtPlugin(QtPlugin):
             self._calc_inputs["T_inf"] = self._T_inf_input.text()
         if self._h_input is not None:
             self._calc_inputs["h"] = self._h_input.text()
+        self._refresh_calculation_plot()
 
     def _on_thickness_changed(self, index: int, text: str) -> None:
         if index >= len(self._calc_inputs.get("layers", [])):
             return
         self._calc_inputs["layers"][index]["thickness"] = text
+        self._refresh_calculation_plot()
 
     def _ensure_calc_ui_layer_state(self, index: int) -> None:
         ui_layers = self._calc_ui.get("layers", [])
