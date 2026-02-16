@@ -742,6 +742,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._h_input.textChanged.connect(self._on_text_input_changed)
         inputs_layout.addWidget(self._h_input, 2, 1)
         inputs_group.setLayout(inputs_layout)
+        inputs_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(inputs_group)
 
         layers_group = QGroupBox("Schichten")
@@ -764,6 +765,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._layers_layout = grid
         layers_layout.addLayout(grid)
         layers_group.setLayout(layers_layout)
+        layers_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(layers_group)
 
         calculate_button = QPushButton("Berechnen")
@@ -777,6 +779,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._result_label.setWordWrap(True)
         result_layout.addWidget(self._result_label)
         result_group.setLayout(result_layout)
+        result_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(result_group)
 
         plot_group = QGroupBox("Temperaturverlauf")
@@ -788,7 +791,7 @@ class IsolierungQtPlugin(QtPlugin):
         plot_layout.addWidget(self._calc_plot_canvas)
         plot_group.setLayout(plot_layout)
         plot_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(plot_group)
+        layout.addWidget(plot_group, 1)
 
         self._render_empty_calculation_plot("Noch keine Berechnungsdaten verfügbar.")
 
@@ -919,7 +922,16 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_schichtaufbau_tab(self) -> QWidget:
         tab = QWidget()
-        layout = create_page_layout(tab, "Schichtaufbau")
+        root_layout = make_root_vbox(tab)
+        root_layout.addWidget(create_page_header("Schichtaufbau", parent=tab))
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        content = QWidget()
+        layout = make_vbox(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area.setWidget(content)
+        root_layout.addWidget(scroll_area, 1)
 
         measure_group = QGroupBox("Maßvorgabe")
         measure_layout = make_hbox()
@@ -934,6 +946,7 @@ class IsolierungQtPlugin(QtPlugin):
         measure_layout.addWidget(self._build_measure_inner)
         measure_layout.addStretch()
         measure_group.setLayout(measure_layout)
+        measure_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(measure_group)
 
         dims_group = QGroupBox("Abmessungen")
@@ -951,6 +964,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._build_H_input.textChanged.connect(self._on_build_dimension_changed)
         dims_layout.addWidget(self._build_H_input, 0, 5)
         dims_group.setLayout(dims_layout)
+        dims_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(dims_group)
 
         layers_group = QGroupBox("Schichtdicken [mm]")
@@ -970,6 +984,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._build_layers_layout = grid
         layers_layout.addLayout(grid)
         layers_group.setLayout(layers_layout)
+        layers_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(layers_group)
 
         calculate_button = QPushButton("Berechnen")
@@ -987,21 +1002,21 @@ class IsolierungQtPlugin(QtPlugin):
 
         summary_layout = make_hbox()
         self._build_given_group = QGroupBox("Gegebene Maße")
-        self._build_given_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._build_given_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         given_layout = make_grid()
         self._build_given_labels = self._build_dimension_summary(given_layout)
         self._build_given_group.setLayout(given_layout)
         summary_layout.addWidget(self._build_given_group, 1)
 
         self._build_calc_group = QGroupBox("Berechnete Maße")
-        self._build_calc_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self._build_calc_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         calc_layout = make_grid()
         self._build_calc_labels = self._build_dimension_summary(calc_layout)
         self._build_calc_group.setLayout(calc_layout)
         summary_layout.addWidget(self._build_calc_group, 1)
 
         layer_info_group = QGroupBox("Schichten")
-        layer_info_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        layer_info_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layer_info_layout = make_vbox()
         self._build_layer_count_label = QLabel("–")
         layer_info_layout.addWidget(self._build_layer_count_label)
@@ -1022,10 +1037,12 @@ class IsolierungQtPlugin(QtPlugin):
         )
         self._build_results_table.horizontalHeader().setStretchLastSection(True)
         self._build_results_table.verticalHeader().setVisible(False)
+        self._build_results_table.setMinimumHeight(260)
         results_layout.addWidget(self._build_results_table)
 
         results_group.setLayout(results_layout)
-        layout.addWidget(results_group)
+        results_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(results_group, 1)
 
         return tab
 
@@ -1056,10 +1073,12 @@ class IsolierungQtPlugin(QtPlugin):
         button_layout = create_button_row([import_button, calculate_button])
         settings_layout.addLayout(button_layout, 0, 2)
         settings_group.setLayout(settings_layout)
+        settings_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(settings_group)
 
         self._zuschnitt_status_label = QLabel()
         self._zuschnitt_status_label.setWordWrap(True)
+        self._zuschnitt_status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         layout.addWidget(self._zuschnitt_status_label)
 
         overview_group = QGroupBox("Rohlingübersicht")
@@ -1081,11 +1100,12 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_overview_view.selectionModel().selectionChanged.connect(
             self._on_zuschnitt_summary_selection_changed
         )
+        self._zuschnitt_overview_view.setMinimumHeight(140)
         overview_layout.addWidget(self._zuschnitt_overview_view)
         overview_group.setLayout(overview_layout)
-        overview_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        overview_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         overview_group.setMinimumHeight(180)
-        layout.addWidget(overview_group)
+        layout.addWidget(overview_group, 1)
 
         results_group = QGroupBox("Platzierungen")
         results_layout = make_vbox()
@@ -1110,6 +1130,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_results_view.selectionModel().selectionChanged.connect(
             self._on_zuschnitt_placement_selection_changed
         )
+        self._zuschnitt_results_view.setMinimumHeight(180)
         results_layout.addWidget(self._zuschnitt_results_view)
 
         export_csv_button = QPushButton("CSV exportieren")
@@ -1119,9 +1140,9 @@ class IsolierungQtPlugin(QtPlugin):
         export_layout = create_button_row([export_csv_button, export_excel_button])
         results_layout.addLayout(export_layout)
         results_group.setLayout(results_layout)
-        results_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        results_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         results_group.setMinimumHeight(220)
-        layout.addWidget(results_group)
+        layout.addWidget(results_group, 1)
 
         preview_group = QGroupBox("Graphische Übersicht")
         preview_layout = make_vbox()
