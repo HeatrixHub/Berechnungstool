@@ -5,9 +5,10 @@ from collections.abc import Sequence
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QFont, QPainter, QPixmap
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
@@ -165,7 +166,7 @@ def apply_app_style(app: object) -> None:
         )
 
 
-def _load_logo_pixmap(logo_path: Path, height: int) -> QPixmap | None:
+def _create_logo_widget(logo_path: Path, height: int) -> QWidget | None:
     if not logo_path.exists():
         return None
 
@@ -174,20 +175,24 @@ def _load_logo_pixmap(logo_path: Path, height: int) -> QPixmap | None:
         if not renderer.isValid():
             return None
         size = renderer.defaultSize()
-        if size.isEmpty():
-            size = QSize(height * 4, height)
-        width = int(size.width() * height / size.height()) if size.height() else height
-        pixmap = QPixmap(width, height)
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-        return pixmap
+        if not size.isValid() or size.height() <= 0:
+            width = height
+        else:
+            width = max(1, round(size.width() * height / size.height()))
+
+        logo_widget = QSvgWidget(str(logo_path))
+        logo_widget.setFixedSize(width, height)
+        logo_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        return logo_widget
 
     pixmap = QPixmap(str(logo_path))
     if pixmap.isNull():
         return None
-    return pixmap.scaledToHeight(height, Qt.SmoothTransformation)
+
+    logo_label = QLabel()
+    logo_label.setPixmap(pixmap.scaledToHeight(height, Qt.SmoothTransformation))
+    logo_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    return logo_label
 
 
 def create_page_header(
@@ -233,13 +238,12 @@ def create_page_header(
 
     if show_logo:
         resolved_logo = Path(logo_path) if logo_path is not None else APP_HEADER_LOGO_PATH
-        logo_pixmap = _load_logo_pixmap(resolved_logo, PAGE_HEADER_LOGO_HEIGHT)
-        if logo_pixmap is not None:
-            logo_label = QLabel()
-            logo_label.setPixmap(logo_pixmap)
-            logo_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            logo_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            layout.addWidget(logo_label)
+        logo_widget = _create_logo_widget(resolved_logo, PAGE_HEADER_LOGO_HEIGHT)
+        if logo_widget is not None:
+            logo_widget.setProperty("is_app_header_logo", True)
+            if hasattr(logo_widget, "setAlignment"):
+                logo_widget.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            layout.addWidget(logo_widget, alignment=Qt.AlignRight | Qt.AlignVCenter)
 
     header.setLayout(layout)
     header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
