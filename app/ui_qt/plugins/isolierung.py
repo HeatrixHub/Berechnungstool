@@ -294,6 +294,7 @@ class IsolierungQtPlugin(QtPlugin):
             "status": "idle",
             "message": "",
             "placements": [],
+            "bins": [],
             "summary": [],
             "total_cost": None,
             "total_bin_count": None,
@@ -531,6 +532,7 @@ class IsolierungQtPlugin(QtPlugin):
             "status": self._coerce_str(results.get("status", "idle")) or "idle",
             "message": self._coerce_str(results.get("message", "")),
             "placements": placements if isinstance(placements, list) else [],
+            "bins": results.get("bins", []) if isinstance(results.get("bins", []), list) else [],
             "summary": summary if isinstance(summary, list) else [],
             "total_cost": results.get("total_cost"),
             "total_bin_count": results.get("total_bin_count"),
@@ -1029,7 +1031,16 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_zuschnitt_tab(self) -> QWidget:
         tab = QWidget()
-        layout = create_page_layout(tab, "Zuschnittoptimierung")
+        root_layout = make_root_vbox(tab)
+        root_layout.addWidget(create_page_header("Zuschnittoptimierung", parent=tab))
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        content = QWidget()
+        layout = make_vbox(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area.setWidget(content)
+        root_layout.addWidget(scroll_area, 1)
 
         settings_group = QGroupBox("Einstellungen")
         settings_layout = make_grid()
@@ -1072,6 +1083,8 @@ class IsolierungQtPlugin(QtPlugin):
         )
         overview_layout.addWidget(self._zuschnitt_overview_view)
         overview_group.setLayout(overview_layout)
+        overview_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        overview_group.setMinimumHeight(180)
         layout.addWidget(overview_group)
 
         results_group = QGroupBox("Platzierungen")
@@ -1106,6 +1119,8 @@ class IsolierungQtPlugin(QtPlugin):
         export_layout = create_button_row([export_csv_button, export_excel_button])
         results_layout.addLayout(export_layout)
         results_group.setLayout(results_layout)
+        results_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        results_group.setMinimumHeight(220)
         layout.addWidget(results_group)
 
         preview_group = QGroupBox("Graphische Übersicht")
@@ -1126,9 +1141,12 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_preview_scene = QGraphicsScene()
         self._zuschnitt_preview_view = _CutPlanView(self._refresh_zuschnitt_preview)
         self._zuschnitt_preview_view.setScene(self._zuschnitt_preview_scene)
+        self._zuschnitt_preview_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._zuschnitt_preview_view.setMinimumHeight(420)
         preview_layout.addWidget(self._zuschnitt_preview_view)
         preview_group.setLayout(preview_layout)
-        layout.addWidget(preview_group)
+        preview_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(preview_group, 1)
 
         return tab
 
@@ -1210,11 +1228,13 @@ class IsolierungQtPlugin(QtPlugin):
                 raise ValueError("Keine Platten vorhanden. Bitte zuerst übernehmen.")
             placements, summary, total_cost, total_bins = pack_plates(plates, kerf_value)
             placement_rows = self._build_placement_rows(placements)
+            bin_rows = self._build_bin_rows(placement_rows)
             summary_rows = self._build_summary_rows(summary, total_cost, total_bins)
             self._zuschnitt_results = {
                 "status": "ok",
                 "message": "",
                 "placements": placement_rows,
+                "bins": bin_rows,
                 "summary": summary_rows,
                 "total_cost": total_cost,
                 "total_bin_count": total_bins,
@@ -1224,6 +1244,7 @@ class IsolierungQtPlugin(QtPlugin):
                 "status": "error",
                 "message": str(exc),
                 "placements": [],
+                "bins": [],
                 "summary": [],
                 "total_cost": None,
                 "total_bin_count": None,
@@ -1316,6 +1337,31 @@ class IsolierungQtPlugin(QtPlugin):
                 }
             )
         return rows
+
+
+    def _build_bin_rows(self, placements: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+        grouped: dict[tuple[str, int], dict[str, Any]] = {}
+        for placement in placements:
+            if not isinstance(placement, dict):
+                continue
+            try:
+                bin_id = int(placement.get("bin", 0) or 0)
+            except (TypeError, ValueError):
+                bin_id = 0
+            material = self._coerce_str(placement.get("material", ""))
+            if bin_id <= 0 or not material:
+                continue
+            key = (material, bin_id)
+            if key not in grouped:
+                grouped[key] = {
+                    "material": material,
+                    "bin": bin_id,
+                    "bin_width": float(placement.get("bin_width", 0) or 0),
+                    "bin_height": float(placement.get("bin_height", 0) or 0),
+                    "parts": [],
+                }
+            grouped[key]["parts"].append(placement)
+        return sorted(grouped.values(), key=lambda entry: (entry["material"], entry["bin"]))
 
     def _discover_report_templates(self) -> None:
         self._report_templates = []
@@ -1690,26 +1736,15 @@ class IsolierungQtPlugin(QtPlugin):
         if self._zuschnitt_preview_scene is None or self._zuschnitt_preview_view is None:
             return
         self._zuschnitt_preview_scene.clear()
-        placements = self._zuschnitt_results.get("placements", [])
-        if not isinstance(placements, list) or not placements:
+
+        bins = self._zuschnitt_results.get("bins", [])
+        if not isinstance(bins, list) or not bins:
+            bins = self._build_bin_rows(self._zuschnitt_results.get("placements", []))
+
+        if not bins:
             self._show_zuschnitt_preview_message("Keine Zuschnittdaten vorhanden. Bitte erst berechnen.")
             return
 
-        grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
-        for placement in placements:
-            if not isinstance(placement, dict):
-                continue
-            bin_id = int(placement.get("bin", 0))
-            if bin_id <= 0:
-                continue
-            key = (str(placement.get("material", "")), bin_id)
-            grouped.setdefault(key, []).append(placement)
-
-        if not grouped:
-            self._show_zuschnitt_preview_message("Zuschnittdaten sind unvollständig (keine Rohlinge).")
-            return
-
-        bins = sorted(grouped.items(), key=lambda entry: (entry[0][0], entry[0][1]))
         columns = max(1, math.ceil(math.sqrt(len(bins))))
 
         gap_x = 80.0
@@ -1719,12 +1754,26 @@ class IsolierungQtPlugin(QtPlugin):
 
         max_bin_w = 0.0
         max_bin_h = 0.0
-        normalized_bins: list[tuple[tuple[str, int], list[dict[str, float | str | bool]], float, float]] = []
-        for key, entries in bins:
-            bin_w = float(entries[0].get("bin_width", 0) or 0)
-            bin_h = float(entries[0].get("bin_height", 0) or 0)
-            if bin_w <= 0 or bin_h <= 0:
+        normalized_bins: list[dict[str, Any]] = []
+        warning_lines: list[str] = []
+
+        for bin_entry in bins:
+            if not isinstance(bin_entry, dict):
                 continue
+
+            material = self._coerce_str(bin_entry.get("material", ""))
+            try:
+                bin_idx = int(bin_entry.get("bin", 0) or 0)
+            except (TypeError, ValueError):
+                bin_idx = 0
+
+            entries = bin_entry.get("parts", [])
+            bin_w = float(bin_entry.get("bin_width", 0) or 0)
+            bin_h = float(bin_entry.get("bin_height", 0) or 0)
+            if bin_w <= 0 or bin_h <= 0:
+                warning_lines.append(f"Rohling {material} #{bin_idx}: Maße fehlen/ungültig")
+                continue
+
             normalized_entries: list[dict[str, float | str | bool]] = []
             for placement in entries:
                 x = float(placement.get("x", 0) or 0)
@@ -1732,49 +1781,108 @@ class IsolierungQtPlugin(QtPlugin):
                 w = float(placement.get("breite", 0) or 0)
                 h = float(placement.get("hoehe", 0) or 0)
                 if w <= 0 or h <= 0:
+                    warning_lines.append(
+                        f"{material} Rohling {bin_idx}: Teil '{placement.get('teil', 'Teil')}' hat ungültige Maße"
+                    )
                     continue
-                normalized_entries.append({
-                    "x": x,
-                    "y": y,
-                    "w": w,
-                    "h": h,
-                    "teil": str(placement.get("teil", "")),
-                    "rotation": bool(placement.get("rotation", False)),
-                    "original_width": float(placement.get("original_width", 0) or 0),
-                    "original_height": float(placement.get("original_height", 0) or 0),
-                })
-            if normalized_entries:
-                normalized_bins.append((key, normalized_entries, bin_w, bin_h))
-                max_bin_w = max(max_bin_w, bin_w)
-                max_bin_h = max(max_bin_h, bin_h)
+
+                out_of_bounds = x < 0 or y < 0 or (x + w) > bin_w or (y + h) > bin_h
+                if out_of_bounds:
+                    warning_lines.append(
+                        f"{material} Rohling {bin_idx}: Teil '{placement.get('teil', 'Teil')}' liegt außerhalb"
+                    )
+
+                normalized_entries.append(
+                    {
+                        "x": x,
+                        "y": y,
+                        "w": w,
+                        "h": h,
+                        "teil": str(placement.get("teil", "")),
+                        "rotation": bool(placement.get("rotation", False)),
+                        "original_width": float(placement.get("original_width", 0) or 0),
+                        "original_height": float(placement.get("original_height", 0) or 0),
+                        "outside": out_of_bounds,
+                    }
+                )
+
+            normalized_bins.append(
+                {
+                    "material": material,
+                    "bin": bin_idx,
+                    "parts": normalized_entries,
+                    "bin_width": bin_w,
+                    "bin_height": bin_h,
+                }
+            )
+            max_bin_w = max(max_bin_w, bin_w)
+            max_bin_h = max(max_bin_h, bin_h)
 
         if not normalized_bins:
-            self._show_zuschnitt_preview_message("Alle Zuschnittteile haben ungültige Maße (0 oder negativ).")
+            self._show_zuschnitt_preview_message("Zuschnittdaten sind unvollständig (keine gültigen Rohlinge).")
             return
 
         cell_w = max_bin_w + gap_x
         cell_h = max_bin_h + gap_y
 
-        for idx, ((material, bin_idx), entries, bin_w, bin_h) in enumerate(normalized_bins):
+        for idx, bin_data in enumerate(normalized_bins):
+            material = self._coerce_str(bin_data.get("material", "")) or "Material"
+            bin_idx = int(bin_data.get("bin", 0) or 0)
+            entries = bin_data.get("parts", [])
+            bin_w = float(bin_data.get("bin_width", 0) or 0)
+            bin_h = float(bin_data.get("bin_height", 0) or 0)
+
             col = idx % columns
             row = idx // columns
             origin_x = margin + col * cell_w
             origin_y = margin + row * cell_h + title_space
 
+            bin_fill = QBrush(QColor("#eef1f5"))
             outline_pen = QPen(QColor("#333"))
             outline_pen.setWidthF(1.4)
-            self._zuschnitt_preview_scene.addRect(origin_x, origin_y, bin_w, bin_h, outline_pen)
+            bin_rect = self._zuschnitt_preview_scene.addRect(
+                origin_x,
+                origin_y,
+                bin_w,
+                bin_h,
+                outline_pen,
+                bin_fill,
+            )
+            bin_rect.setToolTip(f"Rohling: {bin_w:.0f} × {bin_h:.0f} mm")
 
             title = self._zuschnitt_preview_scene.addText(
                 f"{material} – Rohling {bin_idx}", QFont("Segoe UI", 9, QFont.Bold)
             )
             title.setPos(origin_x, origin_y - 26)
 
+            size_label = self._zuschnitt_preview_scene.addSimpleText(
+                f"{bin_w:.0f} × {bin_h:.0f} mm", QFont("Segoe UI", 7)
+            )
+            size_label.setBrush(QBrush(QColor("#666")))
+            size_label.setPos(origin_x + 3, origin_y + 3)
+
+            if not entries:
+                empty_item = self._zuschnitt_preview_scene.addSimpleText(
+                    "Keine Teile platziert", QFont("Segoe UI", 8)
+                )
+                empty_item.setBrush(QBrush(QColor("#7a7a7a")))
+                empty_rect = empty_item.boundingRect()
+                empty_item.setPos(
+                    origin_x + (bin_w - empty_rect.width()) / 2,
+                    origin_y + (bin_h - empty_rect.height()) / 2,
+                )
+
             used_area = 0.0
             for part in entries:
                 used_area += float(part["w"]) * float(part["h"])
-                fill_brush = QBrush(QColor(color_for(str(material))))
+                part_color = QColor(color_for(str(material)))
+                part_color.setAlpha(190)
+                fill_brush = QBrush(part_color)
                 part_pen = QPen(QColor("#1f1f1f"))
+                if bool(part.get("outside", False)):
+                    part_pen = QPen(QColor("#b00020"))
+                    part_pen.setWidthF(1.8)
+
                 px = origin_x + float(part["x"])
                 py = origin_y + float(part["y"])
                 pw = float(part["w"])
@@ -1793,11 +1901,19 @@ class IsolierungQtPlugin(QtPlugin):
 
             waste = max(bin_w * bin_h - used_area, 0.0)
             waste_label = self._zuschnitt_preview_scene.addText(
-                f"Rest: {waste:.0f} mm² ({(waste / (bin_w * bin_h)) * 100:.1f} %)" ,
+                f"Rest: {waste:.0f} mm² ({(waste / (bin_w * bin_h)) * 100:.1f} %)",
                 QFont("Segoe UI", 8),
             )
             waste_label.setDefaultTextColor(QColor("#555"))
             waste_label.setPos(origin_x, origin_y + bin_h + 4)
+
+        if warning_lines:
+            warning_text = "Hinweis: " + " | ".join(warning_lines[:4])
+            if len(warning_lines) > 4:
+                warning_text += f" | +{len(warning_lines) - 4} weitere"
+            warning_item = self._zuschnitt_preview_scene.addSimpleText(warning_text, QFont("Segoe UI", 8))
+            warning_item.setBrush(QBrush(QColor("#b00020")))
+            warning_item.setPos(margin, margin / 2)
 
         bounds = self._zuschnitt_preview_scene.itemsBoundingRect().adjusted(-20, -20, 20, 20)
         self._zuschnitt_preview_scene.setSceneRect(bounds)
@@ -1854,6 +1970,7 @@ class IsolierungQtPlugin(QtPlugin):
             "status": "idle",
             "message": message,
             "placements": [],
+            "bins": [],
             "summary": [],
             "total_cost": None,
             "total_bin_count": None,
