@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import to_hex, to_rgb
 from matplotlib.figure import Figure
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QRectF, QSignalBlocker, Qt
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
@@ -992,14 +992,43 @@ class IsolierungQtPlugin(QtPlugin):
         for thickness in thickness_list:
             total_x.append(total_x[-1] + thickness)
 
-        colors = ["#e81919", "#fce6e6"]
-        cmap = LinearSegmentedColormap.from_list("report_cmap", colors, N=256)
         ax.plot(total_x, temperature_list, linewidth=2, marker="o", color="#111827", zorder=3)
+
+        base_palette = [
+            "#2E5B9A",
+            "#C25B4A",
+            "#4A8F60",
+            "#8D5DA7",
+            "#B88731",
+            "#2C8A8A",
+            "#B34F7E",
+            "#5D6D7E",
+        ]
+
+        def _layer_fill_color(layer_index: int) -> str:
+            palette_index = (layer_index * 3) % len(base_palette)
+            shade_cycle = layer_index // len(base_palette)
+            rgb = to_rgb(base_palette[palette_index])
+
+            # Helligkeit bewusst im mittleren Bereich halten, damit kein "weiß auf weiß" entsteht.
+            if shade_cycle % 2 == 0:
+                factor = min(1.0, 1.0 + 0.08 * min(shade_cycle, 2))
+                adjusted = tuple(min(1.0, channel * factor) for channel in rgb)
+            else:
+                factor = max(0.55, 0.85 - 0.08 * min(shade_cycle, 3))
+                adjusted = tuple(channel * factor for channel in rgb)
+
+            return to_hex(adjusted)
 
         x_pos = 0.0
         for index, thickness in enumerate(thickness_list):
-            color_value = index / max(len(thickness_list) - 1, 1)
-            ax.axvspan(x_pos, x_pos + thickness, color=cmap(color_value), alpha=0.35, zorder=1)
+            ax.axvspan(
+                x_pos,
+                x_pos + thickness,
+                color=_layer_fill_color(index),
+                alpha=0.32,
+                zorder=1,
+            )
             x_pos += thickness
 
         t_min = min(temperature_list)
