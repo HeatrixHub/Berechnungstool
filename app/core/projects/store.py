@@ -27,10 +27,15 @@ class ProjectRecord:
 class ProjectStore:
     """Verwaltet das Lesen und Schreiben von Projektzuständen."""
 
+    FORMAT_VERSION = 1
+
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or Path(__file__).with_name("projects.json")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._data: Dict[str, Any] = {"projects": []}
+        self._data: Dict[str, Any] = {
+            "format_version": self.FORMAT_VERSION,
+            "projects": [],
+        }
         self._load()
 
     # ------------------------------------------------------------------
@@ -113,18 +118,29 @@ class ProjectStore:
             self._persist()
             return
         try:
-            self._data = json.loads(self.path.read_text(encoding="utf-8"))
+            loaded = json.loads(self.path.read_text(encoding="utf-8"))
+            self._data = self._normalize_root_data(loaded)
         except Exception:
             # Fallback auf leere Struktur, wenn Datei beschädigt ist
-            self._data = {"projects": []}
+            self._data = {
+                "format_version": self.FORMAT_VERSION,
+                "projects": [],
+            }
 
     def _persist(self) -> None:
+        self._data["format_version"] = self.FORMAT_VERSION
         self.path.write_text(
             json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
 
     def _to_record(self, data: Dict[str, Any]) -> ProjectRecord:
         metadata = self._normalize_metadata(data.get("metadata", {}) or {})
+        plugin_states = data.get("plugin_states", {})
+        ui_state = data.get("ui_state", {})
+        if not isinstance(plugin_states, dict):
+            plugin_states = {}
+        if not isinstance(ui_state, dict):
+            ui_state = {}
         return ProjectRecord(
             id=str(data.get("id")),
             name=str(data.get("name", "")),
@@ -133,9 +149,19 @@ class ProjectStore:
             metadata=metadata,
             created_at=str(data.get("created_at", "")),
             updated_at=str(data.get("updated_at", "")),
-            plugin_states=data.get("plugin_states", {}) or {},
-            ui_state=data.get("ui_state", {}) or {},
+            plugin_states=plugin_states,
+            ui_state=ui_state,
         )
+
+    def _normalize_root_data(self, raw: Any) -> Dict[str, Any]:
+        if not isinstance(raw, dict):
+            return {"format_version": self.FORMAT_VERSION, "projects": []}
+        projects = raw.get("projects")
+        normalized_projects = projects if isinstance(projects, list) else []
+        return {
+            "format_version": self.FORMAT_VERSION,
+            "projects": normalized_projects,
+        }
 
     def _ensure_json_serializable(self, states: Dict[str, Any]) -> Dict[str, Any]:
         try:
