@@ -19,7 +19,7 @@ from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
-    create_scrollable_page_layout,
+    create_page_layout,
     make_grid,
 )
 from SoffeigenschaftenLuft.core.flow_calculations import compute_flow_properties
@@ -145,7 +145,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
         version_font = QFont()
         version_font.setPointSize(10)
         version.setFont(version_font)
-        layout = create_scrollable_page_layout(
+        layout = create_page_layout(
             container,
             "Stoffeigenschaften Luft",
             actions=version,
@@ -246,7 +246,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab1(self) -> QWidget:
         tab = QWidget()
-        layout = create_scrollable_page_layout(tab, "Zustandsgrößen")
+        layout = create_page_layout(tab, "Zustandsgrößen")
         grid = make_grid()
         layout.addLayout(grid)
 
@@ -308,7 +308,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab2(self) -> QWidget:
         tab = QWidget()
-        layout = create_scrollable_page_layout(tab, "Geschwindigkeitsberechnung")
+        layout = create_page_layout(tab, "Geschwindigkeitsberechnung")
         grid = make_grid()
         layout.addLayout(grid)
 
@@ -418,7 +418,7 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
 
     def _build_tab3(self) -> QWidget:
         tab = QWidget()
-        layout = create_scrollable_page_layout(tab, "Heizer Leistung")
+        layout = create_page_layout(tab, "Heizer Leistung")
         grid = make_grid()
         layout.addLayout(grid)
 
