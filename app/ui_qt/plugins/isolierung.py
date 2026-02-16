@@ -6,8 +6,10 @@ from dataclasses import asdict, dataclass
 import importlib
 import logging
 import math
+import os
 from pathlib import Path
 import re
+import traceback
 import tempfile
 from typing import Any, Callable, Iterable
 
@@ -257,6 +259,12 @@ class IsolierungQtPlugin(QtPlugin):
         self._report_templates: list[_ReportTemplateSpec] = []
         self._report_current_text: str = ""
         self._report_logger = logging.getLogger(__name__)
+        self._restore_debug_enabled = os.getenv("ISOLIERUNG_RESTORE_DEBUG", "").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
         self._materials = []
         self._material_names: list[str] = []
@@ -330,8 +338,11 @@ class IsolierungQtPlugin(QtPlugin):
         tab_widget.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(tab_widget)
 
+        self._log_restore_debug("attach.build_tab", tab="Berechnung")
         tab_widget.addTab(self._build_calculation_tab(), "Berechnung")
+        self._log_restore_debug("attach.build_tab", tab="Schichtaufbau")
         tab_widget.addTab(self._build_schichtaufbau_tab(), "Schichtaufbau")
+        self._log_restore_debug("attach.build_tab", tab="Zuschnitt")
         tab_widget.addTab(self._build_zuschnitt_tab(), "Zuschnitt")
 
         self.widget = container
@@ -387,13 +398,22 @@ class IsolierungQtPlugin(QtPlugin):
 
     def import_state(self, state: dict[str, Any]) -> None:
         normalized = QtPlugin.validate_state(self, state)
+        self._log_restore_debug(
+            "import_state.received",
+            plugin_state=self._extract_restore_probe_from_state(normalized),
+        )
         self._apply_state(normalized)
         self.refresh_view()
+        self._log_restore_debug(
+            "import_state.after_refresh",
+            snapshot=self._collect_restore_target_snapshot(),
+        )
 
     def apply_state(self, state: dict[str, Any]) -> None:
         self._apply_state(state)
 
     def _apply_state(self, state: dict[str, Any]) -> None:
+        self._log_restore_debug("_apply_state.enter", state_keys=sorted(state.keys()))
         inputs = state.get("inputs", {})
         results = state.get("results", {})
         ui_state = state.get("ui", {})
@@ -426,6 +446,7 @@ class IsolierungQtPlugin(QtPlugin):
                 self._apply_calc_ui(ui_state)
 
     def refresh_view(self) -> None:
+        self._log_restore_debug("refresh_view.enter")
         self._sync_calculation_view()
         self._sync_schichtaufbau_view()
         self._sync_zuschnitt_view()
@@ -437,10 +458,12 @@ class IsolierungQtPlugin(QtPlugin):
             self._update_report_preview()
         if self._tab_widget is not None:
             self._tab_widget.setCurrentIndex(self._ui_state.get("active_tab", 0))
+        self._log_restore_debug("refresh_view.exit", snapshot=self._collect_restore_target_snapshot())
 
     def _apply_calc_inputs(self, inputs: dict[str, Any]) -> None:
         if not isinstance(inputs, dict):
             return
+        self._log_restore_debug("_apply_calc_inputs", incoming=dict(inputs))
         self._calc_inputs["T_left"] = self._coerce_str(inputs.get("T_left", ""))
         self._calc_inputs["T_inf"] = self._coerce_str(
             inputs.get("T_inf", inputs.get("umgebungstemperatur", inputs.get("ambient_temperature", "")))
@@ -469,6 +492,7 @@ class IsolierungQtPlugin(QtPlugin):
     def _apply_build_inputs(self, inputs: dict[str, Any]) -> None:
         if not isinstance(inputs, dict):
             return
+        self._log_restore_debug("_apply_build_inputs", incoming=dict(inputs))
         measure_type = self._coerce_str(inputs.get("measure_type", "outer"))
         if measure_type not in {"outer", "inner"}:
             measure_type = "outer"
@@ -649,6 +673,17 @@ class IsolierungQtPlugin(QtPlugin):
             self._zuschnitt_inputs["kerf"] = self._zuschnitt_kerf_input.text()
 
     def _sync_calculation_view(self) -> None:
+        self._log_restore_debug(
+            "_sync_calculation_view.enter",
+            widget_info={
+                "T_inf": self._describe_widget(self._T_inf_input),
+                "h": self._describe_widget(self._h_input),
+            },
+            calc_inputs={
+                "T_inf": self._calc_inputs.get("T_inf", ""),
+                "h": self._calc_inputs.get("h", ""),
+            },
+        )
         self._set_input_text(self._T_left_input, self._calc_inputs.get("T_left", ""))
         self._set_input_text(self._T_inf_input, self._calc_inputs.get("T_inf", ""))
         self._set_input_text(self._h_input, self._calc_inputs.get("h", ""))
@@ -712,6 +747,14 @@ class IsolierungQtPlugin(QtPlugin):
                 self._layer_count_input.setValue(len(layers))
 
     def _sync_schichtaufbau_view(self) -> None:
+        self._log_restore_debug(
+            "_sync_schichtaufbau_view.enter",
+            widget_info={
+                "B": self._describe_widget(self._build_B_input),
+                "H": self._describe_widget(self._build_H_input),
+            },
+            build_dimensions=self._build_inputs.get("dimensions", {}),
+        )
         measure_type = self._build_inputs.get("measure_type", "outer")
         if self._build_measure_outer is not None:
             with QSignalBlocker(self._build_measure_outer):
@@ -2441,6 +2484,7 @@ class IsolierungQtPlugin(QtPlugin):
             widgets.thickness_input.setText(self._format_number(thickness))
 
     def _on_calculate(self) -> None:
+        self._log_restore_debug("_on_calculate")
         self._sync_internal_state_from_widgets()
         try:
             parsed = self._parse_calculation_inputs()
@@ -2473,6 +2517,7 @@ class IsolierungQtPlugin(QtPlugin):
         self.refresh_view()
 
     def _parse_calculation_inputs(self) -> dict[str, Any]:
+        self._log_restore_debug("_parse_calculation_inputs", calc_inputs=dict(self._calc_inputs))
         T_left = self._parse_float(self._calc_inputs.get("T_left", ""))
         T_inf = self._parse_float(self._calc_inputs.get("T_inf", ""))
         h = self._parse_float(self._calc_inputs.get("h", ""))
@@ -2586,12 +2631,21 @@ class IsolierungQtPlugin(QtPlugin):
             self._build_inputs["measure_type"] = "inner"
 
     def _on_build_dimension_changed(self, _text: str) -> None:
+        before_dimensions = dict(self._build_inputs.get("dimensions", {}))
         if self._build_L_input is not None:
             self._build_inputs.setdefault("dimensions", {})["L"] = self._build_L_input.text()
         if self._build_B_input is not None:
             self._build_inputs.setdefault("dimensions", {})["B"] = self._build_B_input.text()
         if self._build_H_input is not None:
             self._build_inputs.setdefault("dimensions", {})["H"] = self._build_H_input.text()
+        after_dimensions = dict(self._build_inputs.get("dimensions", {}))
+        if any(before_dimensions.get(key) and not after_dimensions.get(key) for key in ("B", "H")):
+            self._log_restore_debug(
+                "_on_build_dimension_changed.reset_detected",
+                previous=before_dimensions,
+                current=after_dimensions,
+                callsite=" | ".join(traceback.format_stack(limit=5)).strip(),
+            )
 
     def _on_build_thickness_changed(self, index: int, text: str) -> None:
         layers = self._build_inputs.get("layers", [])
@@ -2847,10 +2901,12 @@ class IsolierungQtPlugin(QtPlugin):
             self._build_results_table.clearSelection()
 
     def _sync_internal_state_from_widgets(self) -> None:
+        self._log_restore_debug("_sync_internal_state_from_widgets.enter")
         self._sync_calculation_state_from_widgets()
         self._sync_build_state_from_widgets()
         self._sync_zuschnitt_state_from_widgets()
         self._ui_state["active_tab"] = self._get_active_tab_index()
+        self._log_restore_debug("_sync_internal_state_from_widgets.exit", snapshot=self._collect_restore_target_snapshot())
 
     def _format_result_text(self) -> str:
         status = self._calc_results.get("status")
@@ -2995,11 +3051,69 @@ class IsolierungQtPlugin(QtPlugin):
             )
         return serialized
 
-    @staticmethod
-    def _set_input_text(widget: QLineEdit | None, value: str) -> None:
+    def _set_input_text(self, widget: QLineEdit | None, value: str) -> None:
         if widget is None:
+            self._log_restore_debug("_set_input_text.skip", reason="widget_missing", target_value=value)
             return
-        widget.setText(value)
+        before = widget.text()
+        with QSignalBlocker(widget):
+            widget.setText(value)
+        after = widget.text()
+        self._log_restore_debug(
+            "_set_input_text",
+            widget=self._describe_widget(widget),
+            before=before,
+            target=value,
+            after=after,
+        )
+
+    def _extract_restore_probe_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        inputs = state.get("inputs", {}) if isinstance(state, dict) else {}
+        calc = inputs.get("berechnung", {}) if isinstance(inputs, dict) else {}
+        build = inputs.get("schichtaufbau", {}) if isinstance(inputs, dict) else {}
+        dimensions = build.get("dimensions", {}) if isinstance(build, dict) else {}
+        return {
+            "T_inf": self._coerce_str(calc.get("T_inf", "")),
+            "h": self._coerce_str(calc.get("h", "")),
+            "B": self._coerce_str(dimensions.get("B", "")),
+            "H": self._coerce_str(dimensions.get("H", "")),
+        }
+
+    def _collect_restore_target_snapshot(self) -> dict[str, Any]:
+        dimensions = self._build_inputs.get("dimensions", {})
+        if not isinstance(dimensions, dict):
+            dimensions = {}
+        return {
+            "calc_inputs": {
+                "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
+                "h": self._coerce_str(self._calc_inputs.get("h", "")),
+            },
+            "build_inputs": {
+                "B": self._coerce_str(dimensions.get("B", "")),
+                "H": self._coerce_str(dimensions.get("H", "")),
+            },
+            "widgets": {
+                "T_inf": self._describe_widget(self._T_inf_input),
+                "h": self._describe_widget(self._h_input),
+                "B": self._describe_widget(self._build_B_input),
+                "H": self._describe_widget(self._build_H_input),
+            },
+        }
+
+    def _describe_widget(self, widget: QLineEdit | None) -> dict[str, Any]:
+        if widget is None:
+            return {"exists": False}
+        return {
+            "exists": True,
+            "id": hex(id(widget)),
+            "object_name": widget.objectName(),
+            "value": widget.text(),
+        }
+
+    def _log_restore_debug(self, event: str, **payload: Any) -> None:
+        if not self._restore_debug_enabled:
+            return
+        self._report_logger.warning("[restore-debug] %s | %s", event, payload)
 
     @staticmethod
     def _set_label_text(widget: QLabel | None, value: str) -> None:
@@ -3041,6 +3155,7 @@ class IsolierungQtPlugin(QtPlugin):
         return self._tab_widget.currentIndex()
 
     def _on_tab_changed(self, index: int) -> None:
+        self._log_restore_debug("_on_tab_changed", index=index)
         self._ui_state["active_tab"] = index
         if self._tab_widget is None or self._report_tab is None:
             return
@@ -3048,12 +3163,28 @@ class IsolierungQtPlugin(QtPlugin):
             self._update_report_preview()
 
     def _on_text_input_changed(self, text: str) -> None:
+        previous = {
+            "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
+            "h": self._coerce_str(self._calc_inputs.get("h", "")),
+        }
         if self._T_left_input is not None:
             self._calc_inputs["T_left"] = self._T_left_input.text()
         if self._T_inf_input is not None:
             self._calc_inputs["T_inf"] = self._T_inf_input.text()
         if self._h_input is not None:
             self._calc_inputs["h"] = self._h_input.text()
+        current = {
+            "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
+            "h": self._coerce_str(self._calc_inputs.get("h", "")),
+        }
+        if any(previous[key] and not current[key] for key in ("T_inf", "h")):
+            self._log_restore_debug(
+                "_on_text_input_changed.reset_detected",
+                signal_text=text,
+                previous=previous,
+                current=current,
+                callsite=" | ".join(traceback.format_stack(limit=5)).strip(),
+            )
         self._refresh_calculation_plot()
 
     def _on_thickness_changed(self, index: int, text: str) -> None:
