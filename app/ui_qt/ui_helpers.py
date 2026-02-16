@@ -9,13 +9,11 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLayout,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -35,7 +33,6 @@ HEADER_SUBTITLE_SIZE = 10
 HEADER_TEXT_SPACING = 4
 PAGE_HEADER_SPACING = 12
 PAGE_HEADER_LOGO_HEIGHT = 28
-CONTENT_MIN_HEIGHT = 420
 
 
 def apply_layout_defaults(
@@ -162,19 +159,9 @@ def create_section_header(
 def apply_app_style(app: object) -> None:
     if hasattr(app, "setStyleSheet"):
         app.setStyleSheet(
-            "QWidget { font-size: 13px; }"
-            "QTabWidget::pane { border: 1px solid #d2d7e0; border-radius: 8px; top: -1px; background: #ffffff; }"
-            "QTabBar::tab { background: #eef2f8; border: 1px solid #d2d7e0; border-bottom: none; border-top-left-radius: 8px; border-top-right-radius: 8px; padding: 8px 14px; margin-right: 4px; min-width: 110px; }"
-            "QTabBar::tab:selected { background: #ffffff; font-weight: 600; }"
-            "QPushButton { min-height: 30px; padding: 4px 10px; border: 1px solid #bcc7d8; border-radius: 6px; background: #f8faff; }"
-            "QPushButton:hover { background: #eef5ff; }"
-            "QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox { min-height: 26px; border: 1px solid #c9d2e2; border-radius: 6px; padding: 3px 6px; background: #ffffff; }"
-            "QTextBrowser { border: 1px solid #c9d2e2; border-radius: 6px; background: #fbfdff; }"
-            "QGroupBox { border: 1px solid #d2d7e0; border-radius: 8px; margin-top: 10px; padding: 10px; font-weight: 600; background: #ffffff; }"
-            "QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; color: #2f3d52; }"
-            "QTableView, QListWidget { border: 1px solid #ccd3de; border-radius: 6px; background: #ffffff; gridline-color: #e3e8f0; }"
-            "QHeaderView::section { padding: 6px 8px; border: none; border-right: 1px solid #e1e6ef; border-bottom: 1px solid #e1e6ef; background: #f3f6fb; font-weight: 600; }"
-            "QLabel { color: #243043; }"
+            "QPushButton { min-height: 28px; }"
+            "QLineEdit, QTextEdit, QComboBox { min-height: 24px; }"
+            "QHeaderView::section { padding: 4px 6px; }"
         )
 
 
@@ -285,40 +272,4 @@ def create_page_layout(
     apply_layout_defaults(content_layout, margins=CONTENT_MARGINS, spacing=SECTION_SPACING)
     content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
     root_layout.addWidget(content_widget, 1)
-    return content_layout
-
-
-def create_scrollable_page_layout(
-    page: QWidget,
-    title: str,
-    *,
-    subtitle: str | None = None,
-    actions: QWidget | None = None,
-    logo_path: str | Path | None = None,
-    show_logo: bool = False,
-    content_min_height: int = CONTENT_MIN_HEIGHT,
-) -> QVBoxLayout:
-    root_layout = make_root_vbox()
-    page.setLayout(root_layout)
-    header = create_page_header(
-        title,
-        subtitle=subtitle,
-        actions=actions,
-        logo_path=logo_path,
-        show_logo=show_logo,
-        parent=page,
-    )
-    root_layout.addWidget(header)
-
-    scroll_area = QScrollArea(page)
-    scroll_area.setWidgetResizable(True)
-    scroll_area.setFrameShape(QFrame.NoFrame)
-
-    content_widget = QWidget(scroll_area)
-    content_widget.setMinimumHeight(content_min_height)
-    content_layout = QVBoxLayout(content_widget)
-    apply_layout_defaults(content_layout, margins=CONTENT_MARGINS, spacing=SECTION_SPACING)
-    content_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-    scroll_area.setWidget(content_widget)
-    root_layout.addWidget(scroll_area, 1)
     return content_layout

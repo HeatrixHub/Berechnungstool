@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.ui_helpers import (
     create_button_row,
-    create_scrollable_page_layout,
+    create_page_layout,
     make_hbox,
 )
 
@@ -79,7 +79,7 @@ class ReportTab:
             self._tab_widget.addTab(self.widget, title)
 
     def _build_ui(self) -> None:
-        layout = create_scrollable_page_layout(self.widget, "Bericht", show_logo=True)
+        layout = create_page_layout(self.widget, "Bericht", show_logo=True)
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))
@@ -100,7 +100,6 @@ class ReportTab:
         layout.addLayout(action_layout)
 
         self._report_preview = QTextBrowser()
-        self._report_preview.setMinimumHeight(360)
         self._report_preview.setOpenExternalLinks(False)
         preview_font = QFont("Courier New")
         preview_font.setStyleHint(QFont.Monospace)
