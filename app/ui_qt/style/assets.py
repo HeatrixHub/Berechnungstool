@@ -22,4 +22,4 @@ def get_asset_path(filename: str) -> Path:
     return _asset_base_dir() / filename
 
 
-APP_HEADER_LOGO_PATH = get_asset_path("heatrix_logo_3dots.png")
+APP_HEADER_LOGO_PATH = get_asset_path("3dots.svg")
