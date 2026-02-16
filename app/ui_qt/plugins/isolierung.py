@@ -348,16 +348,23 @@ class IsolierungQtPlugin(QtPlugin):
         self._sync_internal_state_from_widgets()
         calc_layers = self._serialize_calc_layers()
         build_layers = self._serialize_build_layers()
+        build_dimensions = self._build_inputs.get("dimensions", {})
+        if not isinstance(build_dimensions, dict):
+            build_dimensions = {}
         inputs = {
             "berechnung": {
-                "T_left": self._calc_inputs.get("T_left", ""),
-                "T_inf": self._calc_inputs.get("T_inf", ""),
-                "h": self._calc_inputs.get("h", ""),
+                "T_left": self._coerce_str(self._calc_inputs.get("T_left", "")),
+                "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
+                "h": self._coerce_str(self._calc_inputs.get("h", "")),
                 "layers": calc_layers,
             },
             "schichtaufbau": {
                 "measure_type": self._build_inputs.get("measure_type", "outer"),
-                "dimensions": dict(self._build_inputs.get("dimensions", {})),
+                "dimensions": {
+                    "L": self._coerce_str(build_dimensions.get("L", "")),
+                    "B": self._coerce_str(build_dimensions.get("B", "")),
+                    "H": self._coerce_str(build_dimensions.get("H", "")),
+                },
                 "layers": build_layers,
             },
             "zuschnitt": {
@@ -435,8 +442,12 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(inputs, dict):
             return
         self._calc_inputs["T_left"] = self._coerce_str(inputs.get("T_left", ""))
-        self._calc_inputs["T_inf"] = self._coerce_str(inputs.get("T_inf", ""))
-        self._calc_inputs["h"] = self._coerce_str(inputs.get("h", ""))
+        self._calc_inputs["T_inf"] = self._coerce_str(
+            inputs.get("T_inf", inputs.get("umgebungstemperatur", inputs.get("ambient_temperature", "")))
+        )
+        self._calc_inputs["h"] = self._coerce_str(
+            inputs.get("h", inputs.get("waermeuebergangskoeffizient", inputs.get("heat_transfer_coefficient", "")))
+        )
         layers = inputs.get("layers", [])
         if isinstance(layers, list) and layers:
             normalized_layers = []
@@ -466,8 +477,8 @@ class IsolierungQtPlugin(QtPlugin):
         if isinstance(dimensions, dict):
             self._build_inputs["dimensions"] = {
                 "L": self._coerce_str(dimensions.get("L", "")),
-                "B": self._coerce_str(dimensions.get("B", "")),
-                "H": self._coerce_str(dimensions.get("H", "")),
+                "B": self._coerce_str(dimensions.get("B", dimensions.get("Breite", dimensions.get("width", "")))),
+                "H": self._coerce_str(dimensions.get("H", dimensions.get("Höhe", dimensions.get("height", "")))),
             }
         layers = inputs.get("layers", [])
         if isinstance(layers, list) and layers:
