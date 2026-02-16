@@ -7,7 +7,7 @@ from typing import Any, Iterator
 
 from Isolierung.core.database import DB_PATH
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class IsolierungRepository:
@@ -58,6 +58,7 @@ class IsolierungRepository:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 classification_temp REAL NOT NULL,
+                max_temp REAL,
                 density REAL NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -97,7 +98,7 @@ class IsolierungRepository:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT f.id, f.name, f.classification_temp, f.density,
+                SELECT f.id, f.name, f.classification_temp, f.max_temp, f.density,
                        COUNT(v.id) AS variant_count
                 FROM isolierung_families f
                 LEFT JOIN isolierung_variants v ON v.family_id = f.id
@@ -135,6 +136,7 @@ class IsolierungRepository:
                 "id": family["id"],
                 "name": family["name"],
                 "classification_temp": family["classification_temp"],
+                "max_temp": family["max_temp"],
                 "density": family["density"],
                 "temps": [row["temperature"] for row in measurements],
                 "ks": [row["conductivity"] for row in measurements],
@@ -149,15 +151,21 @@ class IsolierungRepository:
         return self.get_family(int(row["id"])) if row else None
 
     def create_family(
-        self, name: str, classification_temp: float, density: float, temps: list[float], ks: list[float]
+        self,
+        name: str,
+        classification_temp: float,
+        max_temp: float | None,
+        density: float,
+        temps: list[float],
+        ks: list[float],
     ) -> int:
         with self._connect() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO isolierung_families (name, classification_temp, density)
-                VALUES (?, ?, ?)
+                INSERT INTO isolierung_families (name, classification_temp, max_temp, density)
+                VALUES (?, ?, ?, ?)
                 """,
-                (name, classification_temp, density),
+                (name, classification_temp, max_temp, density),
             )
             family_id = int(cursor.lastrowid)
             self._replace_measurements(conn, family_id, temps, ks)
@@ -165,16 +173,23 @@ class IsolierungRepository:
             return family_id
 
     def update_family(
-        self, family_id: int, name: str, classification_temp: float, density: float, temps: list[float], ks: list[float]
+        self,
+        family_id: int,
+        name: str,
+        classification_temp: float,
+        max_temp: float | None,
+        density: float,
+        temps: list[float],
+        ks: list[float],
     ) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
                 UPDATE isolierung_families
-                SET name = ?, classification_temp = ?, density = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, classification_temp = ?, max_temp = ?, density = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (name, classification_temp, density, family_id),
+                (name, classification_temp, max_temp, density, family_id),
             )
             self._replace_measurements(conn, family_id, temps, ks)
             conn.commit()

@@ -63,7 +63,9 @@ class DictTableModel(QAbstractTableModel):
             return None
         key = self._columns[index.column()][0]
         value = self._rows[index.row()].get(key)
-        return "" if value is None else str(value)
+        if value is None:
+            return "—" if key == "max_temp" else ""
+        return str(value)
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):
         if role != Qt.DisplayRole:
@@ -139,6 +141,7 @@ class IsolierungenDbTab:
             [
                 ("name", "Familie"),
                 ("classification_temp", "Klass.-Temp [°C]"),
+                ("max_temp", "T_max [°C]"),
                 ("density", "Dichte [kg/m³]"),
                 ("variant_count", "Varianten"),
             ]
@@ -229,6 +232,7 @@ class IsolierungenDbTab:
         grid = make_grid()
         self._family_name_input = QLineEdit()
         self._family_class_temp_input = QLineEdit()
+        self._family_max_temp_input = QLineEdit()
         self._family_density_input = QLineEdit()
         self._family_temps_input = QLineEdit()
         self._family_ks_input = QLineEdit()
@@ -238,13 +242,15 @@ class IsolierungenDbTab:
         grid.addWidget(self._family_name_input, 0, 1)
         grid.addWidget(QLabel("Klass.-Temp [°C]:"), 1, 0)
         grid.addWidget(self._family_class_temp_input, 1, 1)
-        grid.addWidget(QLabel("Dichte [kg/m³]:"), 2, 0)
-        grid.addWidget(self._family_density_input, 2, 1)
-        grid.addWidget(QLabel("Temperaturen [°C]:"), 3, 0)
-        grid.addWidget(self._family_temps_input, 3, 1)
-        grid.addWidget(QLabel("Wärmeleitfähigkeiten [W/mK]:"), 4, 0)
-        grid.addWidget(self._family_ks_input, 4, 1)
-        grid.addWidget(self._family_save_button, 5, 0, 1, 2, alignment=Qt.AlignRight)
+        grid.addWidget(QLabel("Max. Temperatur [°C]:"), 2, 0)
+        grid.addWidget(self._family_max_temp_input, 2, 1)
+        grid.addWidget(QLabel("Dichte [kg/m³]:"), 3, 0)
+        grid.addWidget(self._family_density_input, 3, 1)
+        grid.addWidget(QLabel("Temperaturen [°C]:"), 4, 0)
+        grid.addWidget(self._family_temps_input, 4, 1)
+        grid.addWidget(QLabel("Wärmeleitfähigkeiten [W/mK]:"), 5, 0)
+        grid.addWidget(self._family_ks_input, 5, 1)
+        grid.addWidget(self._family_save_button, 6, 0, 1, 2, alignment=Qt.AlignRight)
         apply_form_layout_defaults(grid)
         section.setLayout(grid)
         section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -332,6 +338,7 @@ class IsolierungenDbTab:
         data = get_family_by_id(family_id)
         self._family_name_input.setText(data["name"])
         self._family_class_temp_input.setText(str(data["classification_temp"]))
+        self._family_max_temp_input.setText("" if data.get("max_temp") is None else str(data["max_temp"]))
         self._family_density_input.setText(str(data["density"]))
         self._family_temps_input.setText(", ".join(map(str, data.get("temps", []))))
         self._family_ks_input.setText(", ".join(map(str, data.get("ks", []))))
@@ -372,15 +379,16 @@ class IsolierungenDbTab:
         try:
             name = self._family_name_input.text().strip()
             class_temp = parse_required_float(self._family_class_temp_input.text(), "Klass.-Temp")
+            max_temp = parse_optional_float(self._family_max_temp_input.text())
             density = parse_required_float(self._family_density_input.text(), "Dichte")
             temps = self._parse_float_list(self._family_temps_input.text())
             ks = self._parse_float_list(self._family_ks_input.text())
             selected_family_id = self._get_selected_family_id()
             if selected_family_id is None:
-                self._selected_family_id = create_family(name, class_temp, density, temps, ks)
+                self._selected_family_id = create_family(name, class_temp, max_temp, density, temps, ks)
             else:
                 self._selected_family_id = selected_family_id
-                update_family(selected_family_id, name, class_temp, density, temps, ks)
+                update_family(selected_family_id, name, class_temp, max_temp, density, temps, ks)
             self.refresh_table()
             QMessageBox.information(self.widget, "Gespeichert", "Familie wurde gespeichert.")
         except Exception as exc:
@@ -470,6 +478,7 @@ class IsolierungenDbTab:
     def _clear_family_form(self) -> None:
         self._family_name_input.clear()
         self._family_class_temp_input.clear()
+        self._family_max_temp_input.clear()
         self._family_density_input.clear()
         self._family_temps_input.clear()
         self._family_ks_input.clear()

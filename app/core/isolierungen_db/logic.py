@@ -52,10 +52,17 @@ def get_family_by_id(family_id: int) -> dict:
     return data
 
 
-def create_family(name: str, classification_temp: float, density: float, temps: list[float], ks: list[float]) -> int:
-    _validate_family(name, classification_temp, density, temps, ks)
+def create_family(
+    name: str,
+    classification_temp: float,
+    max_temp: float | None,
+    density: float,
+    temps: list[float],
+    ks: list[float],
+) -> int:
+    _validate_family(name, classification_temp, max_temp, density, temps, ks)
     try:
-        family_id = repo.create_family(name, classification_temp, density, temps, ks)
+        family_id = repo.create_family(name, classification_temp, max_temp, density, temps, ks)
     except sqlite3.IntegrityError as exc:
         raise ValueError(f"Materialfamilie '{name}' existiert bereits.") from exc
     _notify_material_change_listeners()
@@ -66,13 +73,14 @@ def update_family(
     family_id: int,
     name: str,
     classification_temp: float,
+    max_temp: float | None,
     density: float,
     temps: list[float],
     ks: list[float],
 ) -> None:
-    _validate_family(name, classification_temp, density, temps, ks)
+    _validate_family(name, classification_temp, max_temp, density, temps, ks)
     try:
-        repo.update_family(family_id, name, classification_temp, density, temps, ks)
+        repo.update_family(family_id, name, classification_temp, max_temp, density, temps, ks)
     except sqlite3.IntegrityError as exc:
         raise ValueError(f"Materialfamilie '{name}' existiert bereits.") from exc
     _notify_material_change_listeners()
@@ -126,12 +134,19 @@ def delete_variant_by_id(variant_id: int) -> bool:
 
 
 def _validate_family(
-    name: str, classification_temp: float, density: float, temps: list[float], ks: list[float]
+    name: str,
+    classification_temp: float,
+    max_temp: float | None,
+    density: float,
+    temps: list[float],
+    ks: list[float],
 ) -> None:
     if not name.strip():
         raise ValueError("Familienname darf nicht leer sein.")
     if classification_temp <= 0:
         raise ValueError("Klassifikationstemperatur muss größer als 0 sein.")
+    if max_temp is not None and (max_temp < -273.15 or max_temp > 2000):
+        raise ValueError("Max. Temperatur muss zwischen -273,15 und 2000 °C liegen.")
     if density <= 0:
         raise ValueError("Dichte muss größer als 0 sein.")
     if len(temps) != len(ks):
@@ -157,6 +172,7 @@ def load_insulation(name: str) -> dict:
 def save_family(
     name: str,
     classification_temp: float | None,
+    max_temp: float | None,
     density: float | None,
     temps: list[float],
     ks: list[float],
@@ -171,6 +187,7 @@ def save_family(
     return create_family_by_name(
         name,
         classification_temp,
+        max_temp,
         density,
         temps,
         ks,
@@ -181,6 +198,7 @@ def save_family(
 def create_family_by_name(
     name: str,
     classification_temp: float | None,
+    max_temp: float | None,
     density: float | None,
     temps: list[float],
     ks: list[float],
@@ -201,7 +219,7 @@ def create_family_by_name(
             f"Materialfamilie '{name}' existiert bereits. "
             "Für Änderungen bitte update_family(family_id, ...) verwenden."
         )
-    create_family(name, classification_temp, density, temps, ks)
+    create_family(name, classification_temp, max_temp, density, temps, ks)
     if not notify:
         return True
     return True
@@ -287,6 +305,7 @@ def rename_family(old_name: str, new_name: str) -> bool:
         family["id"],
         new_name,
         family["classification_temp"],
+        family.get("max_temp"),
         family["density"],
         family["temps"],
         family["ks"],
