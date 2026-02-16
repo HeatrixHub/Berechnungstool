@@ -220,7 +220,12 @@ class StoffeigenschaftenLuftQtPlugin(QtPlugin):
             self._tab2_results = self._coerce_results(results.get("tab2"), self._tab2_results)
             self._tab3_results = self._coerce_results(results.get("tab3"), self._tab3_results)
         if isinstance(ui_state, dict):
-            self._ui_state = ui_state
+            self._ui_state = {
+                "active_tab": ui_state.get("active_tab", self._ui_state.get("active_tab", 0)),
+                "tab1": ui_state.get("tab1", self._ui_state.get("tab1", {})),
+                "tab2": ui_state.get("tab2", self._ui_state.get("tab2", {})),
+                "tab3": ui_state.get("tab3", self._ui_state.get("tab3", {})),
+            }
 
     def _sync_internal_state_from_widgets(self) -> None:
         self._store_tab1_inputs()
