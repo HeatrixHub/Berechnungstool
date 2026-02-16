@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui_qt.ui_helpers import create_page_layout, make_grid, make_hbox
+from app.ui_qt.ui_helpers import create_scrollable_page_layout, make_grid, make_hbox
 
 
 
@@ -62,7 +62,7 @@ class ElektrikQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = create_page_layout(
+        layout = create_scrollable_page_layout(
             container,
             "Elektrische Leistung",
             subtitle="Berechnung für ein- und dreiphasige Systeme",
@@ -73,13 +73,14 @@ class ElektrikQtPlugin(QtPlugin):
         self._tab_widget = tab_widget
 
         calculator_tab = QWidget()
-        calculator_layout = create_page_layout(calculator_tab, "Leistungsrechner")
+        calculator_layout = create_scrollable_page_layout(calculator_tab, "Leistungsrechner")
         calculator_content = make_hbox()
         calculator_layout.addLayout(calculator_content)
         tab_widget.addTab(calculator_tab, "Leistungsrechner")
         layout.addWidget(tab_widget)
 
         single_group = QGroupBox("Einphasig")
+        single_group.setMinimumHeight(280)
         single_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         single_layout = make_grid()
         single_group.setLayout(single_layout)
@@ -98,6 +99,7 @@ class ElektrikQtPlugin(QtPlugin):
         single_layout.addWidget(single_result_label, 4, 0, 1, 2)
 
         three_group = QGroupBox("Dreiphasig")
+        three_group.setMinimumHeight(280)
         three_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         three_layout = make_grid()
         three_group.setLayout(three_layout)

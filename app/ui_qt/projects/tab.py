@@ -27,7 +27,7 @@ from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
 from app.ui_qt.ui_helpers import (
     apply_form_layout_defaults,
     create_button_row,
-    create_page_layout,
+    create_scrollable_page_layout,
     make_grid,
     make_vbox,
 )
@@ -105,9 +105,10 @@ class ProjectsTab:
             self._tab_widget.addTab(self.widget, "Projekte")
 
     def _build_ui(self) -> None:
-        layout = create_page_layout(self.widget, "Projektverwaltung", show_logo=True)
+        layout = create_scrollable_page_layout(self.widget, "Projektverwaltung", show_logo=True)
 
         splitter = QSplitter()
+        splitter.setChildrenCollapsible(False)
         layout.addWidget(splitter)
 
         list_container = QWidget()
@@ -122,7 +123,8 @@ class ProjectsTab:
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._project_list.currentItemChanged.connect(self._on_project_selected)
-        list_layout.addWidget(self._project_list)
+        self._project_list.setMinimumHeight(320)
+        list_layout.addWidget(self._project_list, 1)
 
         details_container = QWidget()
         details_layout = make_vbox()
@@ -149,6 +151,8 @@ class ProjectsTab:
         form_layout.addWidget(self._metadata_input, 3, 1)
 
         apply_form_layout_defaults(form_layout)
+        self._description_input.setMinimumHeight(90)
+        self._metadata_input.setMinimumHeight(120)
         details_layout.addWidget(form)
 
         self._status_label = QLabel("Kein Projekt ausgewählt.")
@@ -173,6 +177,10 @@ class ProjectsTab:
 
         splitter.addWidget(list_container)
         splitter.addWidget(details_container)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
+        splitter.setSizes([420, 780])
+        details_layout.addStretch()
 
         for widget in (
             self._name_input,

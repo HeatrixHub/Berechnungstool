@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QSizePolicy,
     QSpinBox,
     QTableView,
@@ -50,11 +49,9 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
 from app.ui_qt.plugins.base import QtAppContext, QtPlugin
 from app.ui_qt.ui_helpers import (
     create_button_row,
-    create_page_header,
-    create_page_layout,
+    create_scrollable_page_layout,
     make_grid,
     make_hbox,
-    make_root_vbox,
     make_vbox,
 )
 from app.core.isolierungen_db.logic import (
@@ -315,7 +312,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def attach(self, context: QtAppContext) -> None:
         container = QWidget()
-        layout = create_page_layout(container, "Isolierungsberechnung", show_logo=True)
+        layout = create_scrollable_page_layout(container, "Isolierungsberechnung", show_logo=True)
 
         tab_widget = QTabWidget()
         self._tab_widget = tab_widget
@@ -716,16 +713,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_calculation_tab(self) -> QWidget:
         tab = QWidget()
-        root_layout = make_root_vbox(tab)
-        root_layout.addWidget(create_page_header("Berechnung", parent=tab))
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        content = QWidget()
-        layout = make_vbox(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        scroll_area.setWidget(content)
-        root_layout.addWidget(scroll_area, 1)
+        layout = create_scrollable_page_layout(tab, "Berechnung")
 
         inputs_group = QGroupBox("Randbedingungen")
         inputs_layout = make_grid()
@@ -784,7 +772,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._calc_plot_figure = Figure(figsize=(6.4, 4.0), dpi=100, facecolor="#ffffff")
         self._calc_plot_canvas = FigureCanvasQTAgg(self._calc_plot_figure)
         self._calc_plot_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._calc_plot_canvas.setMinimumHeight(280)
+        self._calc_plot_canvas.setMinimumHeight(300)
         plot_layout.addWidget(self._calc_plot_canvas)
         plot_group.setLayout(plot_layout)
         plot_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -919,7 +907,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_schichtaufbau_tab(self) -> QWidget:
         tab = QWidget()
-        layout = create_page_layout(tab, "Schichtaufbau")
+        layout = create_scrollable_page_layout(tab, "Schichtaufbau")
 
         measure_group = QGroupBox("Maßvorgabe")
         measure_layout = make_hbox()
@@ -1010,6 +998,7 @@ class IsolierungQtPlugin(QtPlugin):
         results_layout.addLayout(summary_layout)
 
         self._build_results_table = QTableWidget(0, 6)
+        self._build_results_table.setMinimumHeight(220)
         self._build_results_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._build_results_table.setHorizontalHeaderLabels(
             ["Schicht", "Material", "Platte", "L [mm]", "B [mm]", "H [mm]"]
@@ -1031,16 +1020,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_zuschnitt_tab(self) -> QWidget:
         tab = QWidget()
-        root_layout = make_root_vbox(tab)
-        root_layout.addWidget(create_page_header("Zuschnittoptimierung", parent=tab))
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        content = QWidget()
-        layout = make_vbox(content)
-        layout.setContentsMargins(0, 0, 0, 0)
-        scroll_area.setWidget(content)
-        root_layout.addWidget(scroll_area, 1)
+        layout = create_scrollable_page_layout(tab, "Zuschnittoptimierung")
 
         settings_group = QGroupBox("Einstellungen")
         settings_layout = make_grid()
@@ -1072,6 +1052,7 @@ class IsolierungQtPlugin(QtPlugin):
         ]
         self._zuschnitt_overview_model = _DictTableModel(overview_columns, parent=tab)
         self._zuschnitt_overview_view = QTableView()
+        self._zuschnitt_overview_view.setMinimumHeight(220)
         self._zuschnitt_overview_view.setModel(self._zuschnitt_overview_model)
         self._zuschnitt_overview_view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._zuschnitt_overview_view.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -1101,6 +1082,7 @@ class IsolierungQtPlugin(QtPlugin):
         ]
         self._zuschnitt_results_model = _DictTableModel(placements_columns, parent=tab)
         self._zuschnitt_results_view = QTableView()
+        self._zuschnitt_results_view.setMinimumHeight(260)
         self._zuschnitt_results_view.setModel(self._zuschnitt_results_model)
         self._zuschnitt_results_view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._zuschnitt_results_view.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -1140,6 +1122,7 @@ class IsolierungQtPlugin(QtPlugin):
 
         self._zuschnitt_preview_scene = QGraphicsScene()
         self._zuschnitt_preview_view = _CutPlanView(self._refresh_zuschnitt_preview)
+        self._zuschnitt_preview_view.setMinimumHeight(360)
         self._zuschnitt_preview_view.setScene(self._zuschnitt_preview_scene)
         self._zuschnitt_preview_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._zuschnitt_preview_view.setMinimumHeight(420)
@@ -1152,7 +1135,7 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _build_report_tab(self) -> QWidget:
         tab = QWidget()
-        layout = create_page_layout(tab, "Bericht")
+        layout = create_scrollable_page_layout(tab, "Bericht")
 
         template_layout = make_hbox()
         template_layout.addWidget(QLabel("Template"))
@@ -1173,6 +1156,7 @@ class IsolierungQtPlugin(QtPlugin):
         layout.addLayout(action_layout)
 
         self._report_preview = QTextBrowser()
+        self._report_preview.setMinimumHeight(360)
         self._report_preview.setOpenExternalLinks(False)
         preview_font = QFont("Courier New")
         preview_font.setStyleHint(QFont.Monospace)
