@@ -80,8 +80,6 @@ class _LayerWidgets:
     label: QLabel
     thickness_input: QLineEdit
     family_combo: QComboBox
-    variant_combo: QComboBox
-    variant_lookup: dict[str, tuple[str, float, int]]
 
 
 @dataclass
@@ -89,6 +87,8 @@ class _BuildLayerWidgets:
     label: QLabel
     thickness_input: QLineEdit
     family_combo: QComboBox
+    variant_combo: QComboBox
+    variant_lookup: dict[str, tuple[str, float, int]]
     remove_button: QPushButton
 
 
@@ -306,7 +306,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._build_inputs: dict[str, Any] = {
             "measure_type": "outer",
             "dimensions": {"L": "", "B": "", "H": ""},
-            "layers": [{"thickness": "", "family": "", "family_id": None}],
+            "layers": [{"thickness": "", "family": "", "family_id": None, "variant": "", "variant_id": None}],
         }
         self._build_results: dict[str, Any] = {
             "status": "idle",
@@ -525,6 +525,8 @@ class IsolierungQtPlugin(QtPlugin):
                         "thickness": self._coerce_str(layer.get("thickness", "")),
                         "family": self._coerce_str(layer.get("family", "")),
                         "family_id": self._coerce_optional_int(layer.get("family_id")),
+                        "variant": self._coerce_str(layer.get("variant", "")),
+                        "variant_id": self._coerce_optional_int(layer.get("variant_id")),
                     }
                 )
             if normalized_layers:
@@ -558,11 +560,9 @@ class IsolierungQtPlugin(QtPlugin):
                 if not isinstance(layer, dict):
                     continue
                 family_index = layer.get("family_index", 0)
-                variant_index = layer.get("variant_index", 0)
                 normalized_ui_layers.append(
                     {
                         "family_index": family_index if isinstance(family_index, int) else 0,
-                        "variant_index": variant_index if isinstance(variant_index, int) else 0,
                     }
                 )
             self._calc_ui["layers"] = normalized_ui_layers
@@ -624,28 +624,18 @@ class IsolierungQtPlugin(QtPlugin):
             if family_text == self._FAMILY_PLACEHOLDER or not isinstance(family_id, int):
                 family_text = ""
                 family_id = None
-            variant_display = widgets.variant_combo.currentText()
-            variant_text = ""
-            variant_id = widgets.variant_combo.currentData(Qt.UserRole)
-            if variant_display != self._VARIANT_PLACEHOLDER:
-                variant_text = widgets.variant_lookup.get(variant_display, (variant_display, 0.0, -1))[0]
-                if not isinstance(variant_id, int):
-                    variant_id = None
-            else:
-                variant_id = None
             layers.append(
                 {
                     "thickness": widgets.thickness_input.text(),
                     "family": family_text,
                     "family_id": family_id,
-                    "variant": variant_text,
-                    "variant_id": variant_id,
+                    "variant": "",
+                    "variant_id": None,
                 }
             )
             ui_layers.append(
                 {
                     "family_index": widgets.family_combo.currentIndex(),
-                    "variant_index": widgets.variant_combo.currentIndex(),
                 }
             )
         if layers:
@@ -670,11 +660,22 @@ class IsolierungQtPlugin(QtPlugin):
             if family_text == self._FAMILY_PLACEHOLDER or not isinstance(family_id, int):
                 family_text = ""
                 family_id = None
+            variant_display = widgets.variant_combo.currentText()
+            variant_text = ""
+            variant_id = widgets.variant_combo.currentData(Qt.UserRole)
+            if variant_display != self._VARIANT_PLACEHOLDER:
+                variant_text = widgets.variant_lookup.get(variant_display, (variant_display, 0.0, -1))[0]
+                if not isinstance(variant_id, int):
+                    variant_id = None
+            else:
+                variant_id = None
             layers.append(
                 {
                     "thickness": widgets.thickness_input.text(),
                     "family": family_text,
                     "family_id": family_id,
+                    "variant": variant_text,
+                    "variant_id": variant_id,
                 }
             )
         if layers:
@@ -712,14 +713,12 @@ class IsolierungQtPlugin(QtPlugin):
             thickness = self._coerce_str(layer.get("thickness", ""))
             family_id = self._coerce_optional_int(layer.get("family_id"))
             family = self._resolve_family_selection(family_id, self._coerce_str(layer.get("family", "")))
-            variant = self._coerce_str(layer.get("variant", ""))
-            variant_id = self._coerce_optional_int(layer.get("variant_id"))
+            layer["variant"] = ""
+            layer["variant_id"] = None
             if family and family_list_fresh and family not in family_names:
                 missing_families.append(family)
                 family = ""
                 family_id = None
-                variant = ""
-                variant_id = None
                 layer["family"] = ""
                 layer["variant"] = ""
                 layer["family_id"] = None
@@ -735,10 +734,6 @@ class IsolierungQtPlugin(QtPlugin):
                 )
                 if not family_found:
                     self._select_combo_value(widgets.family_combo, family, self._FAMILY_PLACEHOLDER)
-            variant_found = self._populate_variant_combo(widgets, family, variant, variant_id)
-            if variant and not variant_found:
-                layer["variant"] = ""
-                layer["variant_id"] = None
 
         if missing_families:
             unique_missing = sorted(set(missing_families))
@@ -784,14 +779,14 @@ class IsolierungQtPlugin(QtPlugin):
 
         layers = self._build_inputs.get("layers", [])
         if not isinstance(layers, list) or not layers:
-            layers = [{"thickness": "", "family": "", "family_id": None}]
+            layers = [{"thickness": "", "family": "", "family_id": None, "variant": "", "variant_id": None}]
             self._build_inputs["layers"] = layers
         self._set_build_layer_count(len(layers))
         self._refresh_build_layer_labels()
 
         family_names, family_list_fresh = self._get_available_family_names()
         missing_families: list[str] = []
-        for layer, widgets in zip(layers, self._build_layer_widgets, strict=False):
+        for index, (layer, widgets) in enumerate(zip(layers, self._build_layer_widgets, strict=False)):
             thickness = self._coerce_str(layer.get("thickness", ""))
             family_id = self._coerce_optional_int(layer.get("family_id"))
             family = self._resolve_family_selection(family_id, self._coerce_str(layer.get("family", "")))
@@ -812,6 +807,7 @@ class IsolierungQtPlugin(QtPlugin):
                 )
                 if not family_found:
                     self._select_combo_value(widgets.family_combo, family, self._FAMILY_PLACEHOLDER)
+            self._update_build_layer_variant(index)
 
         if missing_families:
             unique_missing = sorted(set(missing_families))
@@ -876,7 +872,6 @@ class IsolierungQtPlugin(QtPlugin):
         grid.addWidget(QLabel("Schicht"), 0, 0)
         grid.addWidget(QLabel("Dicke [mm]"), 0, 1)
         grid.addWidget(QLabel("Materialfamilie"), 0, 2)
-        grid.addWidget(QLabel("Variante"), 0, 3)
         self._layers_layout = grid
         layers_layout.addLayout(grid)
         layers_group.setLayout(layers_layout)
@@ -1095,7 +1090,8 @@ class IsolierungQtPlugin(QtPlugin):
         grid.addWidget(QLabel("#"), 0, 0)
         grid.addWidget(QLabel("Dicke [mm]"), 0, 1)
         grid.addWidget(QLabel("Materialfamilie"), 0, 2)
-        grid.addWidget(QLabel("Aktionen"), 0, 3)
+        grid.addWidget(QLabel("Variante (auto)"), 0, 3)
+        grid.addWidget(QLabel("Aktionen"), 0, 4)
         self._build_layers_layout = grid
         layers_layout.addLayout(grid)
         layers_group.setLayout(layers_layout)
@@ -2341,22 +2337,10 @@ class IsolierungQtPlugin(QtPlugin):
                     Qt.UserRole,
                 )
 
-            selected_variant = ""
-            if isinstance(layers, list) and index < len(layers):
-                selected_variant = self._coerce_str(layers[index].get("variant", ""))
-
-            previous_variant_id = widgets.variant_combo.currentData(Qt.UserRole)
-            variant_found = self._populate_variant_combo(
-                widgets,
-                current_family if family_found else "",
-                selected_variant,
-                previous_variant_id,
-            )
-
             if isinstance(layers, list) and index < len(layers):
                 layers[index]["family"] = current_family if family_found else ""
-                if not variant_found:
-                    layers[index]["variant"] = ""
+                layers[index]["variant"] = ""
+                layers[index]["variant_id"] = None
 
         build_layers = self._build_inputs.get("layers", [])
         for index, widgets in enumerate(self._build_layer_widgets):
@@ -2373,6 +2357,10 @@ class IsolierungQtPlugin(QtPlugin):
                 )
             if isinstance(build_layers, list) and index < len(build_layers):
                 build_layers[index]["family"] = current_family if family_found else ""
+                if not family_found:
+                    build_layers[index]["variant"] = ""
+                    build_layers[index]["variant_id"] = None
+                self._update_build_layer_variant(index)
 
         self._sync_internal_state_from_widgets()
         self._calc_results["message"] = "Materialdaten aktualisiert"
@@ -2411,22 +2399,16 @@ class IsolierungQtPlugin(QtPlugin):
         thickness_input = QLineEdit()
         thickness_input.textChanged.connect(lambda text, idx=index: self._on_thickness_changed(idx, text))
         family_combo = QComboBox()
-        variant_combo = QComboBox()
         family_combo.currentTextChanged.connect(
             lambda text, idx=index: self._on_family_changed(idx, text)
         )
-        variant_combo.currentIndexChanged.connect(
-            lambda _value, idx=index: self._on_variant_changed(idx)
-        )
 
         self._populate_family_combo(family_combo)
-        widgets = _LayerWidgets(label, thickness_input, family_combo, variant_combo, {})
-        self._populate_variant_combo(widgets, "", "")
+        widgets = _LayerWidgets(label, thickness_input, family_combo)
 
         self._layers_layout.addWidget(label, row, 0)
         self._layers_layout.addWidget(thickness_input, row, 1)
         self._layers_layout.addWidget(family_combo, row, 2)
-        self._layers_layout.addWidget(variant_combo, row, 3)
         return widgets
 
     def _populate_family_combo(self, combo: QComboBox) -> None:
@@ -2435,58 +2417,6 @@ class IsolierungQtPlugin(QtPlugin):
             combo.addItem(self._FAMILY_PLACEHOLDER, "")
             for name in self._material_names:
                 combo.addItem(name, self._family_name_to_id.get(name))
-
-    def _populate_variant_combo(
-        self,
-        widgets: _LayerWidgets,
-        family_name: str,
-        selected_variant: str,
-        selected_variant_id: int | None = None,
-    ) -> bool:
-        variant_lookup: dict[str, tuple[str, float, int]] = {}
-        found = False
-        with QSignalBlocker(widgets.variant_combo):
-            widgets.variant_combo.clear()
-            widgets.variant_combo.addItem(self._VARIANT_PLACEHOLDER, "")
-            if family_name and family_name != self._FAMILY_PLACEHOLDER:
-                family_id = self._family_name_to_id.get(family_name)
-                if family_id is not None:
-                    family = get_family_by_id(family_id)
-                    variants = family.get("variants", [])
-                    if isinstance(variants, list):
-                        for variant in variants:
-                            variant_id = variant.get("id")
-                            variant_name = self._coerce_str(variant.get("name", ""))
-                            thickness = self._parse_float(variant.get("thickness"))
-                            if not variant_name or thickness is None or not isinstance(variant_id, int):
-                                continue
-                            display = f"{variant_name} ({thickness} mm)"
-                            widgets.variant_combo.addItem(display, variant_id)
-                            variant_lookup[display] = (variant_name, thickness, variant_id)
-
-            if isinstance(selected_variant_id, int):
-                found = self._select_combo_value_by_data(
-                    widgets.variant_combo,
-                    selected_variant_id,
-                    self._VARIANT_PLACEHOLDER,
-                    Qt.UserRole,
-                )
-
-            display_value = selected_variant
-            if selected_variant and not found:
-                for display, (name, _thickness, _variant_id) in variant_lookup.items():
-                    if name == selected_variant:
-                        display_value = display
-                        found = True
-                        break
-
-            if found and isinstance(selected_variant_id, int):
-                display_value = widgets.variant_combo.currentText()
-            self._select_combo_value(widgets.variant_combo, display_value, self._VARIANT_PLACEHOLDER)
-        widgets.variant_lookup = variant_lookup
-        if not selected_variant:
-            return True
-        return found
 
     def _on_layer_count_changed(self, value: int) -> None:
         layers = self._calc_inputs.get("layers", [])
@@ -2516,31 +2446,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._calc_inputs["layers"][index]["variant"] = ""
         self._calc_inputs["layers"][index]["variant_id"] = None
         self._ensure_calc_ui_layer_state(index)
-        self._calc_ui["layers"][index]["family_index"] = (
-            self._layer_widgets[index].family_combo.currentIndex()
-        )
-        self._calc_ui["layers"][index]["variant_index"] = 0
-        if index < len(self._layer_widgets):
-            self._populate_variant_combo(self._layer_widgets[index], family, "")
-
-    def _on_variant_changed(self, index: int) -> None:
-        if index >= len(self._calc_inputs.get("layers", [])):
-            return
-        widgets = self._layer_widgets[index]
-        display = widgets.variant_combo.currentText()
-        if display == self._VARIANT_PLACEHOLDER:
-            self._calc_inputs["layers"][index]["variant"] = ""
-            self._calc_inputs["layers"][index]["variant_id"] = None
-            self._ensure_calc_ui_layer_state(index)
-            self._calc_ui["layers"][index]["variant_index"] = widgets.variant_combo.currentIndex()
-            return
-        variant_name, thickness, variant_id = widgets.variant_lookup.get(display, ("", 0.0, -1))
-        self._calc_inputs["layers"][index]["variant"] = variant_name
-        self._calc_inputs["layers"][index]["variant_id"] = variant_id if isinstance(variant_id, int) else None
-        self._ensure_calc_ui_layer_state(index)
-        self._calc_ui["layers"][index]["variant_index"] = widgets.variant_combo.currentIndex()
-        if variant_name and not widgets.thickness_input.text():
-            widgets.thickness_input.setText(self._format_number(thickness))
+        self._calc_ui["layers"][index]["family_index"] = self._layer_widgets[index].family_combo.currentIndex()
 
     def _on_calculate(self) -> None:
         self._log_restore_debug("_on_calculate")
@@ -2611,6 +2517,117 @@ class IsolierungQtPlugin(QtPlugin):
             for name in self._material_names:
                 combo.addItem(name, self._family_name_to_id.get(name))
 
+    def _populate_build_variant_combo(
+        self,
+        widgets: _BuildLayerWidgets,
+        family_name: str,
+        selected_variant: str,
+        selected_variant_id: int | None = None,
+    ) -> bool:
+        variant_lookup: dict[str, tuple[str, float, int]] = {}
+        found = False
+        with QSignalBlocker(widgets.variant_combo):
+            widgets.variant_combo.clear()
+            widgets.variant_combo.addItem(self._VARIANT_PLACEHOLDER, "")
+            if family_name and family_name != self._FAMILY_PLACEHOLDER:
+                family_id = self._family_name_to_id.get(family_name)
+                if family_id is not None:
+                    family = get_family_by_id(family_id)
+                    variants = family.get("variants", [])
+                    if isinstance(variants, list):
+                        for variant in variants:
+                            variant_id = variant.get("id")
+                            variant_name = self._coerce_str(variant.get("name", ""))
+                            thickness = self._parse_float(variant.get("thickness"))
+                            if not variant_name or thickness is None or not isinstance(variant_id, int):
+                                continue
+                            display = f"{variant_name} ({thickness} mm)"
+                            widgets.variant_combo.addItem(display, variant_id)
+                            variant_lookup[display] = (variant_name, thickness, variant_id)
+
+            if isinstance(selected_variant_id, int):
+                found = self._select_combo_value_by_data(
+                    widgets.variant_combo,
+                    selected_variant_id,
+                    self._VARIANT_PLACEHOLDER,
+                    Qt.UserRole,
+                )
+
+            display_value = selected_variant
+            if selected_variant and not found:
+                for display, (name, _thickness, _variant_id) in variant_lookup.items():
+                    if name == selected_variant:
+                        display_value = display
+                        found = True
+                        break
+
+            if found and isinstance(selected_variant_id, int):
+                display_value = widgets.variant_combo.currentText()
+            self._select_combo_value(widgets.variant_combo, display_value, self._VARIANT_PLACEHOLDER)
+        widgets.variant_lookup = variant_lookup
+        if not selected_variant:
+            return True
+        return found
+
+    def _resolve_best_variant_for_family(
+        self,
+        family_name: str,
+        thickness_text: str,
+    ) -> tuple[str, int | None]:
+        family_id = self._family_name_to_id.get(family_name)
+        if family_id is None:
+            return "", None
+        family = get_family_by_id(family_id)
+        variants = family.get("variants", [])
+        if not isinstance(variants, list) or not variants:
+            return "", None
+
+        selectable: list[tuple[str, float, int]] = []
+        for variant in variants:
+            variant_id = variant.get("id")
+            variant_name = self._coerce_str(variant.get("name", ""))
+            variant_thickness = self._parse_float(variant.get("thickness"))
+            if not variant_name or variant_thickness is None or not isinstance(variant_id, int):
+                continue
+            selectable.append((variant_name, float(variant_thickness), variant_id))
+
+        if not selectable:
+            return "", None
+
+        required_thickness = self._parse_float(thickness_text)
+        if required_thickness is None:
+            variant_name, _variant_thickness, variant_id = selectable[0]
+            return variant_name, variant_id
+
+        best_variant = min(selectable, key=lambda item: abs(item[1] - required_thickness))
+        return best_variant[0], best_variant[2]
+
+    def _update_build_layer_variant(self, index: int, force_auto: bool = False) -> None:
+        layers = self._build_inputs.get("layers", [])
+        if not isinstance(layers, list) or index >= len(layers) or index >= len(self._build_layer_widgets):
+            return
+
+        layer = layers[index]
+        widgets = self._build_layer_widgets[index]
+        family = self._coerce_str(layer.get("family", ""))
+        thickness = self._coerce_str(layer.get("thickness", ""))
+
+        selected_variant = self._coerce_str(layer.get("variant", ""))
+        selected_variant_id = self._coerce_optional_int(layer.get("variant_id"))
+        if force_auto or (not selected_variant and selected_variant_id is None):
+            selected_variant, selected_variant_id = self._resolve_best_variant_for_family(family, thickness)
+
+        variant_found = self._populate_build_variant_combo(widgets, family, selected_variant, selected_variant_id)
+
+        if variant_found and widgets.variant_combo.currentText() != self._VARIANT_PLACEHOLDER:
+            display = widgets.variant_combo.currentText()
+            variant_name, _variant_thickness, variant_id = widgets.variant_lookup.get(display, ("", 0.0, -1))
+            layer["variant"] = variant_name
+            layer["variant_id"] = variant_id if isinstance(variant_id, int) else None
+        else:
+            layer["variant"] = ""
+            layer["variant_id"] = None
+
     def _set_build_layer_count(self, count: int) -> None:
         if self._build_layers_layout is None:
             return
@@ -2625,8 +2642,8 @@ class IsolierungQtPlugin(QtPlugin):
     def _clear_build_layer_rows(self) -> None:
         if self._build_layers_layout is None:
             return
-        while self._build_layers_layout.count() > 4:
-            item = self._build_layers_layout.takeAt(4)
+        while self._build_layers_layout.count() > 5:
+            item = self._build_layers_layout.takeAt(5)
             if item is None:
                 break
             widget = item.widget()
@@ -2645,6 +2662,12 @@ class IsolierungQtPlugin(QtPlugin):
         family_combo.currentTextChanged.connect(
             lambda text, idx=index: self._on_build_family_changed(idx, text)
         )
+        variant_combo = QComboBox()
+        variant_combo.setEnabled(True)
+        variant_combo.setToolTip("Wird automatisch aus Materialfamilie und Dicke vorausgewählt, kann aber geändert werden.")
+        variant_combo.currentIndexChanged.connect(
+            lambda _value, idx=index: self._on_build_variant_changed(idx)
+        )
         remove_button = QPushButton("Entfernen")
         remove_button.clicked.connect(lambda _checked=False, idx=index: self._on_build_remove_layer(idx))
 
@@ -2653,8 +2676,9 @@ class IsolierungQtPlugin(QtPlugin):
         self._build_layers_layout.addWidget(label, row, 0)
         self._build_layers_layout.addWidget(thickness_input, row, 1)
         self._build_layers_layout.addWidget(family_combo, row, 2)
-        self._build_layers_layout.addWidget(remove_button, row, 3)
-        return _BuildLayerWidgets(label, thickness_input, family_combo, remove_button)
+        self._build_layers_layout.addWidget(variant_combo, row, 3)
+        self._build_layers_layout.addWidget(remove_button, row, 4)
+        return _BuildLayerWidgets(label, thickness_input, family_combo, variant_combo, {}, remove_button)
 
     def _refresh_build_layer_labels(self) -> None:
         single = len(self._build_layer_widgets) <= 1
@@ -2666,7 +2690,7 @@ class IsolierungQtPlugin(QtPlugin):
         layers = self._build_inputs.get("layers", [])
         if not isinstance(layers, list):
             layers = []
-        layers.append({"thickness": "", "family": "", "family_id": None})
+        layers.append({"thickness": "", "family": "", "family_id": None, "variant": "", "variant_id": None})
         self._build_inputs["layers"] = layers
         self.refresh_view()
 
@@ -2679,7 +2703,7 @@ class IsolierungQtPlugin(QtPlugin):
         if 0 <= index < len(layers):
             layers.pop(index)
         if not layers:
-            layers = [{"thickness": "", "family": "", "family_id": None}]
+            layers = [{"thickness": "", "family": "", "family_id": None, "variant": "", "variant_id": None}]
         self._build_inputs["layers"] = layers
         self.refresh_view()
 
@@ -2711,6 +2735,7 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(layers, list) or index >= len(layers):
             return
         layers[index]["thickness"] = text
+        self._update_build_layer_variant(index, force_auto=True)
 
     def _on_build_family_changed(self, index: int, text: str) -> None:
         layers = self._build_inputs.get("layers", [])
@@ -2724,6 +2749,21 @@ class IsolierungQtPlugin(QtPlugin):
                 family_id = current_family_id
         layers[index]["family"] = family
         layers[index]["family_id"] = family_id
+        self._update_build_layer_variant(index, force_auto=True)
+
+    def _on_build_variant_changed(self, index: int) -> None:
+        layers = self._build_inputs.get("layers", [])
+        if not isinstance(layers, list) or index >= len(layers) or index >= len(self._build_layer_widgets):
+            return
+        widgets = self._build_layer_widgets[index]
+        display = widgets.variant_combo.currentText()
+        if display == self._VARIANT_PLACEHOLDER:
+            layers[index]["variant"] = ""
+            layers[index]["variant_id"] = None
+            return
+        variant_name, _thickness, variant_id = widgets.variant_lookup.get(display, ("", 0.0, -1))
+        layers[index]["variant"] = variant_name
+        layers[index]["variant_id"] = variant_id if isinstance(variant_id, int) else None
 
     def _on_build_import_layers(self) -> None:
         self._sync_calculation_state_from_widgets()
@@ -2737,6 +2777,8 @@ class IsolierungQtPlugin(QtPlugin):
                     "thickness": self._coerce_str(layer.get("thickness", "")),
                     "family": self._coerce_str(layer.get("family", "")),
                     "family_id": self._coerce_optional_int(layer.get("family_id")),
+                    "variant": "",
+                    "variant_id": None,
                 }
             )
         if imported:
@@ -2777,7 +2819,7 @@ class IsolierungQtPlugin(QtPlugin):
     def _on_build_reset(self) -> None:
         self._build_inputs["measure_type"] = "outer"
         self._build_inputs["dimensions"] = {"L": "", "B": "", "H": ""}
-        self._build_inputs["layers"] = [{"thickness": "", "family": "", "family_id": None}]
+        self._build_inputs["layers"] = [{"thickness": "", "family": "", "family_id": None, "variant": "", "variant_id": None}]
         self._build_results = {"status": "idle", "message": "", "data": {}}
         self._build_ui["selected_row"] = -1
         self._invalidate_zuschnitt_results(
@@ -3106,6 +3148,8 @@ class IsolierungQtPlugin(QtPlugin):
                     "thickness": self._coerce_str(layer.get("thickness", "")),
                     "family": self._coerce_str(layer.get("family", "")),
                     "family_id": self._coerce_optional_int(layer.get("family_id")),
+                    "variant": self._coerce_str(layer.get("variant", "")),
+                    "variant_id": self._coerce_optional_int(layer.get("variant_id")),
                 }
             )
         return serialized
@@ -3257,7 +3301,7 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(ui_layers, list):
             ui_layers = []
         while len(ui_layers) <= index:
-            ui_layers.append({"family_index": 0, "variant_index": 0})
+            ui_layers.append({"family_index": 0})
         self._calc_ui["layers"] = ui_layers
 
     def _on_widget_destroyed(self, _obj: object | None = None) -> None:
