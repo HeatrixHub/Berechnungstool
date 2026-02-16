@@ -29,7 +29,22 @@ class Placement:
     original_height: float
 
 
-def pack_plates(plates: List[dict], kerf: float) -> Tuple[List[Placement], List[dict], float | None, int]:
+@dataclass
+class ManualCutCandidate:
+    """Platte, die nicht auf den Rohling der gewählten Variante passt."""
+
+    material: str
+    part_label: str
+    width: float
+    height: float
+    bin_width: float
+    bin_height: float
+
+
+def pack_plates(
+    plates: List[dict],
+    kerf: float,
+) -> Tuple[List[Placement], List[ManualCutCandidate], List[dict], float | None, int]:
     grouped: Dict[Tuple[str, float], List[dict]] = {}
     for plate in plates:
         material = plate.get("material", "")
@@ -48,6 +63,7 @@ def pack_plates(plates: List[dict], kerf: float) -> Tuple[List[Placement], List[
         grouped.setdefault((material, thickness), []).append(plate)
 
     placements: List[Placement] = []
+    manual_cut_candidates: List[ManualCutCandidate] = []
     material_summary: List[dict] = []
     total_cost: float | None = None
     total_bin_count: int | None = None
@@ -66,7 +82,8 @@ def pack_plates(plates: List[dict], kerf: float) -> Tuple[List[Placement], List[
             bin_algo=PackingBin.Global,
             pack_algo=MaxRectsBssf,
         )
-        rect_map: List[dict] = []
+        rect_map: Dict[int, dict] = {}
+        fit_item_count = 0
         for idx, plate in enumerate(items):
             width = float(plate.get("length", 0)) + kerf
             height = float(plate.get("width", 0)) + kerf
@@ -74,24 +91,44 @@ def pack_plates(plates: List[dict], kerf: float) -> Tuple[List[Placement], List[
                 raise ValueError(
                     f"Ungültige Abmessung für {plate.get('name','Teil')} von {material}."
                 )
-            rect_map.append(
-                {
+            part_label = f"Schicht {plate.get('layer')}: {plate.get('name')}"
+            fits_without_rotation = width <= bin_width and height <= bin_height
+            fits_with_rotation = height <= bin_width and width <= bin_height
+            if not (fits_without_rotation or fits_with_rotation):
+                manual_cut_candidates.append(
+                    ManualCutCandidate(
+                        material=material_label,
+                        part_label=part_label,
+                        width=width - kerf,
+                        height=height - kerf,
+                        bin_width=bin_width,
+                        bin_height=bin_height,
+                    )
+                )
+                continue
+
+            rect_map[idx] = {
                     "index": idx,
                     "width": width,
                     "height": height,
                     "original_width": width - kerf,
                     "original_height": height - kerf,
-                    "part_label": f"Schicht {plate.get('layer')}: {plate.get('name')}",
+                    "part_label": part_label,
                 }
-            )
             packer.add_rect(width, height, idx)
+            fit_item_count += 1
+
+        if fit_item_count == 0:
+            continue
 
         packer.add_bin(bin_width, bin_height, float("inf"))
         packer.pack()
 
         for bin_index, abin in enumerate(packer, start=1):
             for rect in abin:
-                rect_data = rect_map[rect.rid]
+                rect_data = rect_map.get(rect.rid)
+                if rect_data is None:
+                    continue
                 rotated = not (
                     math.isclose(rect.width, rect_data["width"], rel_tol=1e-6)
                     and math.isclose(rect.height, rect_data["height"], rel_tol=1e-6)
@@ -124,13 +161,10 @@ def pack_plates(plates: List[dict], kerf: float) -> Tuple[List[Placement], List[
             }
         )
 
-    if not placements:
-        raise ValueError("Keine Platzierungen erstellt.")
-
     known_costs = [entry["cost"] for entry in material_summary if entry["cost"] is not None]
     total_cost = sum(known_costs) if known_costs else None
     total_bin_count = total_bins
-    return placements, material_summary, total_cost, total_bin_count
+    return placements, manual_cut_candidates, material_summary, total_cost, total_bin_count
 
 
 def format_material_label(material: str, variant: Dict[str, object]) -> str:

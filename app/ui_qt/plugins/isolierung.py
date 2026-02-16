@@ -67,7 +67,12 @@ from app.core.isolierungen_db.logic import (
 )
 from Isolierung.services.schichtaufbau import BuildResult, LayerResult, Plate, compute_plate_dimensions
 from Isolierung.services.tab1_berechnung import perform_calculation, validate_inputs
-from Isolierung.services.zuschnitt import Placement, color_for, pack_plates
+from Isolierung.services.zuschnitt import (
+    ManualCutCandidate,
+    Placement,
+    color_for,
+    pack_plates,
+)
 
 
 @dataclass
@@ -136,6 +141,10 @@ class _DictTableModel(QAbstractTableModel):
             return str(value)
         if role == Qt.TextAlignmentRole:
             return column.alignment
+        if role == Qt.BackgroundRole and bool(row.get("is_manual_cut")):
+            return QBrush(QColor("#ffd7d7"))
+        if role == Qt.ForegroundRole and bool(row.get("is_manual_cut")):
+            return QBrush(QColor("#7f1d1d"))
         return None
 
     def headerData(  # noqa: N802 - Qt API
@@ -314,6 +323,7 @@ class IsolierungQtPlugin(QtPlugin):
             "summary": [],
             "total_cost": None,
             "total_bin_count": None,
+            "manual_cut_candidates": [],
         }
         self._zuschnitt_ui: dict[str, Any] = {
             "selected_placement_row": -1,
@@ -576,6 +586,7 @@ class IsolierungQtPlugin(QtPlugin):
             return
         placements = results.get("placements", [])
         summary = results.get("summary", [])
+        manual_cut_candidates = results.get("manual_cut_candidates", [])
         self._zuschnitt_results = {
             "status": self._coerce_str(results.get("status", "idle")) or "idle",
             "message": self._coerce_str(results.get("message", "")),
@@ -584,6 +595,7 @@ class IsolierungQtPlugin(QtPlugin):
             "summary": summary if isinstance(summary, list) else [],
             "total_cost": results.get("total_cost"),
             "total_bin_count": results.get("total_bin_count"),
+            "manual_cut_candidates": manual_cut_candidates if isinstance(manual_cut_candidates, list) else [],
         }
 
     def _apply_zuschnitt_ui(self, ui_state: dict[str, Any]) -> None:
@@ -1221,6 +1233,7 @@ class IsolierungQtPlugin(QtPlugin):
             _TableColumn("x", "X [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
             _TableColumn("y", "Y [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
             _TableColumn("rotation", "Drehung", alignment=Qt.AlignCenter, formatter=self._format_rotation),
+            _TableColumn("status", "Status", alignment=Qt.AlignLeft | Qt.AlignVCenter),
         ]
         self._zuschnitt_results_model = _DictTableModel(placements_columns, parent=tab)
         self._zuschnitt_results_view = QTableView()
@@ -1350,18 +1363,22 @@ class IsolierungQtPlugin(QtPlugin):
                 self._zuschnitt_inputs["cached_plates"] = plates
             if not plates:
                 raise ValueError("Keine Platten vorhanden. Bitte zuerst übernehmen.")
-            placements, summary, total_cost, total_bins = pack_plates(plates, kerf_value)
+            placements, manual_cut_candidates, summary, total_cost, total_bins = pack_plates(plates, kerf_value)
             placement_rows = self._build_placement_rows(placements)
+            manual_rows = self._build_manual_cut_rows(manual_cut_candidates)
+            result_rows = placement_rows + manual_rows
             bin_rows = self._build_bin_rows(placement_rows)
             summary_rows = self._build_summary_rows(summary, total_cost, total_bins)
+            warning_message = self._build_manual_cut_warning(manual_rows)
             self._zuschnitt_results = {
                 "status": "ok",
-                "message": "",
-                "placements": placement_rows,
+                "message": warning_message,
+                "placements": result_rows,
                 "bins": bin_rows,
                 "summary": summary_rows,
                 "total_cost": total_cost,
                 "total_bin_count": total_bins,
+                "manual_cut_candidates": manual_rows,
             }
         except Exception as exc:
             self._zuschnitt_results = {
@@ -1372,6 +1389,7 @@ class IsolierungQtPlugin(QtPlugin):
                 "summary": [],
                 "total_cost": None,
                 "total_bin_count": None,
+                "manual_cut_candidates": [],
             }
         self._refresh_zuschnitt_results_view()
 
@@ -1421,9 +1439,47 @@ class IsolierungQtPlugin(QtPlugin):
                     "bin_height": placement.bin_height,
                     "original_width": placement.original_width,
                     "original_height": placement.original_height,
+                    "status": "optimiert",
+                    "is_manual_cut": False,
                 }
             )
         return rows
+
+
+    def _build_manual_cut_rows(self, candidates: Iterable[ManualCutCandidate]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for candidate in candidates:
+            rows.append(
+                {
+                    "material": candidate.material,
+                    "bin": "–",
+                    "teil": candidate.part_label,
+                    "breite": candidate.width,
+                    "hoehe": candidate.height,
+                    "x": None,
+                    "y": None,
+                    "rotation": None,
+                    "bin_width": candidate.bin_width,
+                    "bin_height": candidate.bin_height,
+                    "status": "zu groß → manuell zuschneiden",
+                    "is_manual_cut": True,
+                }
+            )
+        return rows
+
+    def _build_manual_cut_warning(self, manual_rows: list[dict[str, Any]]) -> str:
+        if not manual_rows:
+            return ""
+        lines = [f"{len(manual_rows)} Platte(n) passen nicht in den Rohling und müssen manuell zugeschnitten werden:"]
+        for row in manual_rows:
+            lines.append(
+                "- "
+                f"{row.get('teil', 'Teil')} [{row.get('material', 'Material')}] "
+                f"{self._format_mm_one(row, row.get('breite'))} x {self._format_mm_one(row, row.get('hoehe'))} mm "
+                f"(Rohling {self._format_mm_one(row, row.get('bin_width'))} x "
+                f"{self._format_mm_one(row, row.get('bin_height'))} mm)"
+            )
+        return "\n".join(lines)
 
     def _build_summary_rows(
         self, material_summary: list[dict[str, Any]], total_cost: float | None, total_bins: int | None
@@ -1821,6 +1877,8 @@ class IsolierungQtPlugin(QtPlugin):
         lines = []
         if status == "ok":
             lines.append("Status: Berechnung abgeschlossen")
+            if message:
+                lines.append(message)
         elif status == "error":
             lines.append("Status: Fehler")
             if message:
@@ -2098,6 +2156,7 @@ class IsolierungQtPlugin(QtPlugin):
             "summary": [],
             "total_cost": None,
             "total_bin_count": None,
+            "manual_cut_candidates": [],
         }
         if clear_cached:
             self._zuschnitt_inputs["cached_plates"] = []
