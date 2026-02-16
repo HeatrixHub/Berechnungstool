@@ -16,8 +16,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QPen
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QRectF, QSignalBlocker, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -154,14 +154,53 @@ class _DictTableModel(QAbstractTableModel):
         return self._rows
 
 
-class _PreviewView(QGraphicsView):
+class _CutPlanView(QGraphicsView):
     def __init__(self, on_resize: Callable[[], None], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._on_resize = on_resize
+        self._zoom = 1.0
+        self._auto_fit_enabled = True
+        self.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+
+    def fit_scene(self) -> None:
+        scene = self.scene()
+        if scene is None:
+            return
+        bounds = scene.itemsBoundingRect()
+        if bounds.width() <= 0 or bounds.height() <= 0:
+            return
+        self.fitInView(bounds.adjusted(-16, -16, 16, 16), Qt.KeepAspectRatio)
+        self._zoom = 1.0
+        self._auto_fit_enabled = True
+
+    def zoom_in(self) -> None:
+        self._apply_zoom(1.2)
+
+    def zoom_out(self) -> None:
+        self._apply_zoom(1 / 1.2)
+
+    def reset_zoom(self) -> None:
+        self.resetTransform()
+        self._zoom = 1.0
+        self._auto_fit_enabled = False
+
+    def wheelEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if event.angleDelta().y() > 0:
+            self._apply_zoom(1.15)
+        else:
+            self._apply_zoom(1 / 1.15)
+
+    def _apply_zoom(self, factor: float) -> None:
+        self.scale(factor, factor)
+        self._zoom *= factor
+        self._auto_fit_enabled = False
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
         super().resizeEvent(event)
-        if self._on_resize is not None:
+        if self._on_resize is not None and self._auto_fit_enabled:
             self._on_resize()
 
 
@@ -209,7 +248,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_results_view: QTableView | None = None
         self._zuschnitt_results_model: _DictTableModel | None = None
         self._zuschnitt_preview_scene: QGraphicsScene | None = None
-        self._zuschnitt_preview_view: QGraphicsView | None = None
+        self._zuschnitt_preview_view: _CutPlanView | None = None
 
         self._report_tab: QWidget | None = None
         self._report_template_combo: QComboBox | None = None
@@ -1071,8 +1110,21 @@ class IsolierungQtPlugin(QtPlugin):
 
         preview_group = QGroupBox("Graphische Übersicht")
         preview_layout = make_vbox()
+        controls = make_hbox()
+        zoom_in_button = QPushButton("Zoom +")
+        zoom_in_button.clicked.connect(self._on_zuschnitt_zoom_in)
+        zoom_out_button = QPushButton("Zoom −")
+        zoom_out_button.clicked.connect(self._on_zuschnitt_zoom_out)
+        fit_button = QPushButton("Auf Ansicht anpassen")
+        fit_button.clicked.connect(self._on_zuschnitt_fit_view)
+        controls.addWidget(zoom_in_button)
+        controls.addWidget(zoom_out_button)
+        controls.addWidget(fit_button)
+        controls.addStretch()
+        preview_layout.addLayout(controls)
+
         self._zuschnitt_preview_scene = QGraphicsScene()
-        self._zuschnitt_preview_view = _PreviewView(self._refresh_zuschnitt_preview)
+        self._zuschnitt_preview_view = _CutPlanView(self._refresh_zuschnitt_preview)
         self._zuschnitt_preview_view.setScene(self._zuschnitt_preview_scene)
         preview_layout.addWidget(self._zuschnitt_preview_view)
         preview_group.setLayout(preview_layout)
@@ -1640,95 +1692,144 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_preview_scene.clear()
         placements = self._zuschnitt_results.get("placements", [])
         if not isinstance(placements, list) or not placements:
-            self._zuschnitt_preview_scene.setSceneRect(0, 0, 0, 0)
+            self._show_zuschnitt_preview_message("Keine Zuschnittdaten vorhanden. Bitte erst berechnen.")
             return
 
         grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
         for placement in placements:
             if not isinstance(placement, dict):
                 continue
-            key = (str(placement.get("material", "")), int(placement.get("bin", 0)))
+            bin_id = int(placement.get("bin", 0))
+            if bin_id <= 0:
+                continue
+            key = (str(placement.get("material", "")), bin_id)
             grouped.setdefault(key, []).append(placement)
 
-        bins = list(grouped.items())
+        if not grouped:
+            self._show_zuschnitt_preview_message("Zuschnittdaten sind unvollständig (keine Rohlinge).")
+            return
+
+        bins = sorted(grouped.items(), key=lambda entry: (entry[0][0], entry[0][1]))
         columns = max(1, math.ceil(math.sqrt(len(bins))))
-        rows = math.ceil(len(bins) / columns)
 
-        col_widths = [0.0 for _ in range(columns)]
-        row_heights = [0.0 for _ in range(rows)]
-        for idx, (_, entries) in enumerate(bins):
-            col = idx % columns
-            row = idx // columns
-            if not entries:
+        gap_x = 80.0
+        gap_y = 120.0
+        title_space = 36.0
+        margin = 40.0
+
+        max_bin_w = 0.0
+        max_bin_h = 0.0
+        normalized_bins: list[tuple[tuple[str, int], list[dict[str, float | str | bool]], float, float]] = []
+        for key, entries in bins:
+            bin_w = float(entries[0].get("bin_width", 0) or 0)
+            bin_h = float(entries[0].get("bin_height", 0) or 0)
+            if bin_w <= 0 or bin_h <= 0:
                 continue
-            col_widths[col] = max(col_widths[col], float(entries[0].get("bin_width", 0)))
-            row_heights[row] = max(row_heights[row], float(entries[0].get("bin_height", 0)))
-
-        gap = 30.0
-        padding = 16.0
-        total_width = sum(col_widths) + gap * (columns - 1)
-        total_height = sum(row_heights) + gap * (rows - 1)
-
-        view_width = max(self._zuschnitt_preview_view.viewport().width(), 200)
-        view_height = max(self._zuschnitt_preview_view.viewport().height(), 200)
-        scale_x = (view_width - 2 * padding) / total_width if total_width else 1.0
-        scale_y = (view_height - 2 * padding) / total_height if total_height else 1.0
-        scale = min(scale_x, scale_y, 2.0)
-
-        col_offsets = [padding]
-        for width in col_widths[:-1]:
-            col_offsets.append(col_offsets[-1] + width * scale + gap * scale)
-        row_offsets = [padding]
-        for height in row_heights[:-1]:
-            row_offsets.append(row_offsets[-1] + height * scale + gap * scale)
-
-        label_offset = 6
-        for idx, ((material, bin_idx), entries) in enumerate(bins):
-            col = idx % columns
-            row = idx // columns
-            x_cursor = col_offsets[col]
-            y_cursor = row_offsets[row]
-            if not entries:
-                continue
-            bin_w = float(entries[0].get("bin_width", 0))
-            bin_h = float(entries[0].get("bin_height", 0))
-
-            outline_pen = QPen(QColor("#444"))
-            outline_pen.setWidth(2)
-            self._zuschnitt_preview_scene.addRect(
-                x_cursor,
-                y_cursor + label_offset,
-                bin_w * scale,
-                bin_h * scale,
-                outline_pen,
-            )
-
-            label_item = self._zuschnitt_preview_scene.addText(
-                f"{material} – Rohling {bin_idx}",
-                QFont("Segoe UI", 9, QFont.Bold),
-            )
-            label_item.setPos(x_cursor + 6, y_cursor + 4)
-            label_item.setTextWidth(max(bin_w * scale - 12, 50))
-
+            normalized_entries: list[dict[str, float | str | bool]] = []
             for placement in entries:
-                color = QColor(color_for(str(material)))
-                fill_brush = QBrush(color)
-                rect_pen = QPen(QColor("#222"))
-                px = x_cursor + float(placement.get("x", 0)) * scale
-                py = y_cursor + label_offset + float(placement.get("y", 0)) * scale
-                pw = float(placement.get("breite", 0)) * scale
-                ph = float(placement.get("hoehe", 0)) * scale
-                self._zuschnitt_preview_scene.addRect(px, py, pw, ph, rect_pen, fill_brush)
-                text_item = self._zuschnitt_preview_scene.addText(
-                    str(placement.get("teil", "")),
-                    QFont("Segoe UI", 8),
-                )
-                text_item.setTextWidth(max(pw - 12, 20))
-                text_item.setPos(px + max((pw - text_item.textWidth()) / 2, 2), py + max((ph - 14) / 2, 2))
+                x = float(placement.get("x", 0) or 0)
+                y = float(placement.get("y", 0) or 0)
+                w = float(placement.get("breite", 0) or 0)
+                h = float(placement.get("hoehe", 0) or 0)
+                if w <= 0 or h <= 0:
+                    continue
+                normalized_entries.append({
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                    "teil": str(placement.get("teil", "")),
+                    "rotation": bool(placement.get("rotation", False)),
+                    "original_width": float(placement.get("original_width", 0) or 0),
+                    "original_height": float(placement.get("original_height", 0) or 0),
+                })
+            if normalized_entries:
+                normalized_bins.append((key, normalized_entries, bin_w, bin_h))
+                max_bin_w = max(max_bin_w, bin_w)
+                max_bin_h = max(max_bin_h, bin_h)
 
-        layout_width = padding * 2 + total_width * scale + max(gap * scale, 0)
-        layout_height = padding * 2 + total_height * scale + label_offset + max(gap * scale, 0)
-        self._zuschnitt_preview_scene.setSceneRect(0, 0, layout_width, layout_height)
+        if not normalized_bins:
+            self._show_zuschnitt_preview_message("Alle Zuschnittteile haben ungültige Maße (0 oder negativ).")
+            return
+
+        cell_w = max_bin_w + gap_x
+        cell_h = max_bin_h + gap_y
+
+        for idx, ((material, bin_idx), entries, bin_w, bin_h) in enumerate(normalized_bins):
+            col = idx % columns
+            row = idx // columns
+            origin_x = margin + col * cell_w
+            origin_y = margin + row * cell_h + title_space
+
+            outline_pen = QPen(QColor("#333"))
+            outline_pen.setWidthF(1.4)
+            self._zuschnitt_preview_scene.addRect(origin_x, origin_y, bin_w, bin_h, outline_pen)
+
+            title = self._zuschnitt_preview_scene.addText(
+                f"{material} – Rohling {bin_idx}", QFont("Segoe UI", 9, QFont.Bold)
+            )
+            title.setPos(origin_x, origin_y - 26)
+
+            used_area = 0.0
+            for part in entries:
+                used_area += float(part["w"]) * float(part["h"])
+                fill_brush = QBrush(QColor(color_for(str(material))))
+                part_pen = QPen(QColor("#1f1f1f"))
+                px = origin_x + float(part["x"])
+                py = origin_y + float(part["y"])
+                pw = float(part["w"])
+                ph = float(part["h"])
+                part_rect = self._zuschnitt_preview_scene.addRect(px, py, pw, ph, part_pen, fill_brush)
+
+                label_text = self._build_part_label(part)
+                text_item = self._zuschnitt_preview_scene.addSimpleText(label_text, QFont("Segoe UI", 7))
+                text_rect = text_item.boundingRect()
+                if text_rect.width() + 6 <= pw and text_rect.height() + 6 <= ph:
+                    text_item.setPos(px + 3, py + 3)
+                else:
+                    text_item.setVisible(False)
+
+                part_rect.setToolTip(label_text.replace("\n", " "))
+
+            waste = max(bin_w * bin_h - used_area, 0.0)
+            waste_label = self._zuschnitt_preview_scene.addText(
+                f"Rest: {waste:.0f} mm² ({(waste / (bin_w * bin_h)) * 100:.1f} %)" ,
+                QFont("Segoe UI", 8),
+            )
+            waste_label.setDefaultTextColor(QColor("#555"))
+            waste_label.setPos(origin_x, origin_y + bin_h + 4)
+
+        bounds = self._zuschnitt_preview_scene.itemsBoundingRect().adjusted(-20, -20, 20, 20)
+        self._zuschnitt_preview_scene.setSceneRect(bounds)
+        self._zuschnitt_preview_view.fit_scene()
+
+    def _show_zuschnitt_preview_message(self, message: str) -> None:
+        assert self._zuschnitt_preview_scene is not None
+        text_item = self._zuschnitt_preview_scene.addSimpleText(message, QFont("Segoe UI", 10))
+        text_item.setBrush(QBrush(QColor("#666")))
+        rect = text_item.boundingRect()
+        box = QRectF(0, 0, max(520.0, rect.width() + 40.0), max(220.0, rect.height() + 40.0))
+        text_item.setPos((box.width() - rect.width()) / 2, (box.height() - rect.height()) / 2)
+        self._zuschnitt_preview_scene.setSceneRect(box)
+
+    def _build_part_label(self, part: dict[str, float | str | bool]) -> str:
+        teil = str(part.get("teil", "Teil"))
+        width = float(part.get("original_width", part.get("w", 0)) or 0)
+        height = float(part.get("original_height", part.get("h", 0)) or 0)
+        rotation = " (gedreht)" if bool(part.get("rotation", False)) else ""
+        return f"{teil}\n{width:.0f} × {height:.0f} mm{rotation}"
+
+    def _on_zuschnitt_zoom_in(self) -> None:
+        if self._zuschnitt_preview_view is not None:
+            self._zuschnitt_preview_view.zoom_in()
+
+    def _on_zuschnitt_zoom_out(self) -> None:
+        if self._zuschnitt_preview_view is not None:
+            self._zuschnitt_preview_view.zoom_out()
+
+    def _on_zuschnitt_fit_view(self) -> None:
+        if self._zuschnitt_preview_view is not None:
+            self._zuschnitt_preview_view.fit_scene()
 
     def _on_zuschnitt_summary_selection_changed(self) -> None:
         if self._zuschnitt_overview_view is None:
