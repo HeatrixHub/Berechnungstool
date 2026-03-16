@@ -1167,6 +1167,17 @@ class IsolierungQtPlugin(QtPlugin):
 
         return tab
 
+    def _build_dimension_summary(self, layout: QGridLayout) -> dict[str, QLabel]:
+        labels: dict[str, QLabel] = {}
+        for row, key in enumerate(("L", "B", "H")):
+            title = QLabel(f"{key} [mm]")
+            value_label = QLabel("–")
+            value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            layout.addWidget(title, row, 0)
+            layout.addWidget(value_label, row, 1)
+            labels[key] = value_label
+        return labels
+
     def _build_zuschnitt_tab(self) -> QWidget:
         tab = QWidget()
         root_layout = make_root_vbox(tab)
