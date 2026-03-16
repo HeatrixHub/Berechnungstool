@@ -44,7 +44,12 @@ class _ReportTemplateSpec:
 
 
 class ReportTab:
-    """Global tab for building PDF reports from current plugin states."""
+    """Global tab for building PDF reports from current plugin states.
+
+    This tab is the single source of truth for report rendering/export. Plugins
+    should only expose state via ``export_state`` and must not maintain their
+    own report pipeline.
+    """
 
     def __init__(
         self,
