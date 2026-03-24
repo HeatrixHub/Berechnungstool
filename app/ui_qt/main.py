@@ -20,19 +20,27 @@ def main() -> int:
     window.setCentralWidget(tab_widget)
     context = QtAppContext(main_window=window, tab_widget=tab_widget)
     plugin_manager = QtPluginManager(context)
+    report_tab = ReportTab(tab_widget, plugin_manager=plugin_manager, title="Bericht")
     projects_tab = ProjectsTab(
         tab_widget,
         plugin_manager=plugin_manager,
         main_window=window,
+        on_project_loaded=report_tab.refresh_preview,
     )
-    ReportTab(tab_widget, plugin_manager=plugin_manager, title="Bericht")
 
     from app.ui_qt.global_tabs.isolierungen_db import IsolierungenDbTab
 
     IsolierungenDbTab(tab_widget, title="Isolierungen DB")
 
     plugin_manager.load_plugins()
+    report_tab.refresh_preview()
     projects_tab.on_plugins_loaded()
+
+    def _refresh_report_on_tab_change(index: int) -> None:
+        if tab_widget.widget(index) is report_tab.widget:
+            report_tab.refresh_preview()
+
+    tab_widget.currentChanged.connect(_refresh_report_on_tab_change)
 
     window.setWindowTitle("Heatrix Berechnungstools")
     window.resize(1280, 840)

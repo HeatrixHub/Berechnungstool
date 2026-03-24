@@ -31,7 +31,6 @@ class ReportTab:
 
         self._build_ui()
         self._insert_tab(title)
-        self.refresh_preview()
 
     def _insert_tab(self, title: str) -> None:
         if isinstance(self._tab_widget, QTabWidget):
@@ -56,7 +55,7 @@ class ReportTab:
         export_pdf_button.clicked.connect(self.export_pdf)
         layout.addLayout(create_button_row([refresh_button, export_pdf_button]))
 
-        self._status_label = QLabel("Status: Vorschau wird initialisiert …")
+        self._status_label = QLabel("Status: Vorschau noch nicht aktualisiert.")
         self._status_label.setWordWrap(True)
         layout.addWidget(self._status_label)
 

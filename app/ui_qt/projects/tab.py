@@ -4,6 +4,7 @@ from __future__ import annotations
 import getpass
 import json
 import logging
+from collections.abc import Callable
 from typing import Any, Sequence
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -47,6 +48,7 @@ class ProjectsTab:
         plugin_specs: Sequence[QtPluginSpec] | None = None,
         author: str | None = None,
         main_window: object | None = None,
+        on_project_loaded: Callable[[], None] | None = None,
     ) -> None:
         self._tab_widget = tab_widget
         self._plugin_manager = plugin_manager
@@ -61,6 +63,7 @@ class ProjectsTab:
         self._dirty = False
         self._is_new_mode = False
         self._suppress_project_updates = False
+        self._on_project_loaded = on_project_loaded
 
         self._state_coordinator = PluginStateCoordinator(
             plugin_manager=self._plugin_manager,
@@ -350,6 +353,8 @@ class ProjectsTab:
             )
         self._show_info("Geladen", f"Projekt '{record.name}' wurde geladen.")
         self._set_status("Projektzustand auf alle Plugins angewendet.")
+        if self._on_project_loaded is not None:
+            self._on_project_loaded()
 
     def delete_selected_project(self) -> None:
         if not self._selected_project_id:
