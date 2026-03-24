@@ -1,13 +1,13 @@
-"""Renderer-unabhängiges Berichtsdatenmodell.
-
-Dieses Modul definiert das fachliche Fundament für technische Berichte.
-Die Dataclasses beschreiben Inhalte strukturiert, ohne PDF-/HTML- oder UI-Abhängigkeiten.
-"""
+"""Renderer-unabhängiges Berichtsdatenmodell."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Literal, TypeAlias
+
+ReportScalar: TypeAlias = str | int | float | bool | None
+ReportSequence: TypeAlias = list[ReportScalar]
+ReportValue: TypeAlias = ReportScalar | ReportSequence
 
 
 @dataclass(slots=True)
@@ -31,24 +31,43 @@ class TextBlock:
 
 
 @dataclass(slots=True)
+class TableColumn:
+    """Stabile Spaltendefinition für renderer-neutrale Tabellen."""
+
+    key: str
+    label: str
+    unit: str | None = None
+    value_type: Literal["text", "number", "integer", "status"] = "text"
+
+
+@dataclass(slots=True)
+class TableRow:
+    """Zeile mit klarer Zuordnung über Spalten-Keys."""
+
+    cells: dict[str, ReportScalar] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class TableBlock:
-    """Tabellarischer Block mit flexiblen Zeilen."""
+    """Tabellarischer Block mit expliziter Spalten- und Zeilenstruktur."""
 
     kind: Literal["table"] = "table"
     title: str | None = None
-    columns: list[str] = field(default_factory=list)
-    rows: list[dict[str, Any]] = field(default_factory=list)
+    columns: list[TableColumn] = field(default_factory=list)
+    rows: list[TableRow] = field(default_factory=list)
     caption: str | None = None
 
 
 @dataclass(slots=True)
 class MetricItem:
-    """Einzelne Kennzahl inkl. Einheit und optionalem Hinweis."""
+    """Einzelne Kennzahl als typisierter Rohwert mit optionalem Format-Hinweis."""
 
+    key: str
     label: str
-    value: str | float | int | None = None
+    value: ReportValue = None
     unit: str | None = None
-    hint: str | None = None
+    format_hint: Literal["plain", "number", "percentage", "status", "list"] = "plain"
+    note: str | None = None
 
 
 @dataclass(slots=True)
@@ -62,14 +81,15 @@ class MetricsBlock:
 
 @dataclass(slots=True)
 class ImageBlock:
-    """Platzhalter für visuelle Inhalte, unabhängig vom Renderer."""
+    """Renderer-neutrale Beschreibung eines Bild- oder Diagramm-Slots."""
 
     kind: Literal["image"] = "image"
     title: str | None = None
-    source: str | None = None
+    image_role: Literal["chart", "diagram", "photo", "preview", "placeholder"] = "placeholder"
+    asset_ref: str | None = None
     caption: str | None = None
     alt_text: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, ReportValue] = field(default_factory=dict)
 
 
 ReportBlock = TextBlock | TableBlock | MetricsBlock | ImageBlock
