@@ -2,3 +2,4 @@ matplotlib
 numpy
 rectpack
 openpyxl
+reportlab
