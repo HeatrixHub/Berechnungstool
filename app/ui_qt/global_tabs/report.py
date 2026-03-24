@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
 
 from PySide6.QtWidgets import QLabel, QPushButton, QTabWidget, QTextBrowser, QWidget
 
-from app.core.reporting.builders import build_isolierung_report
+from app.core.reporting.builders import build_isolierung_report, resolve_isolierung_report_metadata
 from app.core.reporting.renderers import render_report_html
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.ui_helpers import create_button_row, create_page_layout
@@ -104,7 +103,7 @@ class ReportTab:
             )
             return
 
-        metadata = _resolve_report_metadata(isolierung_state)
+        metadata = resolve_isolierung_report_metadata(isolierung_state)
 
         try:
             report_document = build_isolierung_report(
@@ -131,39 +130,6 @@ class ReportTab:
     def _set_status(self, text: str) -> None:
         if self._status_label is not None:
             self._status_label.setText(text)
-
-
-def _resolve_report_metadata(plugin_state: Mapping[str, Any]) -> dict[str, Any]:
-    ui_state = plugin_state.get("ui") if isinstance(plugin_state.get("ui"), Mapping) else {}
-
-    return {
-        "title": _first_non_empty(
-            ui_state.get("report_title") if isinstance(ui_state, Mapping) else None,
-            "Technischer Bericht – Isolierung",
-        ),
-        "project_name": _first_non_empty(
-            ui_state.get("project_name") if isinstance(ui_state, Mapping) else None,
-            "Unbenanntes Projekt",
-        ),
-        "author": _first_non_empty(
-            ui_state.get("author") if isinstance(ui_state, Mapping) else None,
-            "Unbekannt",
-        ),
-        "additional_info": {
-            "Quelle": "Qt-Berichte-Tab",
-            "Plugin": "isolierung",
-        },
-    }
-
-
-def _first_non_empty(*candidates: object) -> str:
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        text = str(candidate).strip()
-        if text:
-            return text
-    return ""
 
 
 def _message_html(title: str, text: str) -> str:

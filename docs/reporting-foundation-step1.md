@@ -34,7 +34,7 @@ Das renderer-neutrale Berichtsdokument basiert auf folgenden Dataclasses:
 Damit ist die fachliche Datenbasis für spätere PDF-/HTML-Renderer vorbereitet, ohne
 bereits Renderinglogik einzuführen.
 
-## Technische Notiz – HTML-Vorschau (Ausbauschritt 2)
+## Technische Notiz – HTML-Vorschau (Stand nach 2B)
 
 Neu eingeführt:
 
@@ -51,3 +51,15 @@ Aktueller Vorschau-Datenfluss im Qt-Berichte-Tab:
 
 Dabei bleibt die UI-Schicht rein orchestrierend; Datenaufbereitung liegt im Builder,
 HTML-Formatierung ausschließlich im Renderer.
+
+### Einordnung des aktuellen Zwischenstands
+
+- Der HTML-Vorschaufluss ist funktionsfähig und durchgängig:
+  `plugin_manager` → `build_isolierung_report(...)` → `ReportDocument` → `render_report_html(...)`.
+- Der Berichte-Tab enthält weiterhin nur UI/Orchestrierung; Metadaten-Auflösung für den
+  Isolierungsbericht liegt in der Reporting-Builder-Schicht.
+- Für Kennzahlen (`MetricItem.format_hint`) gelten nun einheitliche Konventionen in
+  Datenmodell, Builder und HTML-Renderer (`plain`, `number`, `integer`, `percentage`,
+  `status`, `list`).
+- **Nicht** Bestandteil dieses Stands: PDF-Renderer, PDF-Export und zusätzliche
+  PDF-Abhängigkeiten.

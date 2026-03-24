@@ -58,6 +58,22 @@ def build_isolierung_report(
 build_isolierung_report_document = build_isolierung_report
 
 
+def resolve_isolierung_report_metadata(plugin_state: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Leite robuste Berichtsmetadaten aus dem exportierten Isolierung-State ab."""
+
+    state = _as_mapping(plugin_state)
+    ui_state = _nested(state, "ui")
+    return {
+        "title": _first_non_empty(ui_state.get("report_title"), "Technischer Bericht – Isolierung"),
+        "project_name": _first_non_empty(ui_state.get("project_name"), "Unbenanntes Projekt"),
+        "author": _first_non_empty(ui_state.get("author"), "Unbekannt"),
+        "additional_info": {
+            "Quelle": "Qt-Berichte-Tab",
+            "Plugin": "isolierung",
+        },
+    }
+
+
 def _build_overview_section(state: Mapping[str, Any]) -> ReportSection:
     inputs = _nested(state, "inputs")
     results = _nested(state, "results")
@@ -364,7 +380,7 @@ def _build_cut_plan_section(state: Mapping[str, Any]) -> ReportSection:
                 title="Zuschnitt-Visualisierung (Slot)",
                 image_role="diagram",
                 alt_text="Platzhalter für Zuschnittdiagramm",
-                caption="Diagramm-Slot; die Bildgenerierung folgt in Schritt 2B.",
+                caption="Diagramm-Slot; die Asset-Generierung ist im aktuellen Stand noch nicht enthalten.",
                 metadata={
                     "source_domain": "zuschnitt",
                     "placement_count": len(placements),
@@ -424,6 +440,16 @@ def _as_text(value: Any, fallback: str = "") -> str:
         return fallback
     text = str(value).strip()
     return text if text else fallback
+
+
+def _first_non_empty(*candidates: object) -> str:
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        text = str(candidate).strip()
+        if text:
+            return text
+    return ""
 
 
 def _to_number_or_none(value: Any) -> float | None:
