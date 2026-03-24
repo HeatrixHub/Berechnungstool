@@ -68,11 +68,7 @@ def resolve_isolierung_report_metadata(plugin_state: Mapping[str, Any] | None) -
         "title": _first_non_empty(ui_state.get("report_title"), STANDARD_REPORT_TITLE),
         "project_name": _first_non_empty(ui_state.get("project_name"), "Unbenanntes Projekt"),
         "author": _first_non_empty(ui_state.get("author"), "Unbekannt"),
-        "additional_info": {
-            "Quelle": "Qt-Berichte-Tab",
-            "Plugin": "isolierung",
-            "Berichtstyp": "Standardbericht 01",
-        },
+        "additional_info": {},
     }
 
 
@@ -158,29 +154,29 @@ def _build_layer_table_section(state: Mapping[str, Any]) -> ReportSection:
             _table(
                 title="Schichten",
                 columns=[
-                    TableColumn("layer_name", "Name der Isolierung"),
+                    TableColumn("layer_name", "Material"),
                     TableColumn("thickness_mm", "Dicke", unit="mm", value_type="number"),
                     TableColumn(
                         "classification_temperature_c",
-                        "Klassifizierungstemperatur",
+                        "Klass.-Temp.",
                         unit="°C",
                         value_type="number",
                     ),
                     TableColumn(
                         "interface_temperature_c",
-                        "Grenzflächentemperatur der Schicht",
+                        "Grenzfl.-Temp.",
                         unit="°C",
                         value_type="number",
                     ),
                     TableColumn(
                         "mean_temperature_c",
-                        "Mittlere Temperatur der Schicht",
+                        "Mittel-Temp.",
                         unit="°C",
                         value_type="number",
                     ),
                     TableColumn(
                         "thermal_conductivity",
-                        "Wärmeleitfähigkeit der Schicht",
+                        "Wärmeleitf.",
                         unit="W/mK",
                         value_type="number",
                     ),
@@ -205,21 +201,17 @@ def _build_temperature_profile_section(state: Mapping[str, Any]) -> ReportSectio
 
     return ReportSection(
         id="temperaturverlauf",
-        title="Temperaturverlauf durch die Isolierung",
+        title="Temperaturverlauf",
         description=(
-            "Fachlicher Slot für den Temperaturplot aus dem Berechnungs-Tab "
-            "des Plugins „Isolierung“ oder für ein später erzeugtes Diagramm-Asset."
+            "Temperaturverlauf über den Schichtaufbau auf Basis der Grenzflächentemperaturen."
         ),
         blocks=[
             ImageBlock(
-                title="Temperaturprofil (Diagramm-Slot)",
+                title=None,
                 image_role="chart",
                 asset_ref=None,
                 alt_text="Temperaturverlauf über den Isolierungsaufbau",
-                caption=(
-                    "Der Plot ist noch nicht gerendert. Die Struktur enthält bereits "
-                    "alle relevanten Referenzdaten für eine spätere Diagramm-Generierung."
-                ),
+                caption=None,
                 metadata={
                     "source_plugin": "isolierung",
                     "source_tab": "Berechnung",
@@ -229,13 +221,6 @@ def _build_temperature_profile_section(state: Mapping[str, Any]) -> ReportSectio
                     "interface_temperatures_c": interface_temperatures,
                     "layer_count": len(thicknesses_mm),
                 },
-            ),
-            TextBlock(
-                text=(
-                    "Referenz: vorhandener Temperaturplot im Berechnungs-Tab. "
-                    "Falls dieser nicht direkt wiederverwendet werden kann, soll das Diagramm "
-                    "aus thickness_profile_mm und interface_temperatures_c erzeugt werden."
-                )
             ),
         ],
     )

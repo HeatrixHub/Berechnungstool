@@ -176,7 +176,7 @@ def _append_layer_table(
         story.append(Spacer(1, 5 * mm))
         return
 
-    header = [_column_label(column) for column in table_block.columns]
+    header = [Paragraph(_column_label(column).replace("\n", "<br/>"), styles["value"]) for column in table_block.columns]
     rows = [header]
 
     if table_block.rows:
@@ -185,8 +185,8 @@ def _append_layer_table(
     else:
         rows.append(["Keine Tabellenzeilen verfügbar."] + [""] * (len(table_block.columns) - 1))
 
-    col_width = 170 * mm / max(1, len(table_block.columns))
-    grid = Table(rows, colWidths=[col_width] * len(table_block.columns), hAlign="LEFT", repeatRows=1)
+    col_widths = _layer_table_col_widths(table_block.columns, mm)
+    grid = Table(rows, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
     grid.setStyle(
         TableStyle(
             [
@@ -320,10 +320,9 @@ def _format_number(value: object) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
     if isinstance(value, int):
-        return str(value)
+        return _format_number_german(float(value), decimal_places=0)
     if isinstance(value, float):
-        text = f"{value:,.3f}".rstrip("0").rstrip(".")
-        return text.replace(",", " ")
+        return _format_number_german(value, decimal_places=3)
     return str(value)
 
 
@@ -373,3 +372,19 @@ def _format_datetime(value: datetime | object) -> str:
     if isinstance(value, datetime):
         return value.astimezone().strftime("%d.%m.%Y %H:%M")
     return "Unbekannt"
+
+
+def _format_number_german(value: float, *, decimal_places: int) -> str:
+    text = f"{value:,.{decimal_places}f}"
+    if decimal_places > 0:
+        text = text.rstrip("0").rstrip(".")
+    return text.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def _layer_table_col_widths(columns: list[TableColumn], mm: Any) -> list[float]:
+    if not columns:
+        return []
+    if len(columns) == 6:
+        return [37 * mm, 18 * mm, 30 * mm, 30 * mm, 27 * mm, 28 * mm]
+    col_width = 170 * mm / len(columns)
+    return [col_width] * len(columns)

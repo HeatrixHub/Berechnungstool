@@ -143,7 +143,7 @@ def _render_table_block(block: TableBlock) -> list[str]:
     parts.append("<table>")
     parts.append("<thead><tr>")
     for column in block.columns:
-        header = escape(column.label)
+        header = _escape_with_line_breaks(column.label)
         if column.unit:
             header = f"{header} [{escape(column.unit)}]"
         parts.append(f"<th>{header}</th>")
@@ -268,11 +268,9 @@ def _format_number(value: object) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
     if isinstance(value, int):
-        return str(value)
+        return _format_number_german(float(value), decimal_places=0)
     if isinstance(value, float):
-        text = f"{value:,.3f}"
-        text = text.rstrip("0").rstrip(".")
-        return text.replace(",", " ")
+        return _format_number_german(value, decimal_places=3)
     return escape(str(value))
 
 
@@ -286,8 +284,20 @@ def _format_integer(value: object) -> str:
 
 def _format_datetime(value: object) -> str:
     if isinstance(value, datetime):
-        return value.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+        return value.astimezone().strftime("%d.%m.%Y %H:%M:%S %Z")
     return _safe_text(str(value) if value is not None else None, fallback="Unbekannt")
+
+
+def _format_number_german(value: float, *, decimal_places: int) -> str:
+    text = f"{value:,.{decimal_places}f}"
+    if decimal_places > 0:
+        text = text.rstrip("0").rstrip(".")
+    return text.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+def _escape_with_line_breaks(text: str) -> str:
+    escaped = escape(text)
+    return escaped.replace("\n", "<br/>")
 
 
 def _format_metadata_summary(metadata: dict[str, object]) -> str:
