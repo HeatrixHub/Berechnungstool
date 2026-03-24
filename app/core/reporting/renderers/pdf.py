@@ -45,7 +45,7 @@ def render_report_pdf(document: ReportDocument, output_path: str | Path) -> Path
     )
 
     story: list[Any] = []
-    _append_title(story, document, styles, Paragraph, Spacer, mm)
+    _append_title(story, document, styles, Paragraph, Spacer, Image, Table, TableStyle, mm)
     _append_project_metadata(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
     _append_general_metrics(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
     _append_layer_table(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
@@ -55,10 +55,36 @@ def render_report_pdf(document: ReportDocument, output_path: str | Path) -> Path
     return target
 
 
-def _append_title(story: list[Any], document: ReportDocument, styles: dict[str, Any], Paragraph: Any, Spacer: Any, mm: Any) -> None:
+def _append_title(
+    story: list[Any],
+    document: ReportDocument,
+    styles: dict[str, Any],
+    Paragraph: Any,
+    Spacer: Any,
+    Image: Any,
+    Table: Any,
+    TableStyle: Any,
+    mm: Any,
+) -> None:
     title = (document.metadata.title or "Technischer Bericht").strip() or "Technischer Bericht"
-    story.append(Paragraph(title, styles["title"]))
-    story.append(Spacer(1, 4 * mm))
+    logo = _build_header_logo(Image, mm)
+    title_block = Paragraph(title, styles["title"])
+    cells = [[title_block, logo if logo is not None else ""]]
+    grid = Table(cells, colWidths=[138 * mm, 32 * mm], hAlign="LEFT")
+    grid.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(grid)
+    story.append(Spacer(1, 3 * mm))
 
 
 def _append_project_metadata(
@@ -274,9 +300,7 @@ def _find_temperature_caption(document: ReportDocument) -> str | None:
 
 
 def _column_label(column: TableColumn) -> str:
-    if column.unit:
-        return f"{column.label} [{column.unit}]"
-    return column.label
+    return f"{column.label}\n{column.unit or '–'}"
 
 
 def _format_metric_value(metric: MetricItem) -> str:
@@ -286,16 +310,16 @@ def _format_metric_value(metric: MetricItem) -> str:
 
     hint: MetricFormatHint = metric.format_hint
     if hint == "number":
-        return _format_number(value)
+        return _format_number(value, unit=metric.unit)
     if hint == "integer":
         return _format_integer(value)
     if hint == "percentage":
         if isinstance(value, (int, float)):
             percentage = value * 100 if abs(float(value)) <= 1 else float(value)
-            return f"{_format_number(percentage)} %"
+            return f"{_format_number(percentage, unit=None)} %"
         return f"{value} %"
     if hint == "list" and isinstance(value, list):
-        return ", ".join(_format_number(item) if isinstance(item, (int, float)) else str(item) for item in value)
+        return ", ".join(_format_number(item, unit=None) if isinstance(item, (int, float)) else str(item) for item in value)
     if hint == "status":
         return str(value).capitalize()
 
@@ -308,7 +332,7 @@ def _format_table_cell(row: TableRow, column: TableColumn) -> str:
         return "–"
 
     if column.value_type == "number":
-        return _format_number(value)
+        return _format_number(value, unit=column.unit)
     if column.value_type == "integer":
         return _format_integer(value)
     if column.value_type == "status":
@@ -316,14 +340,27 @@ def _format_table_cell(row: TableRow, column: TableColumn) -> str:
     return str(value)
 
 
-def _format_number(value: object) -> str:
+def _format_number(value: object, *, unit: str | None) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
     if isinstance(value, int):
         return _format_number_german(float(value), decimal_places=0)
     if isinstance(value, float):
+        if unit == "°C":
+            return _format_number_german(value, decimal_places=1)
         return _format_number_german(value, decimal_places=3)
     return str(value)
+
+
+def _build_header_logo(Image: Any, mm: Any) -> Any | None:
+    logo_path = Path(__file__).resolve().parents[4] / "heatrix_logo_v3.png"
+    if not logo_path.exists():
+        return None
+    logo = Image(str(logo_path))
+    logo.drawWidth = 28 * mm
+    logo.drawHeight = 10 * mm
+    logo.hAlign = "RIGHT"
+    return logo
 
 
 def _format_integer(value: object) -> str:

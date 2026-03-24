@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.isolierungen_db.logic import get_family_by_id, list_families
 from app.core.reporting.report_document import (
     ImageBlock,
     MetricItem,
@@ -133,13 +134,14 @@ def _build_layer_table_section(state: Mapping[str, Any]) -> ReportSection:
     mean_temperatures = _numbers_from_sequence(result_data.get("T_avg"), max_items=128)
     thermal_conductivities = _numbers_from_sequence(result_data.get("k_final"), max_items=128)
 
+    resolver = _ClassificationTemperatureResolver()
     rows: list[dict[str, Any]] = []
     for index, layer in enumerate(_records_from(calc_inputs, "layers"), start=1):
         rows.append(
             {
                 "layer_name": _layer_name(layer, index),
                 "thickness_mm": _to_number_or_none(layer.get("thickness")),
-                "classification_temperature_c": _to_number_or_none(layer.get("classification_temperature")),
+                "classification_temperature_c": resolver.resolve(layer),
                 "interface_temperature_c": _sequence_item_or_none(interfaces, index),
                 "mean_temperature_c": _sequence_item_or_none(mean_temperatures, index - 1),
                 "thermal_conductivity": _sequence_item_or_none(thermal_conductivities, index - 1),
@@ -154,8 +156,8 @@ def _build_layer_table_section(state: Mapping[str, Any]) -> ReportSection:
             _table(
                 title="Schichten",
                 columns=[
-                    TableColumn("layer_name", "Material"),
-                    TableColumn("thickness_mm", "Dicke", unit="mm", value_type="number"),
+                    TableColumn("layer_name", "Material", unit="–"),
+                    TableColumn("thickness_mm", "Stärke", unit="mm", value_type="number"),
                     TableColumn(
                         "classification_temperature_c",
                         "Klass.-Temp.",
@@ -164,19 +166,19 @@ def _build_layer_table_section(state: Mapping[str, Any]) -> ReportSection:
                     ),
                     TableColumn(
                         "interface_temperature_c",
-                        "Grenzfl.-Temp.",
+                        "Temp.-Grenzfl.",
                         unit="°C",
                         value_type="number",
                     ),
                     TableColumn(
                         "mean_temperature_c",
-                        "Mittel-Temp.",
+                        "Temp.-Mittel",
                         unit="°C",
                         value_type="number",
                     ),
                     TableColumn(
                         "thermal_conductivity",
-                        "Wärmeleitf.",
+                        "λ",
                         unit="W/mK",
                         value_type="number",
                     ),
@@ -247,6 +249,59 @@ def _sequence_item_or_none(values: Sequence[float], index: int) -> float | None:
     if 0 <= index < len(values):
         return values[index]
     return None
+
+
+class _ClassificationTemperatureResolver:
+    def __init__(self) -> None:
+        self._family_name_to_temp: dict[str, float | None] | None = None
+
+    def resolve(self, layer: Mapping[str, Any]) -> float | None:
+        inline_value = _to_number_or_none(layer.get("classification_temperature"))
+        if inline_value is not None:
+            return inline_value
+
+        family_id = layer.get("family_id")
+        if isinstance(family_id, int):
+            try:
+                family = get_family_by_id(family_id)
+            except Exception:
+                family = None
+            if isinstance(family, Mapping):
+                resolved = _to_number_or_none(family.get("classification_temp"))
+                if resolved is not None:
+                    return resolved
+
+        family_name = _as_text(layer.get("family"), "")
+        if family_name:
+            return self._by_family_name(family_name)
+        return None
+
+    def _by_family_name(self, family_name: str) -> float | None:
+        mapping = self._load_family_name_mapping()
+        if not mapping:
+            return None
+        return mapping.get(family_name.casefold())
+
+    def _load_family_name_mapping(self) -> dict[str, float | None]:
+        if self._family_name_to_temp is not None:
+            return self._family_name_to_temp
+
+        try:
+            families = list_families()
+        except Exception:
+            families = []
+
+        mapping: dict[str, float | None] = {}
+        for family in families:
+            if not isinstance(family, Mapping):
+                continue
+            name = _as_text(family.get("name"), "")
+            if not name:
+                continue
+            mapping[name.casefold()] = _to_number_or_none(family.get("classification_temp"))
+
+        self._family_name_to_temp = mapping
+        return mapping
 
 
 def _nested(mapping: Mapping[str, Any], key: str) -> dict[str, Any]:
