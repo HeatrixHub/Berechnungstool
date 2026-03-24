@@ -61,6 +61,8 @@ class ProjectsTab:
         self._selected_project_id: str | None = None
         self._active_project_id: str | None = None
         self._workspace_plugin_states: dict[str, dict[str, Any]] = {}
+        self._active_form_snapshot: dict[str, str] = self._default_form_snapshot()
+        self._preview_mode = False
         self._dirty = False
         self._suppress_project_updates = False
         self._on_project_loaded = on_project_loaded
@@ -226,6 +228,7 @@ class ProjectsTab:
             project_id = current.data(self._user_role())
         if not project_id:
             self._selected_project_id = None
+            self._show_active_form_snapshot()
             self._update_action_buttons()
             self._set_status("Keine Auswahl in der Projektliste.")
             return
@@ -233,14 +236,25 @@ class ProjectsTab:
         if record is None:
             return
         self._selected_project_id = project_id
-        self._preview_selected_record(record)
+        if self._selected_project_id == self._active_project_id:
+            self._show_active_form_snapshot()
+            self._set_status(f"Projekt '{record.name}' ausgewählt (aktiv geladen).")
+        else:
+            self._preview_selected_record(record)
+            self._set_status(f"Projekt '{record.name}' ausgewählt (nur Vorschau).")
         self._update_action_buttons()
-        self._set_status(f"Projekt '{record.name}' ausgewählt (nicht geladen).")
 
     def _preview_selected_record(self, record: ProjectRecord) -> None:
         """Aktualisiert nur die Formularfelder für die Listen-Vorschau."""
+        self._capture_active_form_snapshot()
         with self._dirty_tracker.paused():
             self._load_record_into_form(record)
+        self._set_preview_mode(True)
+
+    def _show_active_form_snapshot(self) -> None:
+        with self._dirty_tracker.paused():
+            self._load_form_snapshot(self._active_form_snapshot)
+        self._set_preview_mode(False)
 
     def _load_record_into_form(self, record: ProjectRecord) -> None:
         self._suppress_project_updates = True
@@ -263,6 +277,7 @@ class ProjectsTab:
             self._metadata_input.setPlainText("{}")
         finally:
             self._suppress_project_updates = False
+        self._active_form_snapshot = self._capture_form_snapshot()
         if reset_dirty:
             self._set_dirty(False)
 
@@ -273,10 +288,21 @@ class ProjectsTab:
         self._set_status("Ungespeicherte Arbeitsfläche vorbereitet.")
 
     def save_project(self) -> bool:
-        name = self._text(self._name_input).strip()
-        author = self._text(self._author_input).strip()
-        description = self._plain_text(self._description_input).strip()
-        metadata = self._parse_metadata()
+        if self._is_previewing_foreign_project():
+            self._show_warning(
+                "Speichern gesperrt",
+                "Die angezeigten Projektdaten sind nur Vorschau und können nicht gespeichert werden.",
+            )
+            self._set_status("Speichern gesperrt: Nur Vorschau eines anderen Projekts aktiv.")
+            return False
+        self._capture_active_form_snapshot()
+        return self._save_project_from_form_snapshot()
+
+    def _save_project_from_form_snapshot(self) -> bool:
+        name = self._active_form_snapshot["name"].strip()
+        author = self._active_form_snapshot["author"].strip()
+        description = self._active_form_snapshot["description"].strip()
+        metadata = self._parse_metadata_text(self._active_form_snapshot["metadata"])
         if metadata is None:
             return False
         if not name:
@@ -311,6 +337,7 @@ class ProjectsTab:
         self.refresh_projects()
         self._update_active_project_label()
         self._set_dirty(False)
+        self._show_active_form_snapshot()
         self._show_info("Gespeichert", f"Projekt '{record.name}' wurde gespeichert.")
         self._set_status(
             f"Projekt gespeichert. {len(plugin_states)} Plugin-Zustände wurden erfasst."
@@ -334,8 +361,10 @@ class ProjectsTab:
             missing, unknown, errors = self._state_coordinator.apply_states(record.plugin_states)
             self._apply_ui_state(record.ui_state)
             self._load_record_into_form(record)
+            self._active_form_snapshot = self._capture_form_snapshot()
         self._active_project_id = record.id
         self._selected_project_id = record.id
+        self._set_preview_mode(False)
         self._update_active_project_label()
         self._set_dirty(False)
         if errors:
@@ -396,6 +425,8 @@ class ProjectsTab:
             return True
         result = self._prompt_unsaved_changes(action_label)
         if result == "save":
+            if self._preview_mode:
+                return self._save_project_from_form_snapshot()
             return self.save_project()
         if result == "discard":
             self._set_dirty(False)
@@ -428,6 +459,9 @@ class ProjectsTab:
     def _on_project_fields_changed(self, *_args: object) -> None:
         if self._suppress_project_updates:
             return
+        if self._preview_mode:
+            return
+        self._capture_active_form_snapshot()
         self._mark_dirty()
 
     def _mark_dirty(self) -> None:
@@ -450,7 +484,7 @@ class ProjectsTab:
 
     def _update_action_buttons(self) -> None:
         has_selection = bool(self._selected_project_id)
-        self._save_button.setEnabled(True)
+        self._save_button.setEnabled(not self._is_previewing_foreign_project())
         self._load_button.setEnabled(has_selection)
         self._delete_button.setEnabled(has_selection)
 
@@ -486,6 +520,10 @@ class ProjectsTab:
 
     def _parse_metadata(self) -> dict[str, Any] | None:
         raw = self._plain_text(self._metadata_input).strip() or "{}"
+        return self._parse_metadata_text(raw)
+
+    def _parse_metadata_text(self, raw: str) -> dict[str, Any] | None:
+        raw = raw.strip() or "{}"
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -508,6 +546,7 @@ class ProjectsTab:
             self._clear_form(reset_dirty=False)
         self._active_project_id = None
         self._selected_project_id = None
+        self._set_preview_mode(False)
         self._project_list.blockSignals(True)
         self._project_list.setCurrentRow(-1)
         self._project_list.blockSignals(False)
@@ -532,3 +571,51 @@ class ProjectsTab:
 
     def _show_error(self, title: str, message: str) -> None:
         QMessageBox.critical(self.widget, title, message)
+
+    def _default_form_snapshot(self) -> dict[str, str]:
+        return {
+            "name": "",
+            "author": self._author,
+            "description": "",
+            "metadata": "{}",
+        }
+
+    def _capture_form_snapshot(self) -> dict[str, str]:
+        return {
+            "name": self._text(self._name_input),
+            "author": self._text(self._author_input),
+            "description": self._plain_text(self._description_input),
+            "metadata": self._plain_text(self._metadata_input),
+        }
+
+    def _capture_active_form_snapshot(self) -> None:
+        if self._preview_mode:
+            return
+        self._active_form_snapshot = self._capture_form_snapshot()
+
+    def _load_form_snapshot(self, snapshot: dict[str, str]) -> None:
+        self._suppress_project_updates = True
+        try:
+            self._name_input.setText(snapshot.get("name", ""))
+            self._author_input.setText(snapshot.get("author", self._author))
+            self._description_input.setPlainText(snapshot.get("description", ""))
+            self._metadata_input.setPlainText(snapshot.get("metadata", "{}"))
+        finally:
+            self._suppress_project_updates = False
+
+    def _is_previewing_foreign_project(self) -> bool:
+        return (
+            self._selected_project_id is not None
+            and self._selected_project_id != self._active_project_id
+        )
+
+    def _set_preview_mode(self, enabled: bool) -> None:
+        self._preview_mode = enabled
+        for widget in (
+            self._name_input,
+            self._author_input,
+            self._description_input,
+            self._metadata_input,
+        ):
+            if hasattr(widget, "setReadOnly"):
+                widget.setReadOnly(enabled)
