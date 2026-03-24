@@ -33,3 +33,21 @@ Das renderer-neutrale Berichtsdokument basiert auf folgenden Dataclasses:
 
 Damit ist die fachliche Datenbasis für spätere PDF-/HTML-Renderer vorbereitet, ohne
 bereits Renderinglogik einzuführen.
+
+## Technische Notiz – HTML-Vorschau (Ausbauschritt 2)
+
+Neu eingeführt:
+
+- `app/core/reporting/renderers/html.py` mit `render_report_html(document)` als erstem renderer-spezifischem Baustein für die Vorschau.
+- `app/core/reporting/renderers/__init__.py` als stabiler Einstiegspunkt für Renderer-Imports.
+
+Aktueller Vorschau-Datenfluss im Qt-Berichte-Tab:
+
+1. `QtPluginManager.export_all_states()` liefert alle Plugin-States.
+2. Der Berichte-Tab liest ausschließlich den State `isolierung` aus.
+3. `build_isolierung_report(...)` erzeugt daraus ein renderer-neutrales `ReportDocument`.
+4. `render_report_html(...)` rendert das `ReportDocument` in strukturierte HTML-Ausgabe.
+5. `QTextBrowser.setHtml(...)` zeigt die Vorschau im Tab an.
+
+Dabei bleibt die UI-Schicht rein orchestrierend; Datenaufbereitung liegt im Builder,
+HTML-Formatierung ausschließlich im Renderer.
