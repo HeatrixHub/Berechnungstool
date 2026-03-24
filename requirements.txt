@@ -1,5 +1,6 @@
 matplotlib
 numpy
-rectpack
 openpyxl
+PySide6
+rectpack
 reportlab
