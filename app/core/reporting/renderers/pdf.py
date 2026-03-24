@@ -70,21 +70,21 @@ def _append_title(
     logo = _build_header_logo(Image, mm)
     title_block = Paragraph(title, styles["title"])
     cells = [[title_block, logo if logo is not None else ""]]
-    grid = Table(cells, colWidths=[138 * mm, 32 * mm], hAlign="LEFT")
+    grid = Table(cells, colWidths=[132 * mm, 38 * mm], hAlign="LEFT")
     grid.setStyle(
         TableStyle(
             [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("ALIGN", (1, 0), (1, 0), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 1.5 * mm),
+                ("TOPPADDING", (0, 0), (-1, -1), 1.5 * mm),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3 * mm),
             ]
         )
     )
     story.append(grid)
-    story.append(Spacer(1, 3 * mm))
+    story.append(Spacer(1, 2 * mm))
 
 
 def _append_project_metadata(
@@ -115,14 +115,14 @@ def _append_project_metadata(
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (1, -1), colors.whitesmoke),
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.gainsboro),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BACKGROUND", (0, 0), (1, -1), colors.HexColor("#F8FAFC")),
+                ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#E2E8F0")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 6),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
             ]
         )
     )
@@ -357,8 +357,17 @@ def _build_header_logo(Image: Any, mm: Any) -> Any | None:
     if not logo_path.exists():
         return None
     logo = Image(str(logo_path))
-    logo.drawWidth = 28 * mm
-    logo.drawHeight = 10 * mm
+    max_width = 34 * mm
+    max_height = 13 * mm
+    original_width = float(getattr(logo, "imageWidth", 0.0) or 0.0)
+    original_height = float(getattr(logo, "imageHeight", 0.0) or 0.0)
+    if original_width > 0 and original_height > 0:
+        scale = min(max_width / original_width, max_height / original_height)
+        logo.drawWidth = original_width * scale
+        logo.drawHeight = original_height * scale
+    else:
+        logo.drawWidth = max_width
+        logo.drawHeight = max_height
     logo.hAlign = "RIGHT"
     return logo
 
@@ -378,9 +387,10 @@ def _build_styles(ParagraphStyle: Any, getSampleStyleSheet: Any, colors: Any) ->
             "ReportTitle",
             parent=sample["Heading1"],
             fontName="Helvetica-Bold",
-            fontSize=17,
-            leading=21,
-            spaceAfter=2,
+            fontSize=18,
+            leading=22,
+            spaceAfter=0,
+            textColor=colors.HexColor("#0F172A"),
         ),
         "heading": ParagraphStyle(
             "ReportHeading",
