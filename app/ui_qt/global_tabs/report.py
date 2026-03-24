@@ -35,6 +35,7 @@ class ReportTab:
         self._preview_pdf_view: QPdfView | None = None
         self._preview_pdf_document: QPdfDocument | None = None
         self._preview_pdf_path: Path | None = None
+        self._stale_preview_pdf_paths: list[Path] = []
         self._status_label: QLabel | None = None
 
         self._build_ui()
@@ -80,7 +81,7 @@ class ReportTab:
         self._preview_pdf_document = QPdfDocument(self.widget)
         self._preview_pdf_view = QPdfView()
         self._preview_pdf_view.setDocument(self._preview_pdf_document)
-        self._preview_pdf_view.setZoomMode(QPdfView.ZoomMode.FitInView)
+        self._preview_pdf_view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
         self._preview_pdf_view.setPageMode(QPdfView.PageMode.MultiPage)
         layout.addWidget(self._preview_pdf_view, stretch=1)
 
@@ -88,21 +89,33 @@ class ReportTab:
         if self._preview_pdf_document is None:
             return
 
+        self._cleanup_stale_preview_paths()
+
         report_document = self._build_report_document()
         if report_document is None:
             return
+
+        previous_preview_path = self._preview_pdf_path
+        self._release_preview_document()
 
         try:
             preview_path = self._render_preview_pdf(report_document)
         except Exception as exc:
             self._set_status(f"Status: Fehler bei der Berichtsvorschau ({exc}).")
+            self._preview_pdf_path = previous_preview_path
             return
 
         load_result = self._preview_pdf_document.load(str(preview_path))
         if load_result != QPdfDocument.Error.None_:
             self._set_status("Status: PDF-Vorschau konnte nicht geladen werden.")
+            self._queue_stale_preview_path(preview_path)
+            self._preview_pdf_path = previous_preview_path
+            self._cleanup_stale_preview_paths()
             return
 
+        self._preview_pdf_path = preview_path
+        self._queue_stale_preview_path(previous_preview_path)
+        self._cleanup_stale_preview_paths()
         self._set_status("Status: Vorschau erfolgreich aktualisiert.")
 
     def export_pdf(self) -> None:
@@ -183,12 +196,36 @@ class ReportTab:
         }
 
     def _render_preview_pdf(self, report_document: ReportDocument) -> Path:
-        if self._preview_pdf_path is not None:
-            self._preview_pdf_path.unlink(missing_ok=True)
         with tempfile.NamedTemporaryFile(prefix="heatrix_report_preview_", suffix=".pdf", delete=False) as handle:
             preview_path = Path(handle.name)
-        self._preview_pdf_path = render_report_pdf(report_document, preview_path)
-        return self._preview_pdf_path
+        return render_report_pdf(report_document, preview_path)
+
+    def _release_preview_document(self) -> None:
+        if self._preview_pdf_document is not None:
+            self._preview_pdf_document.close()
+
+    def _queue_stale_preview_path(self, preview_path: Path | None) -> None:
+        if preview_path is None:
+            return
+        if preview_path == self._preview_pdf_path:
+            return
+        if preview_path not in self._stale_preview_pdf_paths:
+            self._stale_preview_pdf_paths.append(preview_path)
+
+    def _cleanup_stale_preview_paths(self) -> None:
+        if not self._stale_preview_pdf_paths:
+            return
+
+        remaining_paths: list[Path] = []
+        for stale_path in self._stale_preview_pdf_paths:
+            if stale_path == self._preview_pdf_path:
+                remaining_paths.append(stale_path)
+                continue
+            try:
+                stale_path.unlink(missing_ok=True)
+            except OSError:
+                remaining_paths.append(stale_path)
+        self._stale_preview_pdf_paths = remaining_paths
 
     @staticmethod
     def _manual_input_value(line_edit: QLineEdit | None) -> str | None:
