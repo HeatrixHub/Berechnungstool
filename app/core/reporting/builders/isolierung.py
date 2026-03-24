@@ -1,15 +1,15 @@
 """Report-Builder für das Isolierungs-Plugin.
 
-Der Builder transformiert ausschließlich exportierten Plugin-State in ein
-renderer-neutrales ReportDocument.
+Der Builder transformiert exportierten Plugin-State in ein renderer-neutrales
+ReportDocument ohne PDF-/HTML-Logik.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.reporting.model import (
+from app.core.reporting.report_document import (
     ImageBlock,
     MetricItem,
     MetricsBlock,
@@ -17,11 +17,13 @@ from app.core.reporting.model import (
     ReportMetadata,
     ReportSection,
     TableBlock,
+    TableColumn,
+    TableRow,
     TextBlock,
 )
 
 
-def build_isolierung_report_document(
+def build_isolierung_report(
     plugin_state: Mapping[str, Any] | None,
     *,
     title: str = "Technischer Bericht – Isolierung",
@@ -52,6 +54,10 @@ def build_isolierung_report_document(
     )
 
 
+# Rückwärtskompatibles Alias für Schritt 2A.
+build_isolierung_report_document = build_isolierung_report
+
+
 def _build_overview_section(state: Mapping[str, Any]) -> ReportSection:
     inputs = _nested(state, "inputs")
     results = _nested(state, "results")
@@ -68,12 +74,14 @@ def _build_overview_section(state: Mapping[str, Any]) -> ReportSection:
             MetricsBlock(
                 title="Berechnungsstatus",
                 metrics=[
-                    MetricItem("Isolierungsberechnung", calc_status),
-                    MetricItem("Schichtaufbau", build_status),
-                    MetricItem("Zuschnittsplan", cut_status),
+                    MetricItem("calc_status", "Isolierungsberechnung", calc_status, format_hint="status"),
+                    MetricItem("build_status", "Schichtaufbau", build_status, format_hint="status"),
+                    MetricItem("cut_status", "Zuschnittsplan", cut_status, format_hint="status"),
                     MetricItem(
+                        "input_layer_count",
                         "Anzahl Eingabeschichten",
-                        len(_as_list(_nested(inputs, "berechnung").get("layers"))),
+                        len(_records_from(_nested(inputs, "berechnung"), "layers")),
+                        format_hint="integer",
                     ),
                 ],
             )
@@ -86,41 +94,67 @@ def _build_calculation_section(state: Mapping[str, Any]) -> ReportSection:
     calc_results = _nested(_nested(state, "results"), "berechnung")
     result_data = _nested(calc_results, "data")
 
-    input_table = TableBlock(
+    input_table = _table(
         title="Eingangsparameter",
-        columns=["Parameter", "Wert"],
+        columns=[
+            TableColumn("parameter", "Parameter"),
+            TableColumn("value", "Wert", value_type="text"),
+        ],
         rows=[
-            {"Parameter": "T_left", "Wert": _as_text(calc_inputs.get("T_left"))},
-            {"Parameter": "T_inf", "Wert": _as_text(calc_inputs.get("T_inf"))},
-            {"Parameter": "h", "Wert": _as_text(calc_inputs.get("h"))},
+            {"parameter": "T_left", "value": _as_text(calc_inputs.get("T_left"), "–")},
+            {"parameter": "T_inf", "value": _as_text(calc_inputs.get("T_inf"), "–")},
+            {"parameter": "h", "value": _as_text(calc_inputs.get("h"), "–")},
         ],
     )
 
-    layer_rows = []
-    for index, layer in enumerate(_as_list(calc_inputs.get("layers")), start=1):
-        layer_map = _as_mapping(layer)
+    layer_rows: list[dict[str, Any]] = []
+    for index, layer in enumerate(_records_from(calc_inputs, "layers"), start=1):
         layer_rows.append(
             {
-                "Schicht": index,
-                "Dicke (mm)": _as_text(layer_map.get("thickness")),
-                "Materialfamilie": _as_text(layer_map.get("family"), "–"),
-                "Variante": _as_text(layer_map.get("variant"), "–"),
+                "layer": index,
+                "thickness_mm": _to_number_or_none(layer.get("thickness")),
+                "family": _as_text(layer.get("family"), "–"),
+                "variant": _as_text(layer.get("variant"), "–"),
             }
         )
 
     metrics = MetricsBlock(
         title="Berechnete Kennzahlen",
         metrics=[
-            MetricItem("Wärmestrom q", _format_number(result_data.get("q"))),
-            MetricItem("Gesamtwärmewiderstand R_total", _format_number(result_data.get("R_total"))),
-            MetricItem("Iterationen", _format_number(result_data.get("iterations"))),
+            MetricItem("q", "Wärmestrom q", _to_number_or_none(result_data.get("q")), format_hint="number"),
             MetricItem(
-                "Grenzflächentemperaturen",
-                _format_sequence(result_data.get("interface_temperatures")),
-                unit="°C",
+                "r_total",
+                "Gesamtwärmewiderstand R_total",
+                _to_number_or_none(result_data.get("R_total")),
+                format_hint="number",
             ),
-            MetricItem("Mittlere Schichttemperaturen", _format_sequence(result_data.get("T_avg")), unit="°C"),
-            MetricItem("k_final", _format_sequence(result_data.get("k_final")), unit="W/mK"),
+            MetricItem(
+                "iterations",
+                "Iterationen",
+                _to_int_or_none(result_data.get("iterations")),
+                format_hint="integer",
+            ),
+            MetricItem(
+                "interface_temperatures",
+                "Grenzflächentemperaturen",
+                _numbers_from_sequence(result_data.get("interface_temperatures")),
+                unit="°C",
+                format_hint="list",
+            ),
+            MetricItem(
+                "t_avg",
+                "Mittlere Schichttemperaturen",
+                _numbers_from_sequence(result_data.get("T_avg")),
+                unit="°C",
+                format_hint="list",
+            ),
+            MetricItem(
+                "k_final",
+                "k_final",
+                _numbers_from_sequence(result_data.get("k_final")),
+                unit="W/mK",
+                format_hint="list",
+            ),
         ],
     )
 
@@ -130,9 +164,14 @@ def _build_calculation_section(state: Mapping[str, Any]) -> ReportSection:
         description="Normierte Übernahme der Eingabe- und Ergebnisdaten aus dem Plugin-State.",
         blocks=[
             input_table,
-            TableBlock(
+            _table(
                 title="Schichtdaten",
-                columns=["Schicht", "Dicke (mm)", "Materialfamilie", "Variante"],
+                columns=[
+                    TableColumn("layer", "Schicht", value_type="integer"),
+                    TableColumn("thickness_mm", "Dicke", unit="mm", value_type="number"),
+                    TableColumn("family", "Materialfamilie"),
+                    TableColumn("variant", "Variante"),
+                ],
                 rows=layer_rows,
             ),
             metrics,
@@ -147,34 +186,31 @@ def _build_layer_structure_section(state: Mapping[str, Any]) -> ReportSection:
     result_data = _nested(build_results, "data")
 
     dimensions = _nested(build_inputs, "dimensions")
-    layers_input = _as_list(build_inputs.get("layers"))
+    layers_input = _records_from(build_inputs, "layers")
 
-    layer_input_rows = []
+    layer_input_rows: list[dict[str, Any]] = []
     for index, layer in enumerate(layers_input, start=1):
-        layer_map = _as_mapping(layer)
         layer_input_rows.append(
             {
-                "Schicht": index,
-                "Dicke (mm)": _as_text(layer_map.get("thickness")),
-                "Materialfamilie": _as_text(layer_map.get("family"), "–"),
-                "Variante": _as_text(layer_map.get("variant"), "–"),
+                "layer": index,
+                "thickness_mm": _to_number_or_none(layer.get("thickness")),
+                "family": _as_text(layer.get("family"), "–"),
+                "variant": _as_text(layer.get("variant"), "–"),
             }
         )
 
-    plate_rows = []
-    for layer in _as_list(result_data.get("layers")):
-        layer_map = _as_mapping(layer)
-        layer_index = _as_text(layer_map.get("layer_index"), "–")
-        thickness = _as_text(layer_map.get("thickness"), "–")
-        for plate in _as_list(layer_map.get("plates")):
-            plate_map = _as_mapping(plate)
+    plate_rows: list[dict[str, Any]] = []
+    for layer in _records_from(result_data, "layers"):
+        layer_index = _to_int_or_none(layer.get("layer_index"))
+        thickness = _to_number_or_none(layer.get("thickness"))
+        for plate in _records_from(layer, "plates"):
             plate_rows.append(
                 {
-                    "Schicht": layer_index,
-                    "Platte": _as_text(plate_map.get("name"), "–"),
-                    "L": _format_number(plate_map.get("L")),
-                    "B": _format_number(plate_map.get("B")),
-                    "H": _format_number(plate_map.get("H"), fallback=thickness),
+                    "layer": layer_index,
+                    "plate": _as_text(plate.get("name"), "–"),
+                    "length_mm": _to_number_or_none(plate.get("L")),
+                    "width_mm": _to_number_or_none(plate.get("B")),
+                    "height_mm": _to_number_or_none(plate.get("H")) or thickness,
                 }
             )
 
@@ -186,26 +222,42 @@ def _build_layer_structure_section(state: Mapping[str, Any]) -> ReportSection:
             MetricsBlock(
                 title="Geometrische Basisdaten",
                 metrics=[
-                    MetricItem("Maßvorgabe", _as_text(build_inputs.get("measure_type"), "outer")),
-                    MetricItem("L", _as_text(dimensions.get("L")), unit="mm"),
-                    MetricItem("B", _as_text(dimensions.get("B")), unit="mm"),
-                    MetricItem("H", _as_text(dimensions.get("H")), unit="mm"),
-                    MetricItem("la_l", _format_number(result_data.get("la_l")), unit="mm"),
-                    MetricItem("la_b", _format_number(result_data.get("la_b")), unit="mm"),
-                    MetricItem("la_h", _format_number(result_data.get("la_h")), unit="mm"),
-                    MetricItem("li_l", _format_number(result_data.get("li_l")), unit="mm"),
-                    MetricItem("li_b", _format_number(result_data.get("li_b")), unit="mm"),
-                    MetricItem("li_h", _format_number(result_data.get("li_h")), unit="mm"),
+                    MetricItem(
+                        "measure_type",
+                        "Maßvorgabe",
+                        _as_text(build_inputs.get("measure_type"), "outer"),
+                        format_hint="plain",
+                    ),
+                    MetricItem("dim_l", "L", _to_number_or_none(dimensions.get("L")), unit="mm", format_hint="number"),
+                    MetricItem("dim_b", "B", _to_number_or_none(dimensions.get("B")), unit="mm", format_hint="number"),
+                    MetricItem("dim_h", "H", _to_number_or_none(dimensions.get("H")), unit="mm", format_hint="number"),
+                    MetricItem("la_l", "la_l", _to_number_or_none(result_data.get("la_l")), unit="mm", format_hint="number"),
+                    MetricItem("la_b", "la_b", _to_number_or_none(result_data.get("la_b")), unit="mm", format_hint="number"),
+                    MetricItem("la_h", "la_h", _to_number_or_none(result_data.get("la_h")), unit="mm", format_hint="number"),
+                    MetricItem("li_l", "li_l", _to_number_or_none(result_data.get("li_l")), unit="mm", format_hint="number"),
+                    MetricItem("li_b", "li_b", _to_number_or_none(result_data.get("li_b")), unit="mm", format_hint="number"),
+                    MetricItem("li_h", "li_h", _to_number_or_none(result_data.get("li_h")), unit="mm", format_hint="number"),
                 ],
             ),
-            TableBlock(
+            _table(
                 title="Eingabeschichten",
-                columns=["Schicht", "Dicke (mm)", "Materialfamilie", "Variante"],
+                columns=[
+                    TableColumn("layer", "Schicht", value_type="integer"),
+                    TableColumn("thickness_mm", "Dicke", unit="mm", value_type="number"),
+                    TableColumn("family", "Materialfamilie"),
+                    TableColumn("variant", "Variante"),
+                ],
                 rows=layer_input_rows,
             ),
-            TableBlock(
+            _table(
                 title="Platten pro Schicht",
-                columns=["Schicht", "Platte", "L", "B", "H"],
+                columns=[
+                    TableColumn("layer", "Schicht", value_type="integer"),
+                    TableColumn("plate", "Platte"),
+                    TableColumn("length_mm", "L", unit="mm", value_type="number"),
+                    TableColumn("width_mm", "B", unit="mm", value_type="number"),
+                    TableColumn("height_mm", "H", unit="mm", value_type="number"),
+                ],
                 rows=plate_rows,
             ),
             TextBlock(text=_as_text(build_results.get("message"), "")),
@@ -216,47 +268,47 @@ def _build_layer_structure_section(state: Mapping[str, Any]) -> ReportSection:
 def _build_cut_plan_section(state: Mapping[str, Any]) -> ReportSection:
     cut_inputs = _nested(_nested(state, "inputs"), "zuschnitt")
     cut_results = _nested(_nested(state, "results"), "zuschnitt")
+    cut_data = _nested(cut_results, "data")
 
-    placement_rows = []
-    for row in _as_list(cut_results.get("placements")):
-        row_map = _as_mapping(row)
-        placement_rows.append(
-            {
-                "Material": _as_text(row_map.get("material"), "–"),
-                "Rohling": _as_text(row_map.get("bin"), "–"),
-                "Teil": _as_text(row_map.get("teil"), "–"),
-                "Breite": _format_number(row_map.get("breite")),
-                "Höhe": _format_number(row_map.get("hoehe")),
-                "X": _format_number(row_map.get("x")),
-                "Y": _format_number(row_map.get("y")),
-                "Status": _as_text(row_map.get("status"), "–"),
-            }
-        )
+    placements = _records_from_any(cut_results, cut_data, key="placements")
+    summaries = _records_from_any(cut_results, cut_data, key="summary")
+    bins = _records_from_any(cut_results, cut_data, key="bins")
+    manual_cut_candidates = _records_from_any(cut_results, cut_data, key="manual_cut_candidates")
 
-    summary_rows = []
-    for row in _as_list(cut_results.get("summary")):
-        row_map = _as_mapping(row)
-        summary_rows.append(
-            {
-                "Material": _as_text(row_map.get("material"), "–"),
-                "Anzahl Rohlinge": _format_number(row_map.get("count")),
-                "Preis": _format_number(row_map.get("price")),
-                "Kosten": _format_number(row_map.get("cost")),
-            }
-        )
+    placement_rows = [
+        {
+            "material": _as_text(row.get("material"), "–"),
+            "bin": _as_text(row.get("bin"), "–"),
+            "part": _as_text(row.get("teil"), "–"),
+            "width_mm": _to_number_or_none(row.get("breite")),
+            "height_mm": _to_number_or_none(row.get("hoehe")),
+            "x_mm": _to_number_or_none(row.get("x")),
+            "y_mm": _to_number_or_none(row.get("y")),
+            "status": _as_text(row.get("status"), "–"),
+        }
+        for row in placements
+    ]
 
-    bins_rows = []
-    for row in _as_list(cut_results.get("bins")):
-        row_map = _as_mapping(row)
-        bins_rows.append(
-            {
-                "Material": _as_text(row_map.get("material"), "–"),
-                "Rohling": _format_number(row_map.get("bin")),
-                "Rohlingbreite": _format_number(row_map.get("bin_width")),
-                "Rohlinghöhe": _format_number(row_map.get("bin_height")),
-                "Teile": len(_as_list(row_map.get("parts"))),
-            }
-        )
+    summary_rows = [
+        {
+            "material": _as_text(row.get("material"), "–"),
+            "bin_count": _to_int_or_none(row.get("count")),
+            "price": _to_number_or_none(row.get("price")),
+            "cost": _to_number_or_none(row.get("cost")),
+        }
+        for row in summaries
+    ]
+
+    bins_rows = [
+        {
+            "material": _as_text(row.get("material"), "–"),
+            "bin": _to_int_or_none(row.get("bin")),
+            "bin_width_mm": _to_number_or_none(row.get("bin_width")),
+            "bin_height_mm": _to_number_or_none(row.get("bin_height")),
+            "parts": len(_records_from(row, "parts")),
+        }
+        for row in bins
+    ]
 
     return ReportSection(
         id="zuschnittsplan",
@@ -266,51 +318,105 @@ def _build_cut_plan_section(state: Mapping[str, Any]) -> ReportSection:
             MetricsBlock(
                 title="Zuschnitt-Kennzahlen",
                 metrics=[
-                    MetricItem("Schnittfuge (Kerf)", _as_text(cut_inputs.get("kerf")), unit="mm"),
-                    MetricItem("Anzahl Cache-Platten", len(_as_list(cut_inputs.get("cached_plates")))),
-                    MetricItem("Gesamtkosten", _format_number(cut_results.get("total_cost"))),
-                    MetricItem("Anzahl Rohlinge gesamt", _format_number(cut_results.get("total_bin_count"))),
-                    MetricItem(
-                        "Manuelle Zuschnitte",
-                        len(_as_list(cut_results.get("manual_cut_candidates"))),
-                    ),
+                    MetricItem("kerf", "Schnittfuge (Kerf)", _to_number_or_none(cut_inputs.get("kerf")), unit="mm", format_hint="number"),
+                    MetricItem("cached_plates", "Anzahl Cache-Platten", len(_records_from(cut_inputs, "cached_plates")), format_hint="integer"),
+                    MetricItem("total_cost", "Gesamtkosten", _to_number_or_none(_coalesce(cut_results.get("total_cost"), cut_data.get("total_cost"))), format_hint="number"),
+                    MetricItem("total_bin_count", "Anzahl Rohlinge gesamt", _to_int_or_none(_coalesce(cut_results.get("total_bin_count"), cut_data.get("total_bin_count"))), format_hint="integer"),
+                    MetricItem("manual_cut_candidates", "Manuelle Zuschnitte", len(manual_cut_candidates), format_hint="integer"),
                 ],
             ),
-            TableBlock(
+            _table(
                 title="Platzierungen",
-                columns=["Material", "Rohling", "Teil", "Breite", "Höhe", "X", "Y", "Status"],
+                columns=[
+                    TableColumn("material", "Material"),
+                    TableColumn("bin", "Rohling"),
+                    TableColumn("part", "Teil"),
+                    TableColumn("width_mm", "Breite", unit="mm", value_type="number"),
+                    TableColumn("height_mm", "Höhe", unit="mm", value_type="number"),
+                    TableColumn("x_mm", "X", unit="mm", value_type="number"),
+                    TableColumn("y_mm", "Y", unit="mm", value_type="number"),
+                    TableColumn("status", "Status", value_type="status"),
+                ],
                 rows=placement_rows,
             ),
-            TableBlock(
+            _table(
                 title="Materialübersicht",
-                columns=["Material", "Anzahl Rohlinge", "Preis", "Kosten"],
+                columns=[
+                    TableColumn("material", "Material"),
+                    TableColumn("bin_count", "Anzahl Rohlinge", value_type="integer"),
+                    TableColumn("price", "Preis", value_type="number"),
+                    TableColumn("cost", "Kosten", value_type="number"),
+                ],
                 rows=summary_rows,
             ),
-            TableBlock(
+            _table(
                 title="Rohlinggruppen",
-                columns=["Material", "Rohling", "Rohlingbreite", "Rohlinghöhe", "Teile"],
+                columns=[
+                    TableColumn("material", "Material"),
+                    TableColumn("bin", "Rohling", value_type="integer"),
+                    TableColumn("bin_width_mm", "Rohlingbreite", unit="mm", value_type="number"),
+                    TableColumn("bin_height_mm", "Rohlinghöhe", unit="mm", value_type="number"),
+                    TableColumn("parts", "Teile", value_type="integer"),
+                ],
                 rows=bins_rows,
             ),
             ImageBlock(
-                title="Zuschnitt-Visualisierung (Placeholder)",
-                caption="In diesem Ausbauschritt wird nur die Datenstruktur vorbereitet.",
+                title="Zuschnitt-Visualisierung (Slot)",
+                image_role="diagram",
+                alt_text="Platzhalter für Zuschnittdiagramm",
+                caption="Diagramm-Slot; die Bildgenerierung folgt in Schritt 2B.",
+                metadata={
+                    "source_domain": "zuschnitt",
+                    "placement_count": len(placements),
+                    "bin_group_count": len(bins),
+                },
             ),
             TextBlock(text=_as_text(cut_results.get("message"), "")),
         ],
     )
 
 
+def _table(*, title: str, columns: list[TableColumn], rows: list[dict[str, Any]]) -> TableBlock:
+    normalized_rows = [TableRow(cells={column.key: row.get(column.key) for column in columns}) for row in rows]
+    return TableBlock(title=title, columns=columns, rows=normalized_rows)
+
+
 def _nested(mapping: Mapping[str, Any], key: str) -> dict[str, Any]:
     value = mapping.get(key)
-    return dict(value) if isinstance(value, Mapping) else {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
 
 
-def _as_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
+def _as_sequence(value: Any) -> list[Any]:
+    return list(value) if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)) else []
+
+
+def _records_from(mapping: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for entry in _as_sequence(mapping.get(key)):
+        if isinstance(entry, Mapping):
+            rows.append(dict(entry))
+    return rows
+
+
+def _records_from_any(*mappings: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
+    for mapping in mappings:
+        rows = _records_from(mapping, key)
+        if rows:
+            return rows
+    return []
+
+
+def _coalesce(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def _as_text(value: Any, fallback: str = "") -> str:
@@ -320,21 +426,24 @@ def _as_text(value: Any, fallback: str = "") -> str:
     return text if text else fallback
 
 
-def _format_number(value: Any, fallback: str = "–") -> str:
+def _to_number_or_none(value: Any) -> float | None:
     try:
-        number = float(value)
+        return float(value)
     except (TypeError, ValueError):
-        return fallback
-    if number.is_integer():
-        return str(int(number))
-    return f"{number:.3f}".rstrip("0").rstrip(".")
+        return None
 
 
-def _format_sequence(value: Any, *, max_items: int = 12) -> str:
-    items = _as_list(value)
-    if not items:
-        return "–"
-    formatted = [_format_number(item, fallback=_as_text(item, "–")) for item in items[:max_items]]
-    if len(items) > max_items:
-        formatted.append("…")
-    return ", ".join(formatted)
+def _to_int_or_none(value: Any) -> int | None:
+    number = _to_number_or_none(value)
+    if number is None:
+        return None
+    return int(number)
+
+
+def _numbers_from_sequence(value: Any, *, max_items: int = 24) -> list[float]:
+    numbers: list[float] = []
+    for item in _as_sequence(value)[:max_items]:
+        number = _to_number_or_none(item)
+        if number is not None:
+            numbers.append(number)
+    return numbers

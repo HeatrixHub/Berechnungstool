@@ -1,6 +1,6 @@
 """Reporting-Fundament: renderer-neutrale Datenmodelle und Builder."""
 
-from .model import (
+from .report_document import (
     ImageBlock,
     MetricItem,
     MetricsBlock,
@@ -8,7 +8,10 @@ from .model import (
     ReportDocument,
     ReportMetadata,
     ReportSection,
+    ReportValue,
     TableBlock,
+    TableColumn,
+    TableRow,
     TextBlock,
 )
 
@@ -20,6 +23,9 @@ __all__ = [
     "ReportDocument",
     "ReportMetadata",
     "ReportSection",
+    "ReportValue",
     "TableBlock",
+    "TableColumn",
+    "TableRow",
     "TextBlock",
 ]
