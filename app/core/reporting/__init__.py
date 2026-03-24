@@ -2,6 +2,7 @@
 
 from .report_document import (
     ImageBlock,
+    MetricFormatHint,
     MetricItem,
     MetricsBlock,
     ReportBlock,
@@ -17,6 +18,7 @@ from .report_document import (
 
 __all__ = [
     "ImageBlock",
+    "MetricFormatHint",
     "MetricItem",
     "MetricsBlock",
     "ReportBlock",

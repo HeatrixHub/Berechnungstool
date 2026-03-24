@@ -10,6 +10,9 @@ ReportSequence: TypeAlias = list[ReportScalar]
 ReportValue: TypeAlias = ReportScalar | ReportSequence
 
 
+MetricFormatHint: TypeAlias = Literal["plain", "number", "integer", "percentage", "status", "list"]
+
+
 @dataclass(slots=True)
 class ReportMetadata:
     """Metadaten eines Berichts mit defensiven Defaults."""
@@ -66,7 +69,7 @@ class MetricItem:
     label: str
     value: ReportValue = None
     unit: str | None = None
-    format_hint: Literal["plain", "number", "percentage", "status", "list"] = "plain"
+    format_hint: MetricFormatHint = "plain"
     note: str | None = None
 
 

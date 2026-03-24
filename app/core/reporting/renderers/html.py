@@ -7,6 +7,7 @@ from html import escape
 
 from app.core.reporting.report_document import (
     ImageBlock,
+    MetricFormatHint,
     MetricItem,
     MetricsBlock,
     ReportDocument,
@@ -219,7 +220,7 @@ def _safe_text(value: str | None, *, fallback: str = "–") -> str:
 
 def _format_metric_value(metric: MetricItem) -> str:
     value = metric.value
-    hint = metric.format_hint
+    hint: MetricFormatHint = metric.format_hint
 
     if value is None:
         return "–"
@@ -243,10 +244,7 @@ def _format_metric_value(metric: MetricItem) -> str:
         return escape(str(value)).capitalize()
 
     if hint == "integer":
-        if isinstance(value, bool):
-            return "1" if value else "0"
-        if isinstance(value, (float, int)):
-            return str(int(value))
+        return _format_integer(value)
 
     return escape(str(value))
 
@@ -259,8 +257,7 @@ def _format_table_cell(row: TableRow, column: TableColumn) -> str:
     if column.value_type == "number":
         return _format_number(value)
     if column.value_type == "integer":
-        if isinstance(value, (float, int)) and not isinstance(value, bool):
-            return str(int(value))
+        return _format_integer(value)
     if column.value_type == "status":
         return escape(str(value)).capitalize()
 
@@ -276,6 +273,14 @@ def _format_number(value: object) -> str:
         text = f"{value:,.3f}"
         text = text.rstrip("0").rstrip(".")
         return text.replace(",", " ")
+    return escape(str(value))
+
+
+def _format_integer(value: object) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (float, int)):
+        return str(int(value))
     return escape(str(value))
 
 
