@@ -63,3 +63,7 @@ HTML-Formatierung ausschließlich im Renderer.
   `status`, `list`).
 - **Nicht** Bestandteil dieses Stands: PDF-Renderer, PDF-Export und zusätzliche
   PDF-Abhängigkeiten.
+
+## Weiterer Ausbau – Standardbericht 01
+
+Die fachliche Zielstruktur für den ersten Standardbericht ist in `docs/reporting-standardbericht-01.md` dokumentiert. Der Isolierung-Builder ist entsprechend auf die Reihenfolge Titel → Projektdaten → Allgemeine Daten → Schichttabelle → Temperaturverlauf ausgerichtet.
