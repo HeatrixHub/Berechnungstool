@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import getpass
-import json
 import logging
 from collections.abc import Callable
 from typing import Any, Sequence
@@ -147,7 +146,6 @@ class ProjectsTab:
         self._author_input = QLineEdit()
         self._author_input.setText(self._author)
         self._description_input = QTextEdit()
-        self._metadata_input = QTextEdit()
 
         form_layout.addWidget(QLabel("Name:"), 0, 0)
         form_layout.addWidget(self._name_input, 0, 1)
@@ -155,8 +153,6 @@ class ProjectsTab:
         form_layout.addWidget(self._author_input, 1, 1)
         form_layout.addWidget(QLabel("Beschreibung:"), 2, 0)
         form_layout.addWidget(self._description_input, 2, 1)
-        form_layout.addWidget(QLabel("Metadaten (JSON):"), 3, 0)
-        form_layout.addWidget(self._metadata_input, 3, 1)
 
         apply_form_layout_defaults(form_layout)
         details_layout.addWidget(form)
@@ -190,7 +186,6 @@ class ProjectsTab:
             self._name_input,
             self._author_input,
             self._description_input,
-            self._metadata_input,
         ):
             widget.textChanged.connect(self._on_project_fields_changed)
 
@@ -262,9 +257,6 @@ class ProjectsTab:
             self._name_input.setText(record.name)
             self._author_input.setText(record.author)
             self._description_input.setPlainText(record.description)
-            self._metadata_input.setPlainText(
-                json.dumps(record.metadata, indent=2, ensure_ascii=False)
-            )
         finally:
             self._suppress_project_updates = False
 
@@ -274,7 +266,6 @@ class ProjectsTab:
             self._name_input.setText("")
             self._author_input.setText(self._author)
             self._description_input.setPlainText("")
-            self._metadata_input.setPlainText("{}")
         finally:
             self._suppress_project_updates = False
         self._active_form_snapshot = self._capture_form_snapshot()
@@ -302,9 +293,7 @@ class ProjectsTab:
         name = self._active_form_snapshot["name"].strip()
         author = self._active_form_snapshot["author"].strip()
         description = self._active_form_snapshot["description"].strip()
-        metadata = self._parse_metadata_text(self._active_form_snapshot["metadata"])
-        if metadata is None:
-            return False
+        metadata = self._metadata_for_save()
         if not name:
             self._show_error("Fehler", "Bitte einen Projektnamen angeben.")
             self._set_status("Speichern abgebrochen: Projektname fehlt.")
@@ -518,21 +507,14 @@ class ProjectsTab:
     def _plain_text(self, widget: object) -> str:
         return str(widget.toPlainText())
 
-    def _parse_metadata(self) -> dict[str, Any] | None:
-        raw = self._plain_text(self._metadata_input).strip() or "{}"
-        return self._parse_metadata_text(raw)
-
-    def _parse_metadata_text(self, raw: str) -> dict[str, Any] | None:
-        raw = raw.strip() or "{}"
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            self._show_error("Fehler", f"Metadaten sind ungültiges JSON: {exc}")
-            return None
-        if not isinstance(data, dict):
-            self._show_error("Fehler", "Metadaten müssen ein JSON-Objekt sein.")
-            return None
-        return data
+    def _metadata_for_save(self) -> dict[str, Any]:
+        if self._active_project_id:
+            record = self._project_cache.get(self._active_project_id)
+            if record is None:
+                record = self._store.load_project(self._active_project_id)
+            if record is not None:
+                return dict(record.metadata)
+        return {}
 
     def _set_status(self, message: str) -> None:
         self._status_label.setText(message)
@@ -577,7 +559,6 @@ class ProjectsTab:
             "name": "",
             "author": self._author,
             "description": "",
-            "metadata": "{}",
         }
 
     def _capture_form_snapshot(self) -> dict[str, str]:
@@ -585,7 +566,6 @@ class ProjectsTab:
             "name": self._text(self._name_input),
             "author": self._text(self._author_input),
             "description": self._plain_text(self._description_input),
-            "metadata": self._plain_text(self._metadata_input),
         }
 
     def _capture_active_form_snapshot(self) -> None:
@@ -599,7 +579,6 @@ class ProjectsTab:
             self._name_input.setText(snapshot.get("name", ""))
             self._author_input.setText(snapshot.get("author", self._author))
             self._description_input.setPlainText(snapshot.get("description", ""))
-            self._metadata_input.setPlainText(snapshot.get("metadata", "{}"))
         finally:
             self._suppress_project_updates = False
 
@@ -615,7 +594,6 @@ class ProjectsTab:
             self._name_input,
             self._author_input,
             self._description_input,
-            self._metadata_input,
         ):
             if hasattr(widget, "setReadOnly"):
                 widget.setReadOnly(enabled)
