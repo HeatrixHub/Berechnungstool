@@ -233,8 +233,14 @@ class ProjectsTab:
         if record is None:
             return
         self._selected_project_id = project_id
+        self._preview_selected_record(record)
         self._update_action_buttons()
         self._set_status(f"Projekt '{record.name}' ausgewählt (nicht geladen).")
+
+    def _preview_selected_record(self, record: ProjectRecord) -> None:
+        """Aktualisiert nur die Formularfelder für die Listen-Vorschau."""
+        with self._dirty_tracker.paused():
+            self._load_record_into_form(record)
 
     def _load_record_into_form(self, record: ProjectRecord) -> None:
         self._suppress_project_updates = True
