@@ -60,8 +60,8 @@ class ProjectsTab:
         self._project_cache: dict[str, ProjectRecord] = {}
         self._selected_project_id: str | None = None
         self._active_project_id: str | None = None
+        self._workspace_plugin_states: dict[str, dict[str, Any]] = {}
         self._dirty = False
-        self._is_new_mode = False
         self._suppress_project_updates = False
         self._on_project_loaded = on_project_loaded
 
@@ -75,6 +75,7 @@ class ProjectsTab:
         self._build_ui()
         self._insert_tab()
         self.refresh_projects()
+        self._activate_unsaved_workspace(reset_plugins=False)
         self._install_close_handler(main_window)
 
     def on_plugins_loaded(self) -> None:
@@ -82,6 +83,10 @@ class ProjectsTab:
             widget = getattr(plugin, "widget", None)
             if widget is not None:
                 self._dirty_tracker.attach_widget(widget)
+        with self._dirty_tracker.paused():
+            states, _errors = self._state_coordinator.collect_states()
+        self._workspace_plugin_states = states
+        self._activate_unsaved_workspace(reset_plugins=False, reset_dirty=False)
 
     def _install_close_handler(self, main_window: object | None) -> None:
         if main_window is None:
@@ -154,7 +159,9 @@ class ProjectsTab:
         apply_form_layout_defaults(form_layout)
         details_layout.addWidget(form)
 
-        self._status_label = QLabel("Kein Projekt ausgewählt.")
+        self._active_project_label = QLabel("Aktiv: Ungespeichertes Projekt")
+        details_layout.addWidget(self._active_project_label)
+        self._status_label = QLabel("Ungespeicherte Arbeitsfläche aktiv.")
         details_layout.addWidget(self._status_label)
 
         actions_container = QWidget()
@@ -198,11 +205,10 @@ class ProjectsTab:
         self._project_list.blockSignals(False)
         if previous_selection and previous_selection in self._project_cache:
             self._select_project_by_id(previous_selection)
-        elif self._project_cache:
-            first_id = next(iter(self._project_cache))
-            self._select_project_by_id(first_id)
         else:
-            self._clear_form(reset_dirty=False)
+            self._selected_project_id = None
+            self._project_list.setCurrentRow(-1)
+        self._update_active_project_label()
         self._update_action_buttons()
 
     def _select_project_by_id(self, project_id: str) -> None:
@@ -220,18 +226,15 @@ class ProjectsTab:
             project_id = current.data(self._user_role())
         if not project_id:
             self._selected_project_id = None
-            self._clear_form(reset_dirty=False)
             self._update_action_buttons()
-            self._set_status("Kein Projekt ausgewählt.")
+            self._set_status("Keine Auswahl in der Projektliste.")
             return
         record = self._project_cache.get(project_id)
         if record is None:
             return
         self._selected_project_id = project_id
-        self._is_new_mode = False
-        self._load_record_into_form(record)
         self._update_action_buttons()
-        self._set_status(f"Projekt '{record.name}' ausgewählt.")
+        self._set_status(f"Projekt '{record.name}' ausgewählt (nicht geladen).")
 
     def _load_record_into_form(self, record: ProjectRecord) -> None:
         self._suppress_project_updates = True
@@ -260,14 +263,8 @@ class ProjectsTab:
     def _enter_new_mode(self) -> None:
         if not self.confirm_unsaved_changes("Neues Projekt"):
             return
-        self._is_new_mode = True
-        self._selected_project_id = None
-        self._project_list.blockSignals(True)
-        self._project_list.setCurrentRow(-1)
-        self._project_list.blockSignals(False)
-        self._clear_form(reset_dirty=False)
-        self._set_status("Neues Projekt vorbereitet. Bitte Projektdaten eingeben.")
-        self._update_action_buttons()
+        self._activate_unsaved_workspace(reset_plugins=True)
+        self._set_status("Ungespeicherte Arbeitsfläche vorbereitet.")
 
     def save_project(self) -> bool:
         name = self._text(self._name_input).strip()
@@ -289,7 +286,7 @@ class ProjectsTab:
             )
             self._set_status("Speichern abgebrochen: Plugin-Zustände unvollständig.")
             return False
-        project_id = None if self._is_new_mode else self._selected_project_id
+        project_id = self._active_project_id
         try:
             record = self._store.save_project(
                 name=name,
@@ -305,8 +302,8 @@ class ProjectsTab:
             return False
         self._selected_project_id = record.id
         self._active_project_id = record.id
-        self._is_new_mode = False
         self.refresh_projects()
+        self._update_active_project_label()
         self._set_dirty(False)
         self._show_info("Gespeichert", f"Projekt '{record.name}' wurde gespeichert.")
         self._set_status(
@@ -330,7 +327,10 @@ class ProjectsTab:
         with self._dirty_tracker.paused():
             missing, unknown, errors = self._state_coordinator.apply_states(record.plugin_states)
             self._apply_ui_state(record.ui_state)
+            self._load_record_into_form(record)
         self._active_project_id = record.id
+        self._selected_project_id = record.id
+        self._update_active_project_label()
         self._set_dirty(False)
         if errors:
             self._show_warning(
@@ -377,9 +377,10 @@ class ProjectsTab:
         if self._store.delete_project(record.id):
             self._show_info("Gelöscht", f"Projekt '{record.name}' wurde entfernt.")
             self._selected_project_id = None
-            self._is_new_mode = False
+            if self._active_project_id == record.id:
+                self._activate_unsaved_workspace(reset_plugins=True)
             self.refresh_projects()
-            self._set_status("Projekt gelöscht. Wähle einen anderen Eintrag oder speichere neu.")
+            self._set_status("Projekt gelöscht. Ungespeicherte Arbeitsfläche aktiv.")
         else:
             self._show_error("Fehler", "Projekt konnte nicht gelöscht werden.")
             self._set_status("Löschen fehlgeschlagen.")
@@ -438,7 +439,7 @@ class ProjectsTab:
                 name = record.name if record else "(unbekannt)"
                 self._set_status(f"Projekt '{name}' gespeichert.")
             else:
-                self._set_status("Kein ungespeichertes Projekt.")
+                self._set_status("Ungespeicherte Arbeitsfläche ohne Änderungen.")
         self._update_action_buttons()
 
     def _update_action_buttons(self) -> None:
@@ -491,6 +492,31 @@ class ProjectsTab:
 
     def _set_status(self, message: str) -> None:
         self._status_label.setText(message)
+
+    def _activate_unsaved_workspace(
+        self, *, reset_plugins: bool, reset_dirty: bool = True
+    ) -> None:
+        with self._dirty_tracker.paused():
+            if reset_plugins and self._workspace_plugin_states:
+                self._state_coordinator.apply_states(self._workspace_plugin_states)
+            self._clear_form(reset_dirty=False)
+        self._active_project_id = None
+        self._selected_project_id = None
+        self._project_list.blockSignals(True)
+        self._project_list.setCurrentRow(-1)
+        self._project_list.blockSignals(False)
+        self._update_active_project_label()
+        if reset_dirty:
+            self._set_dirty(False)
+        self._update_action_buttons()
+
+    def _update_active_project_label(self) -> None:
+        if self._active_project_id:
+            record = self._project_cache.get(self._active_project_id)
+            name = record.name if record else "(unbekannt)"
+            self._active_project_label.setText(f"Aktiv: {name}")
+            return
+        self._active_project_label.setText("Aktiv: Ungespeichertes Projekt")
 
     def _show_info(self, title: str, message: str) -> None:
         QMessageBox.information(self.widget, title, message)
