@@ -6,6 +6,11 @@ from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from .isolierung_embedding import (
+    build_embedded_isolierungen_from_plugin_states,
+    normalize_resolution_entry,
+)
 from uuid import uuid4
 
 
@@ -22,6 +27,8 @@ class ProjectRecord:
     updated_at: str
     plugin_states: Dict[str, Any]
     ui_state: Dict[str, Any]
+    embedded_isolierungen: Dict[str, Any]
+    insulation_resolution: Dict[str, Any]
 
 
 class ProjectStore:
@@ -65,6 +72,8 @@ class ProjectStore:
         metadata: Dict[str, Any] | None = None,
         plugin_states: Dict[str, Any],
         ui_state: Dict[str, Any] | None = None,
+        embedded_isolierungen: Dict[str, Any] | None = None,
+        insulation_resolution: Dict[str, Any] | None = None,
         project_id: str | None = None,
     ) -> ProjectRecord:
         """Erstellt oder aktualisiert einen Projekt-Datensatz."""
@@ -72,6 +81,15 @@ class ProjectStore:
         sanitized_states = self._ensure_json_serializable(plugin_states)
         sanitized_ui_state = self._ensure_json_serializable(ui_state or {})
         sanitized_metadata = self._ensure_json_serializable(metadata or {})
+        auto_embedded, auto_resolution = build_embedded_isolierungen_from_plugin_states(sanitized_states)
+        selected_embedded = auto_embedded if embedded_isolierungen is None else embedded_isolierungen
+        selected_resolution = auto_resolution if insulation_resolution is None else insulation_resolution
+        sanitized_embedded = self._normalize_embedded_isolierungen(
+            self._ensure_json_serializable(selected_embedded)
+        )
+        sanitized_resolution = self._normalize_insulation_resolution(
+            self._ensure_json_serializable(selected_resolution)
+        )
         now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
         if project_id:
@@ -84,6 +102,8 @@ class ProjectStore:
                 plugin_states=sanitized_states,
                 ui_state=sanitized_ui_state,
                 updated_at=now,
+                embedded_isolierungen=sanitized_embedded,
+                insulation_resolution=sanitized_resolution,
             )
         else:
             record = self._create_project(
@@ -95,6 +115,8 @@ class ProjectStore:
                 ui_state=sanitized_ui_state,
                 created_at=now,
                 updated_at=now,
+                embedded_isolierungen=sanitized_embedded,
+                insulation_resolution=sanitized_resolution,
             )
         self._persist()
         return record
@@ -141,6 +163,10 @@ class ProjectStore:
             plugin_states = {}
         if not isinstance(ui_state, dict):
             ui_state = {}
+        embedded_isolierungen = self._normalize_embedded_isolierungen(
+            data.get("embedded_isolierungen", {})
+        )
+        insulation_resolution = self._normalize_insulation_resolution(data.get("insulation_resolution", {}))
         return ProjectRecord(
             id=str(data.get("id")),
             name=str(data.get("name", "")),
@@ -151,6 +177,8 @@ class ProjectStore:
             updated_at=str(data.get("updated_at", "")),
             plugin_states=plugin_states,
             ui_state=ui_state,
+            embedded_isolierungen=embedded_isolierungen,
+            insulation_resolution=insulation_resolution,
         )
 
     def _normalize_root_data(self, raw: Any) -> Dict[str, Any]:
@@ -171,6 +199,22 @@ class ProjectStore:
                 "Plugin-Zustände enthalten nicht serialisierbare Daten"
             ) from exc
         return json.loads(serialized)
+
+    def _normalize_insulation_resolution(self, data: Any) -> Dict[str, Any]:
+        if not isinstance(data, dict):
+            return {"entries": []}
+        entries = data.get("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        return {"entries": [normalize_resolution_entry(entry) for entry in entries]}
+
+    def _normalize_embedded_isolierungen(self, data: Any) -> Dict[str, Any]:
+        if not isinstance(data, dict):
+            return {"families": []}
+        families = data.get("families", [])
+        if not isinstance(families, list):
+            families = []
+        return {"families": families}
 
     def _normalize_metadata(self, metadata: Any) -> Dict[str, Any]:
         if isinstance(metadata, dict):
@@ -197,6 +241,8 @@ class ProjectStore:
         ui_state: Dict[str, Any],
         created_at: str,
         updated_at: str,
+        embedded_isolierungen: Dict[str, Any],
+        insulation_resolution: Dict[str, Any],
     ) -> ProjectRecord:
         if not name:
             raise ValueError("Projektname darf nicht leer sein")
@@ -210,6 +256,8 @@ class ProjectStore:
             "updated_at": updated_at,
             "plugin_states": plugin_states,
             "ui_state": ui_state,
+            "embedded_isolierungen": embedded_isolierungen,
+            "insulation_resolution": insulation_resolution,
         }
         self._data.setdefault("projects", []).append(project)
         return self._to_record(project)
@@ -225,6 +273,8 @@ class ProjectStore:
         plugin_states: Dict[str, Any],
         ui_state: Dict[str, Any],
         updated_at: str,
+        embedded_isolierungen: Dict[str, Any],
+        insulation_resolution: Dict[str, Any],
     ) -> ProjectRecord:
         for project in self._data.get("projects", []):
             if project.get("id") == project_id:
@@ -236,6 +286,8 @@ class ProjectStore:
                         "metadata": metadata,
                         "plugin_states": plugin_states,
                         "ui_state": ui_state,
+                        "embedded_isolierungen": embedded_isolierungen,
+                        "insulation_resolution": insulation_resolution,
                         "updated_at": updated_at,
                     }
                 )
