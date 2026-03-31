@@ -4,6 +4,7 @@ from __future__ import annotations
 import getpass
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Sequence
 
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -15,11 +16,17 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QFileDialog,
     QSplitter,
     QTextEdit,
     QWidget,
 )
 
+from app.core.projects.export import (
+    EXPORT_FILE_SUFFIX,
+    build_project_export_payload,
+    export_project_to_file,
+)
 from app.core.projects.store import ProjectRecord, ProjectStore
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
@@ -165,10 +172,17 @@ class ProjectsTab:
         actions_container = QWidget()
         self._new_button = QPushButton("Neu")
         self._save_button = QPushButton("Speichern")
+        self._export_button = QPushButton("Exportieren")
         self._load_button = QPushButton("Laden")
         self._delete_button = QPushButton("Löschen")
         actions_layout = create_button_row(
-            [self._new_button, self._save_button, self._load_button, self._delete_button]
+            [
+                self._new_button,
+                self._save_button,
+                self._export_button,
+                self._load_button,
+                self._delete_button,
+            ]
         )
         actions_container.setLayout(actions_layout)
 
@@ -176,6 +190,7 @@ class ProjectsTab:
 
         self._new_button.clicked.connect(self._enter_new_mode)
         self._save_button.clicked.connect(self.save_project)
+        self._export_button.clicked.connect(self.export_active_project)
         self._load_button.clicked.connect(self.load_selected_project)
         self._delete_button.clicked.connect(self.delete_selected_project)
 
@@ -409,6 +424,68 @@ class ProjectsTab:
             self._show_error("Fehler", "Projekt konnte nicht gelöscht werden.")
             self._set_status("Löschen fehlgeschlagen.")
 
+    def export_active_project(self) -> None:
+        if not self._active_project_id:
+            self._show_info(
+                "Hinweis",
+                "Es ist kein aktives Projekt geladen, das exportiert werden kann.",
+            )
+            self._set_status("Export abgebrochen: Kein aktives Projekt vorhanden.")
+            return
+        record = self._project_cache.get(self._active_project_id)
+        if record is None:
+            record = self._store.load_project(self._active_project_id)
+        if record is None:
+            self._show_error("Fehler", "Das aktive Projekt wurde nicht gefunden.")
+            self._set_status("Export abgebrochen: Aktives Projekt nicht gefunden.")
+            return
+
+        self._capture_active_form_snapshot()
+        with self._dirty_tracker.paused():
+            plugin_states, errors = self._state_coordinator.collect_states()
+        if errors:
+            self._show_error(
+                "Fehler",
+                "Export abgebrochen. Einige Plugin-Zustände konnten nicht gelesen werden:\n"
+                + "\n".join(errors),
+            )
+            self._set_status("Export abgebrochen: Plugin-Zustände unvollständig.")
+            return
+
+        default_file_name = f"{record.name.strip() or 'projekt'}{EXPORT_FILE_SUFFIX}"
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self.widget,
+            "Projekt exportieren",
+            default_file_name,
+            f"Heatrix Projekt-Export (*{EXPORT_FILE_SUFFIX});;JSON (*.json)",
+        )
+        if not selected_path:
+            self._set_status("Export abgebrochen: Kein Zieldateiname gewählt.")
+            return
+
+        try:
+            payload = build_project_export_payload(
+                project=record,
+                plugin_states=plugin_states,
+                ui_state=self._capture_ui_state(),
+                name=self._active_form_snapshot["name"],
+                author=self._active_form_snapshot["author"],
+                description=self._active_form_snapshot["description"],
+                app_version=self._resolve_app_version(),
+            )
+            target_path = export_project_to_file(payload, Path(selected_path))
+        except ValueError as exc:
+            self._show_error("Fehler", str(exc))
+            self._set_status(f"Export abgebrochen: {exc}")
+            return
+        except OSError as exc:
+            self._show_error("Fehler", f"Datei konnte nicht geschrieben werden: {exc}")
+            self._set_status("Export fehlgeschlagen: Datei konnte nicht geschrieben werden.")
+            return
+
+        self._show_info("Export erfolgreich", f"Projekt wurde exportiert:\n{target_path}")
+        self._set_status(f"Projekt exportiert: {target_path.name}")
+
     def confirm_unsaved_changes(self, action_label: str) -> bool:
         if not self._dirty:
             return True
@@ -474,6 +551,7 @@ class ProjectsTab:
     def _update_action_buttons(self) -> None:
         has_selection = bool(self._selected_project_id)
         self._save_button.setEnabled(not self._is_previewing_foreign_project())
+        self._export_button.setEnabled(bool(self._active_project_id))
         self._load_button.setEnabled(has_selection)
         self._delete_button.setEnabled(has_selection)
 
@@ -515,6 +593,14 @@ class ProjectsTab:
             if record is not None:
                 return dict(record.metadata)
         return {}
+
+    def _resolve_app_version(self) -> str | None:
+        try:
+            from app import __version__ as app_version  # type: ignore[attr-defined]
+        except Exception:
+            return None
+        app_version_text = str(app_version).strip()
+        return app_version_text or None
 
     def _set_status(self, message: str) -> None:
         self._status_label.setText(message)
