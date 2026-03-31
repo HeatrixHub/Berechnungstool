@@ -27,6 +27,7 @@ from app.core.projects.export import (
     build_project_export_payload,
     export_project_to_file,
 )
+from app.core.projects.import_service import ProjectImportError, ProjectImportService
 from app.core.projects.store import ProjectRecord, ProjectStore
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
@@ -77,6 +78,7 @@ class ProjectsTab:
             plugin_manager=self._plugin_manager,
             plugin_specs=self._plugin_specs,
         )
+        self._import_service = ProjectImportService()
         self._dirty_tracker = DirtyStateTracker(self._mark_dirty)
 
         self.widget = QWidget()
@@ -172,6 +174,7 @@ class ProjectsTab:
         actions_container = QWidget()
         self._new_button = QPushButton("Neu")
         self._save_button = QPushButton("Speichern")
+        self._import_button = QPushButton("Importieren")
         self._export_button = QPushButton("Exportieren")
         self._load_button = QPushButton("Laden")
         self._delete_button = QPushButton("Löschen")
@@ -179,6 +182,7 @@ class ProjectsTab:
             [
                 self._new_button,
                 self._save_button,
+                self._import_button,
                 self._export_button,
                 self._load_button,
                 self._delete_button,
@@ -190,6 +194,7 @@ class ProjectsTab:
 
         self._new_button.clicked.connect(self._enter_new_mode)
         self._save_button.clicked.connect(self.save_project)
+        self._import_button.clicked.connect(self.import_project_file)
         self._export_button.clicked.connect(self.export_active_project)
         self._load_button.clicked.connect(self.load_selected_project)
         self._delete_button.clicked.connect(self.delete_selected_project)
@@ -485,6 +490,38 @@ class ProjectsTab:
 
         self._show_info("Export erfolgreich", f"Projekt wurde exportiert:\n{target_path}")
         self._set_status(f"Projekt exportiert: {target_path.name}")
+
+    def import_project_file(self) -> None:
+        selected_path, _ = QFileDialog.getOpenFileName(
+            self.widget,
+            "Projekt importieren",
+            "",
+            f"Heatrix Projekt-Export (*{EXPORT_FILE_SUFFIX});;JSON (*.json);;Alle Dateien (*)",
+        )
+        if not selected_path:
+            self._set_status("Import abgebrochen: Keine Datei ausgewählt.")
+            return
+
+        try:
+            imported = self._import_service.import_from_file(Path(selected_path), store=self._store)
+        except ProjectImportError as exc:
+            self._show_error("Import fehlgeschlagen", str(exc))
+            self._set_status(f"Import abgebrochen: {exc}")
+            return
+        except OSError as exc:
+            self._show_error("Import fehlgeschlagen", f"Datei konnte nicht verarbeitet werden: {exc}")
+            self._set_status("Import fehlgeschlagen: Dateizugriff nicht möglich.")
+            return
+        except ValueError as exc:
+            self._show_error("Import fehlgeschlagen", str(exc))
+            self._set_status(f"Import abgebrochen: {exc}")
+            return
+
+        self.refresh_projects()
+        self._selected_project_id = imported.id
+        self._select_project_by_id(imported.id)
+        self._show_info("Import erfolgreich", f"Projekt '{imported.name}' wurde als neues lokales Projekt importiert.")
+        self._set_status(f"Projekt importiert: {imported.name}")
 
     def confirm_unsaved_changes(self, action_label: str) -> bool:
         if not self._dirty:

@@ -75,6 +75,8 @@ class ProjectStore:
         embedded_isolierungen: Dict[str, Any] | None = None,
         insulation_resolution: Dict[str, Any] | None = None,
         project_id: str | None = None,
+        created_at_override: str | None = None,
+        updated_at_override: str | None = None,
     ) -> ProjectRecord:
         """Erstellt oder aktualisiert einen Projekt-Datensatz."""
 
@@ -91,6 +93,8 @@ class ProjectStore:
             self._ensure_json_serializable(selected_resolution)
         )
         now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        effective_created_at = created_at_override or now
+        effective_updated_at = updated_at_override or now
 
         if project_id:
             record = self._update_project(
@@ -101,7 +105,7 @@ class ProjectStore:
                 metadata=sanitized_metadata,
                 plugin_states=sanitized_states,
                 ui_state=sanitized_ui_state,
-                updated_at=now,
+                updated_at=effective_updated_at,
                 embedded_isolierungen=sanitized_embedded,
                 insulation_resolution=sanitized_resolution,
             )
@@ -113,8 +117,8 @@ class ProjectStore:
                 metadata=sanitized_metadata,
                 plugin_states=sanitized_states,
                 ui_state=sanitized_ui_state,
-                created_at=now,
-                updated_at=now,
+                created_at=effective_created_at,
+                updated_at=effective_updated_at,
                 embedded_isolierungen=sanitized_embedded,
                 insulation_resolution=sanitized_resolution,
             )
