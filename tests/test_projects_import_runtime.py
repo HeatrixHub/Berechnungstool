@@ -144,7 +144,8 @@ class RuntimeResolverTests(unittest.TestCase):
 
 
 class MatchingAndImportValidationTests(unittest.TestCase):
-    def test_matching_separates_exact_and_candidate_conflict(self):
+    @patch("app.core.projects.insulation_matching.get_family_by_id")
+    def test_matching_separates_exact_and_candidate_conflict(self, mock_get_family_by_id):
         service = InsulationImportMatchingService()
         embedded = {
             "families": [
@@ -170,8 +171,8 @@ class MatchingAndImportValidationTests(unittest.TestCase):
                 },
             ]
         }
-        local_rows = [
-            {
+        mock_get_family_by_id.side_effect = lambda family_id: {
+            1: {
                 "id": 1,
                 "name": "Calcium",
                 "classification_temp": 650,
@@ -181,7 +182,7 @@ class MatchingAndImportValidationTests(unittest.TestCase):
                 "ks": [0.1, 0.12],
                 "variants": [],
             },
-            {
+            2: {
                 "id": 2,
                 "name": "Aerogel",
                 "classification_temp": 650,
@@ -191,8 +192,11 @@ class MatchingAndImportValidationTests(unittest.TestCase):
                 "ks": [0.2, 0.22],
                 "variants": [],
             },
-        ]
-        with patch("app.core.projects.insulation_matching.list_families", return_value=local_rows):
+        }[family_id]
+        with patch(
+            "app.core.projects.insulation_matching.list_families",
+            return_value=[{"id": 1, "name": "Calcium", "variant_count": 0}, {"id": 2, "name": "Aerogel", "variant_count": 0}],
+        ):
             analysis = service.analyze(
                 embedded_isolierungen=embedded,
                 insulation_resolution={
@@ -228,10 +232,12 @@ class MatchingAndImportValidationTests(unittest.TestCase):
             service.prepare_import_payload(wrong_version_payload)
 
     @patch("app.core.projects.isolierung_embedding.get_family_by_id")
+    @patch("app.core.projects.insulation_matching.get_family_by_id")
     @patch("app.core.projects.insulation_matching.list_families")
     def test_canonical_entries_and_variant_exact_match_without_id_compare(
         self,
         mock_list_families,
+        mock_get_family_by_id,
         mock_get_family,
     ):
         def _family_from_db(family_id: int):
@@ -264,21 +270,22 @@ class MatchingAndImportValidationTests(unittest.TestCase):
             raise ValueError("missing")
 
         mock_get_family.side_effect = _family_from_db
-        mock_list_families.return_value = [
-            {
-                "id": 501,
-                "name": "Mineralwolle A",
-                "classification_temp": 650,
-                "max_temp": 700,
-                "density": 95,
-                "temps": [100, 200],
-                "ks": [0.1, 0.12],
-                "variants": [
-                    # Gleiche Fachdaten wie importiert, aber andere lokale IDs.
-                    {"id": 999, "name": "30 mm", "thickness": 30, "length": 1000, "width": 500, "price": 12.5}
-                ],
-            }
-        ]
+        mock_list_families.return_value = [{"id": 501, "name": "Mineralwolle A", "variant_count": 2}]
+        mock_get_family_by_id.return_value = {
+            "id": 501,
+            "name": "Mineralwolle A",
+            "classification_temp": 650,
+            "max_temp": 700,
+            "density": 95,
+            "temps": [100, 200],
+            "ks": [0.1, 0.12],
+            "variants": [
+                # Gleiche Fachdaten wie importiert, aber andere lokale IDs.
+                {"id": 999, "name": "30 mm", "thickness": 30, "length": 1000, "width": 500, "price": 12.5},
+                # Zusätzliche lokale Variante darf exakten Treffer nicht verhindern.
+                {"id": 1001, "name": "60 mm", "thickness": 60, "length": 1000, "width": 500, "price": 18.0},
+            ],
+        }
 
         plugin_states = {
             "isolierung": {
@@ -312,6 +319,63 @@ class MatchingAndImportValidationTests(unittest.TestCase):
         self.assertEqual(analysis.summary["no_match"], 1)
         self.assertEqual(analysis.summary["candidate_conflict"], 0)
         self.assertEqual(analysis.summary["invalid_reference"], 0)
+
+    @patch("app.core.projects.insulation_matching.get_family_by_id")
+    @patch("app.core.projects.insulation_matching.list_families")
+    def test_variant_name_match_with_different_values_stays_conflict(
+        self,
+        mock_list_families,
+        mock_get_family_by_id,
+    ):
+        embedded = {
+            "families": [
+                {
+                    "project_family_key": "fam-2",
+                    "name": "Test2",
+                    "classification_temp": 650,
+                    "max_temp": 700,
+                    "density": 90,
+                    "temps": [100, 200],
+                    "ks": [0.1, 0.12],
+                    "variants": [
+                        {
+                            "project_variant_key": "var-2-1",
+                            "name": "V1",
+                            "thickness": 30,
+                            "length": 1000,
+                            "width": 500,
+                            "price": 12.5,
+                        }
+                    ],
+                }
+            ]
+        }
+        mock_list_families.return_value = [{"id": 777, "name": "Test2", "variant_count": 1}]
+        mock_get_family_by_id.return_value = {
+            "id": 777,
+            "name": "Test2",
+            "classification_temp": 650,
+            "max_temp": 700,
+            "density": 90,
+            "temps": [100, 200],
+            "ks": [0.1, 0.12],
+            "variants": [
+                # Name gleich, Fachwert (price) abweichend => kein exact_match.
+                {"id": 900, "name": "V1", "thickness": 30, "length": 1000, "width": 500, "price": 13.0}
+            ],
+        }
+
+        analysis = InsulationImportMatchingService().analyze(
+            embedded_isolierungen=embedded,
+            insulation_resolution={
+                "entries": [
+                    {"project_insulation_key": "var-2-1", "family_key": "fam-2", "variant_key": "var-2-1"}
+                ]
+            },
+        )
+        self.assertEqual(analysis.summary["exact_match"], 0)
+        self.assertEqual(analysis.summary["candidate_conflict"], 1)
+        self.assertEqual(analysis.summary["no_match"], 0)
 
 
 if __name__ == "__main__":
