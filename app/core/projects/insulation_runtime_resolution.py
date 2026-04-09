@@ -10,7 +10,13 @@ from typing import Any
 
 from app.core.isolierungen_db.logic import get_family_by_id
 
-from .isolierung_embedding import SOURCE_EMBEDDED, SOURCE_LOCAL, normalize_resolution_entry
+from .isolierung_embedding import (
+    SOURCE_EMBEDDED,
+    SOURCE_LOCAL,
+    normalize_family_core_for_compare,
+    normalize_resolution_entry,
+    normalize_variant_for_compare,
+)
 
 
 ISOLIERUNG_PLUGIN_ID = "isolierung"
@@ -24,6 +30,8 @@ class RuntimeResolvedInsulation:
     linked_local: bool
     family_name: str
     variant_name: str | None
+    local_status: str
+    local_status_hint: str | None
     warning: str | None
 
 
@@ -76,6 +84,7 @@ class InsulationRuntimeResolver:
 
         for layer, project_key in _iter_isolierung_layers(plugin_state):
             entry = resolution_by_key.get(project_key)
+            embedded_target = embedded_by_key.get(project_key)
             if entry is None:
                 items.append(
                     RuntimeResolvedInsulation(
@@ -85,6 +94,8 @@ class InsulationRuntimeResolver:
                         linked_local=False,
                         family_name=str(layer.get("family", "")).strip(),
                         variant_name=_optional_text(layer.get("variant")),
+                        local_status="Keine Verknüpfung",
+                        local_status_hint=None,
                         warning="Kein Resolution-Eintrag gefunden.",
                     )
                 )
@@ -100,18 +111,18 @@ class InsulationRuntimeResolver:
             if requested_source == SOURCE_LOCAL:
                 resolved, warning = _resolve_local_target(
                     local_db=local_db,
-                    embedded_target=embedded_by_key.get(project_key),
+                    embedded_target=embedded_target,
                     local_family_cache=local_family_cache,
                 )
                 if resolved is None:
-                    resolved = embedded_by_key.get(project_key)
+                    resolved = embedded_target
                     effective_source = SOURCE_EMBEDDED if resolved is not None else "unresolved"
                     if warning:
                         warning = f"{warning} Fallback auf eingebettet."
                     else:
                         warning = "Lokale Referenz ungültig. Fallback auf eingebettet."
             else:
-                resolved = embedded_by_key.get(project_key)
+                resolved = embedded_target
                 if resolved is None:
                     effective_source = "unresolved"
                     warning = "Eingebettete Referenz fehlt."
@@ -125,6 +136,8 @@ class InsulationRuntimeResolver:
                         linked_local=linked_local,
                         family_name=str(layer.get("family", "")).strip(),
                         variant_name=_optional_text(layer.get("variant")),
+                        local_status="Lokale Verknüpfung fehlerhaft" if linked_local else "Keine Verknüpfung",
+                        local_status_hint="Keine auflösbaren Daten vorhanden.",
                         warning=warning or "Keine auflösbaren Daten vorhanden.",
                     )
                 )
@@ -134,6 +147,18 @@ class InsulationRuntimeResolver:
             layer["variant_id"] = resolved.get("variant_id")
             layer["family"] = resolved.get("family_name", "")
             layer["variant"] = resolved.get("variant_name", "")
+            local_status, local_status_hint = _evaluate_local_status(
+                linked_local=linked_local,
+                requested_source=requested_source,
+                effective_source=effective_source,
+                local_target=resolved if effective_source == SOURCE_LOCAL else None,
+                embedded_target=embedded_target,
+            )
+            if local_status == "Lokal abweichend" and effective_source == SOURCE_LOCAL:
+                warning = _append_warning(
+                    warning,
+                    "Lokaler Datensatz weicht vom eingebetteten Projektstand ab.",
+                )
 
             items.append(
                 RuntimeResolvedInsulation(
@@ -143,6 +168,8 @@ class InsulationRuntimeResolver:
                     linked_local=linked_local,
                     family_name=str(resolved.get("family_name", "")).strip(),
                     variant_name=_optional_text(resolved.get("variant_name")),
+                    local_status=local_status,
+                    local_status_hint=local_status_hint,
                     warning=warning,
                 )
             )
@@ -236,6 +263,8 @@ def _resolve_local_target(
         "variant_id": variant_id if resolved_variant is not None else None,
         "family_name": family_name,
         "variant_name": str(resolved_variant.get("name", "")).strip() if resolved_variant else "",
+        "family_core_compare": normalize_family_core_for_compare(family),
+        "variant_compare": normalize_variant_for_compare(resolved_variant) if resolved_variant else None,
     }, None
 
 
@@ -278,6 +307,7 @@ def _build_embedded_index(embedded_isolierungen: dict[str, Any]) -> dict[str, di
         if not isinstance(family, dict):
             continue
         family_name = str(family.get("name", "")).strip()
+        family_core_compare = normalize_family_core_for_compare(family)
         family_key = str(family.get("project_family_key", "")).strip()
         family_id = _extract_family_id_from_key(family_key)
         if family_key and family_id is not None:
@@ -288,6 +318,8 @@ def _build_embedded_index(embedded_isolierungen: dict[str, Any]) -> dict[str, di
                 "variant_id": None,
                 "family_name": family_name,
                 "variant_name": "",
+                "family_core_compare": family_core_compare,
+                "variant_compare": None,
             }
         variants = family.get("variants", [])
         if not isinstance(variants, list):
@@ -306,8 +338,49 @@ def _build_embedded_index(embedded_isolierungen: dict[str, Any]) -> dict[str, di
                 "variant_id": variant_id,
                 "family_name": family_name,
                 "variant_name": str(variant.get("name", "")).strip(),
+                "family_core_compare": family_core_compare,
+                "variant_compare": normalize_variant_for_compare(variant),
             }
     return index
+
+
+def _evaluate_local_status(
+    *,
+    linked_local: bool,
+    requested_source: str,
+    effective_source: str,
+    local_target: dict[str, Any] | None,
+    embedded_target: dict[str, Any] | None,
+) -> tuple[str, str | None]:
+    if not linked_local:
+        return "Keine Verknüpfung", None
+    if requested_source == SOURCE_EMBEDDED:
+        return "Lokal verknüpft (inaktiv)", "Aktiv ist bewusst die eingebettete Projektversion."
+    if effective_source != SOURCE_LOCAL:
+        return "Lokale Verknüpfung fehlerhaft", "Lokale Referenz ungültig; eingebetteter Fallback wird genutzt."
+    if local_target is None or embedded_target is None:
+        return "Lokal aktiv", None
+    if _local_equals_embedded(local_target=local_target, embedded_target=embedded_target):
+        return "Lokal synchron", "Lokale und eingebettete Daten sind identisch."
+    return "Lokal abweichend", "Lokale Daten wurden seit Import geändert oder unterscheiden sich."
+
+
+def _local_equals_embedded(*, local_target: dict[str, Any], embedded_target: dict[str, Any]) -> bool:
+    if local_target.get("family_core_compare") != embedded_target.get("family_core_compare"):
+        return False
+    embedded_variant = embedded_target.get("variant_compare")
+    local_variant = local_target.get("variant_compare")
+    if embedded_variant is None:
+        return local_variant is None
+    return local_variant == embedded_variant
+
+
+def _append_warning(base: str | None, additional: str) -> str:
+    if not base:
+        return additional
+    if additional in base:
+        return base
+    return f"{base} {additional}"
 
 
 def _build_resolution_index(resolution: dict[str, Any]) -> dict[str, dict[str, Any]]:

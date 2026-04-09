@@ -186,9 +186,9 @@ class ProjectsTab:
         self._insulation_resolution_hint = QLabel("Isolierungsquelle: keine aktiven Projektdaten.")
         self._insulation_resolution_hint.setWordWrap(True)
         details_layout.addWidget(self._insulation_resolution_hint)
-        self._insulation_resolution_table = QTableWidget(0, 5)
+        self._insulation_resolution_table = QTableWidget(0, 6)
         self._insulation_resolution_table.setHorizontalHeaderLabels(
-            ["Projekt-Isolierung", "Aktiv", "Lokal verknüpft", "Hinweis", "Aktion"]
+            ["Projekt-Isolierung", "Aktiv", "Lokal verknüpft", "Lokalstatus", "Hinweis", "Aktion"]
         )
         self._insulation_resolution_table.verticalHeader().setVisible(False)
         self._insulation_resolution_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -196,8 +196,9 @@ class ProjectsTab:
         self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         details_layout.addWidget(self._insulation_resolution_table)
 
         actions_container = QWidget()
@@ -566,6 +567,7 @@ class ProjectsTab:
                 prepared,
                 decisions=dialog.decisions(),
             )
+            import_report = self._import_service.build_import_decision_report(prepared_with_decisions)
             imported = self._import_service.persist_prepared_import(
                 prepared_with_decisions,
                 store=self._store,
@@ -586,7 +588,16 @@ class ProjectsTab:
         self.refresh_projects()
         self._selected_project_id = imported.id
         self._select_project_by_id(imported.id)
-        self._show_info("Import erfolgreich", f"Projekt '{imported.name}' wurde als neues lokales Projekt importiert.")
+        report_text = (
+            "Isolierungs-Ergebnis:\n"
+            f"• Eingebettet aktiv: {import_report.embedded_active}\n"
+            f"• Lokal aktiv: {import_report.local_active}\n"
+            f"• Neu in lokale DB übernommen: {import_report.adopted_to_local}"
+        )
+        self._show_info(
+            "Import erfolgreich",
+            f"Projekt '{imported.name}' wurde als neues lokales Projekt importiert.\n\n{report_text}",
+        )
         self._set_status(f"Projekt importiert: {imported.name}")
 
     def confirm_unsaved_changes(self, action_label: str) -> bool:
@@ -753,7 +764,7 @@ class ProjectsTab:
             return
         self._insulation_resolution_hint.setText(
             "Isolierungsquellen aktiv: 'Aktiv' zeigt die wirksame Quelle, "
-            "'Lokal verknüpft' zeigt nur eine vorhandene Referenz."
+            "'Lokalstatus' zeigt Synchronität/Abweichung zur eingebetteten Importversion."
         )
         self._insulation_resolution_table.setRowCount(len(items))
         for row, item in enumerate(items):
@@ -768,7 +779,9 @@ class ProjectsTab:
             self._insulation_resolution_table.setItem(row, 1, QTableWidgetItem(active))
             linked_text = "ja" if item.linked_local else "nein"
             self._insulation_resolution_table.setItem(row, 2, QTableWidgetItem(linked_text))
-            self._insulation_resolution_table.setItem(row, 3, QTableWidgetItem(item.warning or "–"))
+            self._insulation_resolution_table.setItem(row, 3, QTableWidgetItem(item.local_status))
+            hint_text = item.local_status_hint or item.warning or "–"
+            self._insulation_resolution_table.setItem(row, 4, QTableWidgetItem(hint_text))
             action_cell = QWidget()
             action_layout = create_button_row(
                 [
@@ -777,7 +790,7 @@ class ProjectsTab:
                 ]
             )
             action_cell.setLayout(action_layout)
-            self._insulation_resolution_table.setCellWidget(row, 4, action_cell)
+            self._insulation_resolution_table.setCellWidget(row, 5, action_cell)
         self._insulation_resolution_table.resizeRowsToContents()
 
     def _build_source_button(self, label: str, project_key: str, source: str) -> QPushButton:

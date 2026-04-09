@@ -8,9 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from .export import EXPORT_FORMAT_NAME, EXPORT_FORMAT_VERSION
-from app.core.isolierungen_db.logic import create_family, create_variant
+from app.core.isolierungen_db.logic import create_family, create_variant, list_families
 from .insulation_matching import InsulationImportMatchingService
-from .isolierung_embedding import normalize_resolution_entry
+from .isolierung_embedding import (
+    normalize_family_core_for_compare,
+    normalize_resolution_entry,
+    normalize_variant_for_compare,
+)
 from .store import ProjectRecord, ProjectStore
 
 
@@ -33,6 +37,13 @@ class PreparedProjectImport:
     embedded_isolierungen: dict[str, Any]
     insulation_resolution: dict[str, Any]
     insulation_matching_analysis: dict[str, Any]
+
+
+@dataclass(slots=True, frozen=True)
+class ImportDecisionReport:
+    embedded_active: int
+    local_active: int
+    adopted_to_local: int
 
 
 DECISION_USE_EMBEDDED = "use_embedded"
@@ -211,6 +222,28 @@ class ProjectImportService:
         prepared = self.prepare_import_from_file(source)
         return self.persist_prepared_import(prepared, store=store)
 
+    def build_import_decision_report(self, prepared: PreparedProjectImport) -> ImportDecisionReport:
+        entries = prepared.insulation_resolution.get("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        embedded_active = 0
+        local_active = 0
+        adopted_to_local = 0
+        for raw_entry in entries:
+            entry = normalize_resolution_entry(raw_entry if isinstance(raw_entry, dict) else {})
+            if entry.get("active_source") == "local":
+                local_active += 1
+            else:
+                embedded_active += 1
+            local_db = entry.get("local_db", {})
+            if isinstance(local_db, dict) and str(local_db.get("origin") or "").strip() == "project_import":
+                adopted_to_local += 1
+        return ImportDecisionReport(
+            embedded_active=embedded_active,
+            local_active=local_active,
+            adopted_to_local=adopted_to_local,
+        )
+
     def _apply_single_entry_decision(
         self,
         *,
@@ -271,9 +304,23 @@ class ProjectImportService:
             )
 
         family = target["family"]
+        family_name = str(family.get("name", "")).strip()
+        conflicting_family = self._find_local_family_by_name(family_name)
+        if conflicting_family is not None:
+            embedded_core = normalize_family_core_for_compare(family)
+            local_core = normalize_family_core_for_compare(conflicting_family)
+            if embedded_core == local_core:
+                raise ProjectImportError(
+                    "Übernahme in lokale DB abgebrochen: Materialfamilie "
+                    f"{family_name!r} existiert bereits identisch. Bitte lokalen Eintrag verknüpfen."
+                )
+            raise ProjectImportError(
+                "Übernahme in lokale DB abgebrochen: Namenskonflikt bei Materialfamilie "
+                f"{family_name!r} (lokale Struktur weicht vom Import ab)."
+            )
         try:
             family_id = create_family(
-                name=str(family.get("name", "")).strip(),
+                name=family_name,
                 classification_temp=float(family.get("classification_temp")),
                 max_temp=self._as_optional_float(family.get("max_temp")),
                 density=float(family.get("density")),
@@ -287,10 +334,17 @@ class ProjectImportService:
             ) from exc
         variant = target.get("variant")
         if isinstance(variant, dict):
+            variant_name = str(variant.get("name", "")).strip()
+            self._assert_no_variant_name_conflict(
+                family_id=family_id,
+                family_name=family_name,
+                variant_name=variant_name,
+                embedded_variant=variant,
+            )
             try:
                 variant_id = create_variant(
                     family_id=family_id,
-                    name=str(variant.get("name", "")).strip(),
+                    name=variant_name,
                     thickness=float(variant.get("thickness")),
                     length=self._as_optional_float(variant.get("length")),
                     width=self._as_optional_float(variant.get("width")),
@@ -487,3 +541,48 @@ class ProjectImportService:
         if parsed is None:
             raise ProjectImportError(error)
         return parsed
+
+    def _find_local_family_by_name(self, family_name: str) -> dict[str, Any] | None:
+        if not family_name:
+            return None
+        for family in list_families():
+            if not isinstance(family, dict):
+                continue
+            if str(family.get("name", "")).strip().casefold() == family_name.casefold():
+                return family
+        return None
+
+    def _assert_no_variant_name_conflict(
+        self,
+        *,
+        family_id: int,
+        family_name: str,
+        variant_name: str,
+        embedded_variant: dict[str, Any],
+    ) -> None:
+        if not variant_name:
+            return
+        local_family = next(
+            (
+                family
+                for family in list_families()
+                if isinstance(family, dict) and self._as_optional_int(family.get("id")) == family_id
+            ),
+            None,
+        )
+        if not isinstance(local_family, dict):
+            return
+        for local_variant in local_family.get("variants", []):
+            if not isinstance(local_variant, dict):
+                continue
+            if str(local_variant.get("name", "")).strip().casefold() != variant_name.casefold():
+                continue
+            if normalize_variant_for_compare(local_variant) == normalize_variant_for_compare(embedded_variant):
+                raise ProjectImportError(
+                    "Übernahme in lokale DB abgebrochen: Variante "
+                    f"{variant_name!r} in Familie {family_name!r} existiert bereits identisch."
+                )
+            raise ProjectImportError(
+                "Übernahme in lokale DB abgebrochen: Namenskonflikt bei Variante "
+                f"{variant_name!r} in Familie {family_name!r}."
+            )
