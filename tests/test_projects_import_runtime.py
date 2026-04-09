@@ -4,6 +4,7 @@ from unittest.mock import patch
 from app.core.projects.import_service import ProjectImportError, ProjectImportService
 from app.core.projects.insulation_matching import InsulationImportMatchingService
 from app.core.projects.insulation_runtime_resolution import InsulationRuntimeResolver
+from app.core.projects.isolierung_embedding import build_embedded_isolierungen_from_plugin_states
 
 
 class RuntimeResolverTests(unittest.TestCase):
@@ -225,6 +226,92 @@ class MatchingAndImportValidationTests(unittest.TestCase):
         }
         with self.assertRaises(ProjectImportError):
             service.prepare_import_payload(wrong_version_payload)
+
+    @patch("app.core.projects.isolierung_embedding.get_family_by_id")
+    @patch("app.core.projects.insulation_matching.list_families")
+    def test_canonical_entries_and_variant_exact_match_without_id_compare(
+        self,
+        mock_list_families,
+        mock_get_family,
+    ):
+        def _family_from_db(family_id: int):
+            if family_id == 10:
+                return {
+                    "id": 10,
+                    "name": "Mineralwolle A",
+                    "classification_temp": 650,
+                    "max_temp": 700,
+                    "density": 95,
+                    "temps": [100, 200],
+                    "ks": [0.1, 0.12],
+                    "variants": [
+                        {"id": 100, "name": "30 mm", "thickness": 30, "length": 1000, "width": 500, "price": 12.5}
+                    ],
+                }
+            if family_id == 30:
+                return {
+                    "id": 30,
+                    "name": "Schaum B",
+                    "classification_temp": 400,
+                    "max_temp": 450,
+                    "density": 40,
+                    "temps": [50, 100],
+                    "ks": [0.2, 0.24],
+                    "variants": [
+                        {"id": 300, "name": "XPS-77", "thickness": 20, "length": 800, "width": 400, "price": 8.0}
+                    ],
+                }
+            raise ValueError("missing")
+
+        mock_get_family.side_effect = _family_from_db
+        mock_list_families.return_value = [
+            {
+                "id": 501,
+                "name": "Mineralwolle A",
+                "classification_temp": 650,
+                "max_temp": 700,
+                "density": 95,
+                "temps": [100, 200],
+                "ks": [0.1, 0.12],
+                "variants": [
+                    # Gleiche Fachdaten wie importiert, aber andere lokale IDs.
+                    {"id": 999, "name": "30 mm", "thickness": 30, "length": 1000, "width": 500, "price": 12.5}
+                ],
+            }
+        ]
+
+        plugin_states = {
+            "isolierung": {
+                "inputs": {
+                    "berechnung": {
+                        "layers": [
+                            {"family_id": 10, "variant_id": None},
+                            {"family_id": 30, "variant_id": 300},
+                        ]
+                    },
+                    "schichtaufbau": {
+                        "layers": [
+                            {"family_id": 10, "variant_id": 100},
+                        ]
+                    },
+                }
+            }
+        }
+        embedded, resolution = build_embedded_isolierungen_from_plugin_states(plugin_states)
+
+        entries = resolution["entries"]
+        self.assertEqual(len(entries), 2)
+        self.assertEqual([entry["project_insulation_key"] for entry in entries], ["var-10-100", "var-30-300"])
+
+        analysis = InsulationImportMatchingService().analyze(
+            embedded_isolierungen=embedded,
+            insulation_resolution=resolution,
+        )
+        self.assertEqual(len(analysis.annotated_insulation_resolution["entries"]), 2)
+        self.assertEqual(analysis.summary["exact_match"], 1)
+        self.assertEqual(analysis.summary["no_match"], 1)
+        self.assertEqual(analysis.summary["candidate_conflict"], 0)
+        self.assertEqual(analysis.summary["invalid_reference"], 0)
 
 
 if __name__ == "__main__":

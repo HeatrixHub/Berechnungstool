@@ -13,7 +13,7 @@ from .insulation_matching import InsulationImportMatchingService
 from .isolierung_embedding import (
     normalize_family_core_for_compare,
     normalize_resolution_entry,
-    normalize_variant_for_compare,
+    normalize_variant_portable_for_compare,
 )
 from .store import ProjectRecord, ProjectStore
 
@@ -577,7 +577,9 @@ class ProjectImportService:
                 continue
             if str(local_variant.get("name", "")).strip().casefold() != variant_name.casefold():
                 continue
-            if normalize_variant_for_compare(local_variant) == normalize_variant_for_compare(embedded_variant):
+            if normalize_variant_portable_for_compare(local_variant) == normalize_variant_portable_for_compare(
+                embedded_variant
+            ):
                 raise ProjectImportError(
                     "Übernahme in lokale DB abgebrochen: Variante "
                     f"{variant_name!r} in Familie {family_name!r} existiert bereits identisch."
