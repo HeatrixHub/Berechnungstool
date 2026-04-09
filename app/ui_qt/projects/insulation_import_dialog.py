@@ -99,6 +99,14 @@ class InsulationImportDialog(QDialog):
         form.addRow("Ungültige Referenzen", QLabel(str(summary.get("invalid_reference", 0))))
         form.addRow("Warnungen", QLabel(str(len(warnings))))
         form.addRow("Fehler", QLabel(str(len(errors))))
+        if warnings:
+            warning_label = QLabel(" • " + "\n • ".join(str(item) for item in warnings[:3]))
+            warning_label.setWordWrap(True)
+            form.addRow("Warn-Details", warning_label)
+        if errors:
+            error_label = QLabel(" • " + "\n • ".join(str(item) for item in errors[:3]))
+            error_label.setWordWrap(True)
+            form.addRow("Fehler-Details", error_label)
         return box
 
     def _build_entries_area(self) -> QWidget:
@@ -134,7 +142,7 @@ class InsulationImportDialog(QDialog):
 
         box = QGroupBox(self._format_target_label(entry))
         form = QFormLayout(box)
-        form.addRow("Status", QLabel(status))
+        form.addRow("Status", QLabel(self._status_label(status)))
         form.addRow("Vorgeschlagen", QLabel(self._format_local_ref(local_db.get("family_id"), local_db.get("variant_id"))))
 
         decision_combo = QComboBox()
@@ -246,6 +254,15 @@ class InsulationImportDialog(QDialog):
         if status == "no_match":
             return "Kein lokaler Treffer: standardmäßig bleibt die eingebettete Version aktiv."
         return "Ungültige Referenz: sichere eingebettete Nutzung bleibt aktiv."
+
+    def _status_label(self, status: str) -> str:
+        labels = {
+            "exact_match": "Exakter Match",
+            "candidate_conflict": "Konfliktkandidat",
+            "no_match": "Kein Match",
+            "invalid_reference": "Ungültige Referenz",
+        }
+        return labels.get(status, status)
 
     def _format_target_label(self, entry: dict[str, Any]) -> str:
         family_key = str(entry.get("family_key", "")).strip()
