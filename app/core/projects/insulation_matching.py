@@ -11,7 +11,7 @@ from .isolierung_embedding import (
     normalize_family_core_for_compare,
     normalize_family_for_compare,
     normalize_resolution_entry,
-    normalize_variant_for_compare,
+    normalize_variant_portable_for_compare,
 )
 
 STATUS_EXACT_MATCH = "exact_match"
@@ -127,7 +127,7 @@ class InsulationImportMatchingService:
                     warnings.append(f"Doppelter variant_key in embedded_isolierungen: {variant_key!r}.")
                 variants_by_key[variant_key] = {
                     "family": family_norm,
-                    "variant": normalize_variant_for_compare(variant),
+                    "variant": normalize_variant_portable_for_compare(variant),
                 }
         return families_by_key, variants_by_key, warnings
 
@@ -154,7 +154,7 @@ class InsulationImportMatchingService:
                         "variant_id": variant.get("id"),
                         "family": family_norm,
                         "family_core": family_core,
-                        "variant": variant,
+                        "variant": normalize_variant_portable_for_compare(variant),
                     }
                 )
         return rows

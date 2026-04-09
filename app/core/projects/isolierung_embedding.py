@@ -133,6 +133,14 @@ def normalize_variant_for_compare(variant: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_variant_portable_for_compare(variant: dict[str, Any]) -> dict[str, Any]:
+    """Portable Vergleichsstruktur ohne lokale IDs."""
+
+    normalized = normalize_variant_for_compare(variant)
+    normalized.pop("id", None)
+    return normalized
+
+
 def _collect_used_refs_from_isolierung_state(plugin_state: Any) -> list[UsedInsulationRef]:
     if not isinstance(plugin_state, dict):
         return []
@@ -155,10 +163,25 @@ def _collect_used_refs_from_isolierung_state(plugin_state: Any) -> list[UsedInsu
             if family_id is None:
                 continue
             variant_id = _as_optional_int(layer.get("variant_id"))
-            key = (family_id, variant_id)
-            refs[key] = UsedInsulationRef(family_id=family_id, variant_id=variant_id)
+            refs[(family_id, variant_id)] = UsedInsulationRef(family_id=family_id, variant_id=variant_id)
 
-    return sorted(refs.values(), key=lambda ref: (ref.family_id, ref.variant_id is None, ref.variant_id or 0))
+    refs_by_family: dict[int, set[int | None]] = {}
+    for family_id, variant_id in refs:
+        refs_by_family.setdefault(family_id, set()).add(variant_id)
+
+    canonical_refs: list[UsedInsulationRef] = []
+    for family_id in sorted(refs_by_family):
+        variant_ids = refs_by_family[family_id]
+        concrete_variant_ids = sorted(item for item in variant_ids if item is not None)
+        if concrete_variant_ids:
+            canonical_refs.extend(
+                UsedInsulationRef(family_id=family_id, variant_id=variant_id)
+                for variant_id in concrete_variant_ids
+            )
+            continue
+        canonical_refs.append(UsedInsulationRef(family_id=family_id, variant_id=None))
+
+    return canonical_refs
 
 
 def _build_embedded_block(used_refs: list[UsedInsulationRef]) -> dict[str, Any]:

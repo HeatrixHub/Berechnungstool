@@ -15,7 +15,7 @@ from .isolierung_embedding import (
     SOURCE_LOCAL,
     normalize_family_core_for_compare,
     normalize_resolution_entry,
-    normalize_variant_for_compare,
+    normalize_variant_portable_for_compare,
 )
 
 
@@ -264,7 +264,7 @@ def _resolve_local_target(
         "family_name": family_name,
         "variant_name": str(resolved_variant.get("name", "")).strip() if resolved_variant else "",
         "family_core_compare": normalize_family_core_for_compare(family),
-        "variant_compare": normalize_variant_for_compare(resolved_variant) if resolved_variant else None,
+        "variant_compare": normalize_variant_portable_for_compare(resolved_variant) if resolved_variant else None,
     }, None
 
 
@@ -339,7 +339,7 @@ def _build_embedded_index(embedded_isolierungen: dict[str, Any]) -> dict[str, di
                 "family_name": family_name,
                 "variant_name": str(variant.get("name", "")).strip(),
                 "family_core_compare": family_core_compare,
-                "variant_compare": normalize_variant_for_compare(variant),
+                "variant_compare": normalize_variant_portable_for_compare(variant),
             }
     return index
 
