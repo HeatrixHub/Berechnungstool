@@ -45,6 +45,7 @@ from app.core.isolierungen_exchange.export_service import (
     build_insulation_exchange_payload,
     export_insulations_to_file,
 )
+from app.core.isolierungen_exchange.import_service import prepare_insulation_exchange_import_from_file
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
 
 
@@ -141,9 +142,11 @@ class IsolierungenDbTab:
         self._new_family_button = QPushButton("Neu")
         self._delete_family_button = QPushButton("Familie löschen")
         self._export_family_button = QPushButton("Familie exportieren")
+        self._import_family_button = QPushButton("Familie importieren")
         button_row.addWidget(self._new_family_button)
         button_row.addWidget(self._delete_family_button)
         button_row.addWidget(self._export_family_button)
+        button_row.addWidget(self._import_family_button)
         button_row.addStretch(1)
 
         self._family_model = DictTableModel(
@@ -182,6 +185,7 @@ class IsolierungenDbTab:
         self._new_family_button.clicked.connect(self.new_family)
         self._delete_family_button.clicked.connect(self.delete_family)
         self._export_family_button.clicked.connect(self.export_selected_family)
+        self._import_family_button.clicked.connect(self.import_family_prepare)
         return section
 
     def _build_variant_section(self) -> QGroupBox:
@@ -458,6 +462,41 @@ class IsolierungenDbTab:
             self.widget,
             "Export erfolgreich",
             f"Isolierungsfamilie wurde exportiert:\n{target_path}",
+        )
+
+    def import_family_prepare(self) -> None:
+        selected_path, _ = QFileDialog.getOpenFileName(
+            self.widget,
+            "Isolierung importieren",
+            "",
+            f"Heatrix Isolierungs-Export (*{EXPORT_FILE_SUFFIX});;JSON (*.json)",
+        )
+        if not selected_path:
+            return
+
+        try:
+            prepared_import = prepare_insulation_exchange_import_from_file(Path(selected_path))
+        except ValueError as exc:
+            QMessageBox.critical(self.widget, "Import fehlgeschlagen", str(exc))
+            return
+
+        warning_count = sum(1 for issue in prepared_import.issues if issue.level == "warning")
+        issue_lines = [
+            f"- {issue.message}"
+            for issue in prepared_import.issues
+            if issue.level == "warning"
+        ]
+        warning_text = "\n".join(issue_lines) if issue_lines else "Keine Warnungen."
+        QMessageBox.information(
+            self.widget,
+            "Import vorbereitet",
+            (
+                f"Datei erfolgreich validiert.\n"
+                f"Familien: {len(prepared_import.families)}\n"
+                f"Warnungen: {warning_count}\n\n"
+                "Hinweis: In diesem Schritt wurden noch keine Daten in die lokale DB geschrieben.\n\n"
+                f"{warning_text}"
+            ),
         )
 
     def delete_family(self) -> None:
