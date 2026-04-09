@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
-from app.core.isolierungen_db.logic import list_families
+from app.core.isolierungen_db.logic import get_family_by_id, list_families
 
 from .isolierung_embedding import (
     normalize_family_core_for_compare,
@@ -133,8 +133,13 @@ class InsulationImportMatchingService:
 
     def _load_local_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        for family in list_families():
-            if not isinstance(family, dict):
+        for family_summary in list_families():
+            if not isinstance(family_summary, dict):
+                continue
+            family_id = family_summary.get("id")
+            try:
+                family = get_family_by_id(int(family_id))
+            except (TypeError, ValueError):
                 continue
             family_norm = normalize_family_for_compare(family)
             family_core = normalize_family_core_for_compare(family)
