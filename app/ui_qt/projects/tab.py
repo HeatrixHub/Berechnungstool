@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QInputDialog,
     QPushButton,
     QFileDialog,
     QSplitter,
@@ -605,6 +606,8 @@ class ProjectsTab:
             return True
         result = self._prompt_unsaved_changes(action_label)
         if result == "save":
+            if self._requires_name_prompt_before_save():
+                return self._save_unnamed_draft_with_name_prompt()
             if self._preview_mode:
                 return self._save_project_from_form_snapshot()
             return self.save_project()
@@ -612,6 +615,45 @@ class ProjectsTab:
             self._set_dirty(False)
             return True
         return False
+
+    def _requires_name_prompt_before_save(self) -> bool:
+        if self._active_project_id:
+            return False
+        if not self._preview_mode:
+            self._capture_active_form_snapshot()
+        return not self._active_form_snapshot.get("name", "").strip()
+
+    def _save_unnamed_draft_with_name_prompt(self) -> bool:
+        project_name = self._prompt_project_name_for_new_save()
+        if project_name is None:
+            self._set_status("Projektwechsel abgebrochen: Kein Projektname vergeben.")
+            return False
+        self._active_form_snapshot["name"] = project_name
+        if not self._preview_mode:
+            self._suppress_project_updates = True
+            try:
+                self._name_input.setText(project_name)
+            finally:
+                self._suppress_project_updates = False
+        return self._save_project_from_form_snapshot()
+
+    def _prompt_project_name_for_new_save(self) -> str | None:
+        while True:
+            value, accepted = QInputDialog.getText(
+                self.widget,
+                "Projektname erforderlich",
+                "Bitte Projektnamen eingeben, um den Entwurf zu speichern:",
+                text=self._active_form_snapshot.get("name", "").strip(),
+            )
+            if not accepted:
+                return None
+            name = value.strip()
+            if name:
+                return name
+            self._show_warning(
+                "Projektname erforderlich",
+                "Ohne Projektnamen kann der Entwurf nicht gespeichert werden.",
+            )
 
     def _prompt_unsaved_changes(self, action_label: str) -> str:
         buttons = (
