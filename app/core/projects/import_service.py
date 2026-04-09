@@ -1,13 +1,14 @@
 """Importlogik für das externe Projekt-Austauschformat."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
 
 from .export import EXPORT_FORMAT_NAME, EXPORT_FORMAT_VERSION
+from app.core.isolierungen_db.logic import create_family, create_variant
 from .insulation_matching import InsulationImportMatchingService
 from .isolierung_embedding import normalize_resolution_entry
 from .store import ProjectRecord, ProjectStore
@@ -32,6 +33,22 @@ class PreparedProjectImport:
     embedded_isolierungen: dict[str, Any]
     insulation_resolution: dict[str, Any]
     insulation_matching_analysis: dict[str, Any]
+
+
+DECISION_USE_EMBEDDED = "use_embedded"
+DECISION_USE_LOCAL = "use_local"
+DECISION_ADOPT_TO_LOCAL = "adopt_to_local"
+
+
+@dataclass(slots=True, frozen=True)
+class InsulationImportDecision:
+    """Explizite Benutzerentscheidung je verwendeter importierter Isolierung."""
+
+    project_insulation_key: str
+    decision: str
+    local_family_id: int | None = None
+    local_variant_id: int | None = None
+    use_local_after_adopt: bool = False
 
 
 class ProjectImportService:
@@ -151,9 +168,203 @@ class ProjectImportService:
             updated_at_override=prepared.updated_at,
         )
 
+    def apply_insulation_import_decisions(
+        self,
+        prepared: PreparedProjectImport,
+        *,
+        decisions: list[InsulationImportDecision],
+    ) -> PreparedProjectImport:
+        """Reichert das Prepared-Importmodell mit expliziten Benutzerentscheidungen an."""
+
+        entries = prepared.insulation_resolution.get("entries", [])
+        if not isinstance(entries, list):
+            entries = []
+        decisions_by_key = {
+            str(item.project_insulation_key).strip(): item
+            for item in decisions
+            if str(item.project_insulation_key).strip()
+        }
+
+        embedded_index = self._build_embedded_index(prepared.embedded_isolierungen)
+        updated_entries: list[dict[str, Any]] = []
+        for raw_entry in entries:
+            entry = normalize_resolution_entry(raw_entry if isinstance(raw_entry, dict) else {})
+            project_key = str(entry.get("project_insulation_key", "")).strip()
+            decision = decisions_by_key.get(project_key)
+            if decision is None:
+                updated_entries.append(entry)
+                continue
+            updated_entries.append(
+                self._apply_single_entry_decision(
+                    entry=entry,
+                    decision=decision,
+                    embedded_index=embedded_index,
+                )
+            )
+
+        return replace(
+            prepared,
+            insulation_resolution={"entries": updated_entries},
+        )
+
     def import_from_file(self, source: Path, *, store: ProjectStore) -> ProjectRecord:
         prepared = self.prepare_import_from_file(source)
         return self.persist_prepared_import(prepared, store=store)
+
+    def _apply_single_entry_decision(
+        self,
+        *,
+        entry: dict[str, Any],
+        decision: InsulationImportDecision,
+        embedded_index: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        local_db = entry.get("local_db", {})
+        if not isinstance(local_db, dict):
+            local_db = {}
+        decision_type = str(decision.decision).strip()
+
+        if decision_type == DECISION_USE_EMBEDDED:
+            local_db["family_id"] = None
+            local_db["variant_id"] = None
+            entry["active_source"] = "embedded"
+            entry["local_db"] = local_db
+            return entry
+
+        if decision_type == DECISION_USE_LOCAL:
+            family_id = self._require_int(
+                decision.local_family_id,
+                f"Lokaler family_id fehlt für {entry.get('project_insulation_key')!r}.",
+            )
+            local_db["family_id"] = family_id
+            local_db["variant_id"] = self._as_optional_int(decision.local_variant_id)
+            entry["active_source"] = "local"
+            entry["local_db"] = local_db
+            return entry
+
+        if decision_type == DECISION_ADOPT_TO_LOCAL:
+            created = self._adopt_embedded_target_to_local_db(entry=entry, embedded_index=embedded_index)
+            local_db["family_id"] = created["family_id"]
+            local_db["variant_id"] = created["variant_id"]
+            local_db["origin"] = "project_import"
+            entry["active_source"] = "local" if decision.use_local_after_adopt else "embedded"
+            entry["local_db"] = local_db
+            return entry
+
+        raise ProjectImportError(
+            f"Unbekannte Importentscheidung für {entry.get('project_insulation_key')!r}: {decision_type!r}."
+        )
+
+    def _adopt_embedded_target_to_local_db(
+        self,
+        *,
+        entry: dict[str, Any],
+        embedded_index: dict[str, dict[str, Any]],
+    ) -> dict[str, int | None]:
+        project_key = str(entry.get("project_insulation_key", "")).strip()
+        family_key = str(entry.get("family_key", "")).strip()
+        variant_key = str(entry.get("variant_key", "")).strip()
+        target = embedded_index.get(variant_key or family_key)
+        if target is None:
+            raise ProjectImportError(
+                "Übernahme in lokale DB nicht möglich: "
+                f"keine eingebettete Referenz für {project_key or family_key!r} gefunden."
+            )
+
+        family = target["family"]
+        try:
+            family_id = create_family(
+                name=str(family.get("name", "")).strip(),
+                classification_temp=float(family.get("classification_temp")),
+                max_temp=self._as_optional_float(family.get("max_temp")),
+                density=float(family.get("density")),
+                temps=[float(item) for item in family.get("temps", [])],
+                ks=[float(item) for item in family.get("ks", [])],
+            )
+        except ValueError as exc:
+            raise ProjectImportError(
+                "Übernahme in lokale DB fehlgeschlagen: "
+                f"{exc}"
+            ) from exc
+        variant = target.get("variant")
+        if isinstance(variant, dict):
+            try:
+                variant_id = create_variant(
+                    family_id=family_id,
+                    name=str(variant.get("name", "")).strip(),
+                    thickness=float(variant.get("thickness")),
+                    length=self._as_optional_float(variant.get("length")),
+                    width=self._as_optional_float(variant.get("width")),
+                    price=self._as_optional_float(variant.get("price")),
+                )
+            except ValueError as exc:
+                raise ProjectImportError(
+                    "Übernahme in lokale DB fehlgeschlagen: "
+                    f"{exc}"
+                ) from exc
+            return {"family_id": family_id, "variant_id": variant_id}
+        return {"family_id": family_id, "variant_id": None}
+
+    def _build_embedded_index(self, embedded_isolierungen: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        families = embedded_isolierungen.get("families", [])
+        if not isinstance(families, list):
+            return {}
+        index: dict[str, dict[str, Any]] = {}
+        for family in families:
+            if not isinstance(family, dict):
+                continue
+            normalized_family = self._normalize_family_for_create(family)
+            family_key = str(family.get("project_family_key", "")).strip()
+            if family_key:
+                index[family_key] = {"family": normalized_family, "variant": None}
+            variants = family.get("variants", [])
+            if not isinstance(variants, list):
+                continue
+            for variant in variants:
+                if not isinstance(variant, dict):
+                    continue
+                variant_key = str(variant.get("project_variant_key", "")).strip()
+                if not variant_key:
+                    continue
+                index[variant_key] = {
+                    "family": normalized_family,
+                    "variant": self._normalize_variant_for_create(variant),
+                }
+        return index
+
+    def _normalize_family_for_create(self, family: dict[str, Any]) -> dict[str, Any]:
+        name = str(family.get("name", "")).strip()
+        if not name:
+            raise ProjectImportError("Übernahme in lokale DB nicht möglich: Familienname fehlt.")
+        classification_temp = self._as_required_float(
+            family.get("classification_temp"),
+            "Klassifikationstemperatur fehlt.",
+        )
+        density = self._as_required_float(family.get("density"), "Dichte fehlt.")
+        temps = self._as_float_list(family.get("temps"))
+        ks = self._as_float_list(family.get("ks"))
+        if len(temps) != len(ks):
+            raise ProjectImportError("Übernahme in lokale DB nicht möglich: Temperatur-/k-Werte inkonsistent.")
+        return {
+            "name": name,
+            "classification_temp": classification_temp,
+            "max_temp": self._as_optional_float(family.get("max_temp")),
+            "density": density,
+            "temps": temps,
+            "ks": ks,
+        }
+
+    def _normalize_variant_for_create(self, variant: dict[str, Any]) -> dict[str, Any]:
+        name = str(variant.get("name", "")).strip()
+        if not name:
+            raise ProjectImportError("Übernahme in lokale DB nicht möglich: Variantenname fehlt.")
+        thickness = self._as_required_float(variant.get("thickness"), "Variantendicke fehlt.")
+        return {
+            "name": name,
+            "thickness": thickness,
+            "length": self._as_optional_float(variant.get("length")),
+            "width": self._as_optional_float(variant.get("width")),
+            "price": self._as_optional_float(variant.get("price")),
+        }
 
     def _read_payload(self, source: Path) -> Any:
         try:
@@ -238,3 +449,41 @@ class ProjectImportService:
 
     def _utc_now_iso(self) -> str:
         return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+    def _as_required_float(self, value: Any, error: str) -> float:
+        parsed = self._as_optional_float(value)
+        if parsed is None:
+            raise ProjectImportError(f"Übernahme in lokale DB nicht möglich: {error}")
+        return parsed
+
+    def _as_optional_float(self, value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _as_float_list(self, value: Any) -> list[float]:
+        if not isinstance(value, list):
+            return []
+        out: list[float] = []
+        for item in value:
+            parsed = self._as_optional_float(item)
+            if parsed is not None:
+                out.append(parsed)
+        return out
+
+    def _as_optional_int(self, value: Any) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _require_int(self, value: Any, error: str) -> int:
+        parsed = self._as_optional_int(value)
+        if parsed is None:
+            raise ProjectImportError(error)
+        return parsed

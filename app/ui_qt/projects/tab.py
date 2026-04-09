@@ -10,6 +10,7 @@ from typing import Any, Sequence
 from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -30,6 +31,7 @@ from app.core.projects.export import (
 from app.core.projects.import_service import ProjectImportError, ProjectImportService
 from app.core.projects.store import ProjectRecord, ProjectStore
 from app.ui_qt.plugins.manager import QtPluginManager
+from app.ui_qt.projects.insulation_import_dialog import InsulationImportDialog
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
 from app.ui_qt.projects.state import DirtyStateTracker, PluginStateCoordinator
 from app.ui_qt.ui_helpers import (
@@ -503,7 +505,19 @@ class ProjectsTab:
             return
 
         try:
-            imported = self._import_service.import_from_file(Path(selected_path), store=self._store)
+            prepared = self._import_service.prepare_import_from_file(Path(selected_path))
+            dialog = InsulationImportDialog(prepared, self.widget)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self._set_status("Import abgebrochen: Isolierungsdialog abgebrochen.")
+                return
+            prepared_with_decisions = self._import_service.apply_insulation_import_decisions(
+                prepared,
+                decisions=dialog.decisions(),
+            )
+            imported = self._import_service.persist_prepared_import(
+                prepared_with_decisions,
+                store=self._store,
+            )
         except ProjectImportError as exc:
             self._show_error("Import fehlgeschlagen", str(exc))
             self._set_status(f"Import abgebrochen: {exc}")
