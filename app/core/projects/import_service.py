@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .export import EXPORT_FORMAT_NAME, EXPORT_FORMAT_VERSION
+from .insulation_matching import InsulationImportMatchingService
 from .isolierung_embedding import normalize_resolution_entry
 from .store import ProjectRecord, ProjectStore
 
@@ -30,10 +31,14 @@ class PreparedProjectImport:
     ui_state: dict[str, Any]
     embedded_isolierungen: dict[str, Any]
     insulation_resolution: dict[str, Any]
+    insulation_matching_analysis: dict[str, Any]
 
 
 class ProjectImportService:
     """Kapselt Dateilesen, Validierung und Import als neues lokales Projekt."""
+
+    def __init__(self) -> None:
+        self._matching_service = InsulationImportMatchingService()
 
     def prepare_import_from_file(self, source: Path) -> PreparedProjectImport:
         payload = self._read_payload(source)
@@ -81,6 +86,10 @@ class ProjectImportService:
         insulation_resolution = self._normalize_insulation_resolution(
             self._ensure_json_serializable(project.get("insulation_resolution"))
         )
+        matching_analysis = self._matching_service.analyze(
+            embedded_isolierungen=embedded_isolierungen,
+            insulation_resolution=insulation_resolution,
+        )
 
         name = str(master_data.get("name", "")).strip()
         if not name:
@@ -115,7 +124,12 @@ class ProjectImportService:
             plugin_states=plugin_states,
             ui_state=ui_state,
             embedded_isolierungen=embedded_isolierungen,
-            insulation_resolution=insulation_resolution,
+            insulation_resolution=matching_analysis.annotated_insulation_resolution,
+            insulation_matching_analysis={
+                "summary": matching_analysis.summary,
+                "warnings": matching_analysis.warnings,
+                "errors": matching_analysis.errors,
+            },
         )
 
     def persist_prepared_import(
