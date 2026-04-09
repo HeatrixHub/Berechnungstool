@@ -1,6 +1,7 @@
 """Qt UI tab for robust management of insulation families and variants."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -9,6 +10,7 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -38,6 +40,11 @@ from app.core.isolierungen_db.logic import (
     update_variant,
 )
 from app.core.isolierungen_db.services import parse_optional_float, parse_required_float
+from app.core.isolierungen_exchange.export_service import (
+    EXPORT_FILE_SUFFIX,
+    build_insulation_exchange_payload,
+    export_insulations_to_file,
+)
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
 
 
@@ -133,8 +140,10 @@ class IsolierungenDbTab:
         button_row = QHBoxLayout()
         self._new_family_button = QPushButton("Neu")
         self._delete_family_button = QPushButton("Familie löschen")
+        self._export_family_button = QPushButton("Familie exportieren")
         button_row.addWidget(self._new_family_button)
         button_row.addWidget(self._delete_family_button)
+        button_row.addWidget(self._export_family_button)
         button_row.addStretch(1)
 
         self._family_model = DictTableModel(
@@ -172,6 +181,7 @@ class IsolierungenDbTab:
         self._family_table.selectionModel().selectionChanged.connect(self.on_family_select)
         self._new_family_button.clicked.connect(self.new_family)
         self._delete_family_button.clicked.connect(self.delete_family)
+        self._export_family_button.clicked.connect(self.export_selected_family)
         return section
 
     def _build_variant_section(self) -> QGroupBox:
@@ -415,6 +425,41 @@ class IsolierungenDbTab:
         except Exception as exc:
             QMessageBox.critical(self.widget, "Fehler", str(exc))
 
+    def export_selected_family(self) -> None:
+        family_id = self._get_selected_family_id()
+        if family_id is None:
+            QMessageBox.warning(self.widget, "Export nicht möglich", "Bitte zuerst eine Familie auswählen.")
+            return
+
+        default_name = self._family_name_input.text().strip() or f"family-{family_id}"
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self.widget,
+            "Isolierung exportieren",
+            f"{default_name}{EXPORT_FILE_SUFFIX}",
+            f"Heatrix Isolierungs-Export (*{EXPORT_FILE_SUFFIX});;JSON (*.json)",
+        )
+        if not selected_path:
+            return
+
+        try:
+            payload = build_insulation_exchange_payload(
+                family_ids=[family_id],
+                app_version=self._resolve_app_version(),
+            )
+            target_path = export_insulations_to_file(payload, Path(selected_path))
+        except ValueError as exc:
+            QMessageBox.critical(self.widget, "Export fehlgeschlagen", str(exc))
+            return
+        except OSError as exc:
+            QMessageBox.critical(self.widget, "Export fehlgeschlagen", f"Datei konnte nicht geschrieben werden: {exc}")
+            return
+
+        QMessageBox.information(
+            self.widget,
+            "Export erfolgreich",
+            f"Isolierungsfamilie wurde exportiert:\n{target_path}",
+        )
+
     def delete_family(self) -> None:
         if self._selected_family_id is None:
             return
@@ -489,6 +534,14 @@ class IsolierungenDbTab:
         self._variant_length_input.clear()
         self._variant_width_input.clear()
         self._variant_price_input.clear()
+
+    def _resolve_app_version(self) -> str | None:
+        try:
+            from app import __version__ as app_version  # type: ignore[attr-defined]
+        except Exception:
+            return None
+        app_version_text = str(app_version).strip()
+        return app_version_text or None
 
     @staticmethod
     def _parse_float_list(value: str) -> list[float]:
