@@ -67,6 +67,9 @@ def normalize_resolution_entry(entry: dict[str, Any]) -> dict[str, Any]:
     local_db = entry.get("local_db", {})
     if not isinstance(local_db, dict):
         local_db = {}
+    candidates = local_db.get("candidates", [])
+    if not isinstance(candidates, list):
+        candidates = []
     return {
         "project_insulation_key": str(entry.get("project_insulation_key", "")).strip(),
         "family_key": str(entry.get("family_key", "")).strip(),
@@ -77,6 +80,8 @@ def normalize_resolution_entry(entry: dict[str, Any]) -> dict[str, Any]:
             "variant_id": _as_optional_int(local_db.get("variant_id")),
             # Vorbereitung: spätere Markierung lokal importierter Datensätze.
             "origin": _as_optional_str(local_db.get("origin")),
+            "match_status": _normalize_match_status(local_db.get("match_status")),
+            "candidates": [_normalize_local_candidate(item) for item in candidates if isinstance(item, dict)],
         },
     }
 
@@ -100,6 +105,18 @@ def normalize_family_for_compare(family: dict[str, Any]) -> dict[str, Any]:
         "temps": _normalize_float_list(family.get("temps")),
         "ks": _normalize_float_list(family.get("ks")),
         "variants": normalized_variants,
+    }
+
+
+def normalize_family_core_for_compare(family: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_family_for_compare(family)
+    return {
+        "name": normalized.get("name", ""),
+        "classification_temp": normalized.get("classification_temp"),
+        "max_temp": normalized.get("max_temp"),
+        "density": normalized.get("density"),
+        "temps": normalized.get("temps", []),
+        "ks": normalized.get("ks", []),
     }
 
 
@@ -231,3 +248,22 @@ def _normalize_float_list(value: Any) -> list[float]:
         if parsed is not None:
             out.append(parsed)
     return out
+
+
+def _normalize_match_status(value: Any) -> str | None:
+    text = _as_optional_str(value)
+    if text is None:
+        return None
+    valid = {"exact_match", "candidate_conflict", "no_match", "invalid_reference"}
+    if text not in valid:
+        return None
+    return text
+
+
+def _normalize_local_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "family_id": _as_optional_int(candidate.get("family_id")),
+        "variant_id": _as_optional_int(candidate.get("variant_id")),
+        "reason": _as_optional_str(candidate.get("reason")),
+        "score": _as_optional_float(candidate.get("score")),
+    }
