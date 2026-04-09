@@ -11,6 +11,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -19,6 +20,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFileDialog,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QWidget,
 )
@@ -30,6 +33,10 @@ from app.core.projects.export import (
 )
 from app.core.projects.import_service import ProjectImportError, ProjectImportService
 from app.core.projects.store import ProjectRecord, ProjectStore
+from app.core.projects.insulation_runtime_resolution import (
+    InsulationRuntimeResolver,
+    RuntimeResolvedInsulation,
+)
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.projects.insulation_import_dialog import InsulationImportDialog
 from app.ui_qt.plugins.registry import QtPluginSpec, get_plugins
@@ -81,6 +88,10 @@ class ProjectsTab:
             plugin_specs=self._plugin_specs,
         )
         self._import_service = ProjectImportService()
+        self._insulation_runtime_resolver = InsulationRuntimeResolver()
+        self._active_embedded_isolierungen: dict[str, Any] = {"families": []}
+        self._active_insulation_resolution: dict[str, Any] = {"entries": []}
+        self._active_runtime_insulation_items: list[RuntimeResolvedInsulation] = []
         self._dirty_tracker = DirtyStateTracker(self._mark_dirty)
 
         self.widget = QWidget()
@@ -172,6 +183,22 @@ class ProjectsTab:
         details_layout.addWidget(self._active_project_label)
         self._status_label = QLabel("Ungespeicherte Arbeitsfläche aktiv.")
         details_layout.addWidget(self._status_label)
+        self._insulation_resolution_hint = QLabel("Isolierungsquelle: keine aktiven Projektdaten.")
+        self._insulation_resolution_hint.setWordWrap(True)
+        details_layout.addWidget(self._insulation_resolution_hint)
+        self._insulation_resolution_table = QTableWidget(0, 5)
+        self._insulation_resolution_table.setHorizontalHeaderLabels(
+            ["Projekt-Isolierung", "Aktiv", "Lokal verknüpft", "Hinweis", "Aktion"]
+        )
+        self._insulation_resolution_table.verticalHeader().setVisible(False)
+        self._insulation_resolution_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._insulation_resolution_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._insulation_resolution_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        details_layout.addWidget(self._insulation_resolution_table)
 
         actions_container = QWidget()
         self._new_button = QPushButton("Neu")
@@ -330,6 +357,11 @@ class ProjectsTab:
             self._set_status("Speichern abgebrochen: Plugin-Zustände unvollständig.")
             return False
         project_id = self._active_project_id
+        embedded_override = None
+        resolution_override = None
+        if self._active_embedded_isolierungen.get("families") or self._active_insulation_resolution.get("entries"):
+            embedded_override = self._active_embedded_isolierungen
+            resolution_override = self._active_insulation_resolution
         try:
             record = self._store.save_project(
                 name=name,
@@ -338,6 +370,8 @@ class ProjectsTab:
                 metadata=metadata,
                 plugin_states=plugin_states,
                 ui_state=self._capture_ui_state(),
+                embedded_isolierungen=embedded_override,
+                insulation_resolution=resolution_override,
                 project_id=project_id,
             )
         except ValueError as exc:
@@ -345,8 +379,17 @@ class ProjectsTab:
             return False
         self._selected_project_id = record.id
         self._active_project_id = record.id
+        self._active_embedded_isolierungen = record.embedded_isolierungen
+        self._active_insulation_resolution = record.insulation_resolution
+        runtime_after_save = self._insulation_runtime_resolver.resolve_project_runtime(
+            plugin_states=plugin_states,
+            embedded_isolierungen=record.embedded_isolierungen,
+            insulation_resolution=record.insulation_resolution,
+        )
+        self._active_runtime_insulation_items = runtime_after_save.resolved_items
         self.refresh_projects()
         self._update_active_project_label()
+        self._refresh_insulation_resolution_ui()
         self._set_dirty(False)
         self._show_active_form_snapshot()
         self._show_info("Gespeichert", f"Projekt '{record.name}' wurde gespeichert.")
@@ -368,15 +411,24 @@ class ProjectsTab:
             self._show_error("Fehler", "Projekt konnte nicht geladen werden.")
             self._set_status("Projekt konnte nicht geladen werden.")
             return
+        runtime_resolution = self._insulation_runtime_resolver.resolve_project_runtime(
+            plugin_states=record.plugin_states,
+            embedded_isolierungen=record.embedded_isolierungen,
+            insulation_resolution=record.insulation_resolution,
+        )
         with self._dirty_tracker.paused():
-            missing, unknown, errors = self._state_coordinator.apply_states(record.plugin_states)
+            missing, unknown, errors = self._state_coordinator.apply_states(runtime_resolution.plugin_states)
             self._apply_ui_state(record.ui_state)
             self._load_record_into_form(record)
             self._active_form_snapshot = self._capture_form_snapshot()
         self._active_project_id = record.id
         self._selected_project_id = record.id
+        self._active_embedded_isolierungen = runtime_resolution.embedded_isolierungen
+        self._active_insulation_resolution = runtime_resolution.insulation_resolution
+        self._active_runtime_insulation_items = runtime_resolution.resolved_items
         self._set_preview_mode(False)
         self._update_active_project_label()
+        self._refresh_insulation_resolution_ui()
         self._set_dirty(False)
         if errors:
             self._show_warning(
@@ -665,11 +717,15 @@ class ProjectsTab:
             self._clear_form(reset_dirty=False)
         self._active_project_id = None
         self._selected_project_id = None
+        self._active_embedded_isolierungen = {"families": []}
+        self._active_insulation_resolution = {"entries": []}
+        self._active_runtime_insulation_items = []
         self._set_preview_mode(False)
         self._project_list.blockSignals(True)
         self._project_list.setCurrentRow(-1)
         self._project_list.blockSignals(False)
         self._update_active_project_label()
+        self._refresh_insulation_resolution_ui()
         if reset_dirty:
             self._set_dirty(False)
         self._update_action_buttons()
@@ -681,6 +737,106 @@ class ProjectsTab:
             self._active_project_label.setText(f"Aktiv: {name}")
             return
         self._active_project_label.setText("Aktiv: Ungespeichertes Projekt")
+
+    def _refresh_insulation_resolution_ui(self) -> None:
+        items = self._active_runtime_insulation_items
+        if not self._active_project_id:
+            self._insulation_resolution_hint.setText("Isolierungsquelle: keine aktiven Projektdaten.")
+            self._insulation_resolution_table.setRowCount(0)
+            return
+        if not items:
+            self._insulation_resolution_hint.setText(
+                "Isolierungsquelle: Legacy-Projekt ohne embedded_isolierungen/insulation_resolution "
+                "(Verhalten wie bisher: lokale DB aus Plugin-State)."
+            )
+            self._insulation_resolution_table.setRowCount(0)
+            return
+        self._insulation_resolution_hint.setText(
+            "Isolierungsquellen aktiv: 'Aktiv' zeigt die wirksame Quelle, "
+            "'Lokal verknüpft' zeigt nur eine vorhandene Referenz."
+        )
+        self._insulation_resolution_table.setRowCount(len(items))
+        for row, item in enumerate(items):
+            label = item.family_name
+            if item.variant_name:
+                label += f" / {item.variant_name}"
+            label += f" ({item.project_insulation_key})"
+            self._insulation_resolution_table.setItem(row, 0, QTableWidgetItem(label))
+            active = item.effective_source
+            if item.requested_source != item.effective_source:
+                active = f"{active} (statt {item.requested_source})"
+            self._insulation_resolution_table.setItem(row, 1, QTableWidgetItem(active))
+            linked_text = "ja" if item.linked_local else "nein"
+            self._insulation_resolution_table.setItem(row, 2, QTableWidgetItem(linked_text))
+            self._insulation_resolution_table.setItem(row, 3, QTableWidgetItem(item.warning or "–"))
+            action_cell = QWidget()
+            action_layout = create_button_row(
+                [
+                    self._build_source_button("Embedded aktivieren", item.project_insulation_key, "embedded"),
+                    self._build_source_button("Lokal aktivieren", item.project_insulation_key, "local"),
+                ]
+            )
+            action_cell.setLayout(action_layout)
+            self._insulation_resolution_table.setCellWidget(row, 4, action_cell)
+        self._insulation_resolution_table.resizeRowsToContents()
+
+    def _build_source_button(self, label: str, project_key: str, source: str) -> QPushButton:
+        button = QPushButton(label)
+        button.clicked.connect(lambda _checked=False, key=project_key, target=source: self._switch_insulation_source(key, target))
+        return button
+
+    def _switch_insulation_source(self, project_key: str, target_source: str) -> None:
+        if not self._active_project_id:
+            self._show_warning("Keine Aktion möglich", "Es ist kein aktives Projekt geladen.")
+            return
+        updated_resolution, error = self._insulation_runtime_resolver.switch_active_source(
+            insulation_resolution=self._active_insulation_resolution,
+            embedded_isolierungen=self._active_embedded_isolierungen,
+            project_insulation_key=project_key,
+            target_source=target_source,
+        )
+        if error:
+            self._show_warning("Umschalten nicht möglich", error)
+            self._set_status(f"Umschalten abgelehnt: {error}")
+            return
+        record = self._store.load_project(self._active_project_id)
+        if record is None:
+            self._show_error("Fehler", "Aktives Projekt konnte nicht erneut geladen werden.")
+            return
+        resolved = self._insulation_runtime_resolver.resolve_project_runtime(
+            plugin_states=record.plugin_states,
+            embedded_isolierungen=record.embedded_isolierungen,
+            insulation_resolution=updated_resolution,
+        )
+        with self._dirty_tracker.paused():
+            _missing, _unknown, errors = self._state_coordinator.apply_states(resolved.plugin_states)
+        if errors:
+            self._show_warning("Umschalten unvollständig", "\n".join(errors))
+        self._active_embedded_isolierungen = resolved.embedded_isolierungen
+        self._active_insulation_resolution = resolved.insulation_resolution
+        self._active_runtime_insulation_items = resolved.resolved_items
+        self._refresh_insulation_resolution_ui()
+        try:
+            self._store.save_project(
+                name=record.name,
+                author=record.author,
+                description=record.description,
+                metadata=record.metadata,
+                plugin_states=resolved.plugin_states,
+                ui_state=record.ui_state,
+                embedded_isolierungen=self._active_embedded_isolierungen,
+                insulation_resolution=self._active_insulation_resolution,
+                project_id=record.id,
+                created_at_override=record.created_at,
+            )
+        except ValueError as exc:
+            self._show_error("Fehler", f"Projekt konnte nach Umschaltung nicht gespeichert werden: {exc}")
+            return
+        self.refresh_projects()
+        self._select_project_by_id(record.id)
+        self._set_status(f"Isolierungsquelle für {project_key} explizit auf '{target_source}' umgeschaltet.")
+        if self._on_project_loaded is not None:
+            self._on_project_loaded()
 
     def _show_info(self, title: str, message: str) -> None:
         QMessageBox.information(self.widget, title, message)
