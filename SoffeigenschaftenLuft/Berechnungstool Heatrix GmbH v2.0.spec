@@ -1,12 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
+
+block_cipher = None
+
+hiddenimports = collect_submodules("app.ui_qt.plugins")
+
+datas = [
+    ("app/core/plugins.json", "app/core"),
+    ("app/ui_qt/style/assets/3dots.svg", "app/ui_qt/style/assets"),
+    ("heatrix_logo_v3.png", "."),
+]
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    ["app/main_qt.py"],
+    pathex=["."],
     binaries=[],
-    datas=[('logo-min.ico', '.')],
-    hiddenimports=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -14,15 +25,16 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
-pyz = PYZ(a.pure)
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
+    a.zipfiles,
     a.datas,
     [],
-    name='Berechnungstool Heatrix GmbH v2.0',
+    name="Berechnungstool Heatrix GmbH v2.0",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -35,5 +47,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['logo-min.ico'],
+    icon="SoffeigenschaftenLuft/logo-min.ico",
 )

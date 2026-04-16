@@ -7,15 +7,14 @@ obersten Tab-Header angezeigt werden soll; bei Unterseiten bleibt es standardmä
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
-ASSET_DIR = "assets"
+from app.core.runtime_paths import resolve_bundled_path
+
+ASSET_DIR = "style/assets"
 
 
 def _asset_base_dir() -> Path:
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "app" / "ui_qt" / ASSET_DIR
-    return Path(__file__).resolve().parent / ASSET_DIR
+    return resolve_bundled_path("app", "ui_qt", ASSET_DIR)
 
 
 def get_asset_path(filename: str) -> Path:
