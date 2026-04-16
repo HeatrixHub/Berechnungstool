@@ -327,7 +327,7 @@ class PreparedInsulationImportMatchingService:
             family_id = family_summary.get("id")
             try:
                 family = get_family_by_id(int(family_id))
-            except Exception:
+            except (TypeError, ValueError):
                 continue
             try:
                 portable = normalize_family_portable_for_compare(family)

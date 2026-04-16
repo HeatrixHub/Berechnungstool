@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+import sqlite3
 
 from app.core.isolierungen_db.repository import IsolierungRepository
 
@@ -16,6 +18,7 @@ from .decision_service import (
 from .import_service import PreparedInsulationFamilyImport, PreparedInsulationImport
 from .matching_service import PreparedInsulationImportMatchingAnalysis
 from .normalization import normalize_family_portable_for_compare
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -75,7 +78,8 @@ class PreparedInsulationImportPersistenceService:
                         created_family_ids.append(outcome.created_family_id)
 
                 self._validate_persisted_families(conn, created_family_ids, expected_outcomes=outcomes)
-        except Exception as exc:
+        except (ValueError, sqlite3.DatabaseError) as exc:
+            LOGGER.exception("Persistieren der Importentscheidungen fehlgeschlagen.")
             errors.append(str(exc))
             outcomes = self._mark_outcomes_rolled_back(outcomes)
             summary = self._build_summary(outcomes)

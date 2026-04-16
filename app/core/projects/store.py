@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,12 @@ from .isolierung_embedding import (
     normalize_resolution_entry,
 )
 from uuid import uuid4
+
+LOGGER = logging.getLogger(__name__)
+
+
+class ProjectStoreLoadError(RuntimeError):
+    """Die Projektdatei konnte nicht sicher geladen werden."""
 
 
 @dataclass(slots=True)
@@ -147,19 +154,28 @@ class ProjectStore:
             return
         try:
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
-            self._data = self._normalize_root_data(loaded)
-        except Exception:
-            # Fallback auf leere Struktur, wenn Datei beschädigt ist
-            self._data = {
-                "format_version": self.FORMAT_VERSION,
-                "projects": [],
-            }
+        except OSError as exc:
+            raise ProjectStoreLoadError(
+                f"Projektdatei kann nicht gelesen werden: {self.path}"
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise ProjectStoreLoadError(
+                "Projektdatei ist beschädigt (ungültiges JSON) und wird nicht automatisch zurückgesetzt: "
+                f"{self.path} (Zeile {exc.lineno}, Spalte {exc.colno})"
+            ) from exc
+        self._data = self._normalize_root_data(loaded)
 
     def _persist(self) -> None:
         self._data["format_version"] = self.FORMAT_VERSION
-        self.path.write_text(
-            json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        try:
+            self.path.write_text(
+                json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        except OSError as exc:
+            LOGGER.exception("Projektdatei konnte nicht geschrieben werden: %s", self.path)
+            raise ProjectStoreLoadError(
+                f"Projektdatei kann nicht geschrieben werden: {self.path}"
+            ) from exc
 
     def _to_record(self, data: Dict[str, Any]) -> ProjectRecord:
         metadata = self._normalize_metadata(data.get("metadata", {}) or {})
@@ -189,12 +205,17 @@ class ProjectStore:
 
     def _normalize_root_data(self, raw: Any) -> Dict[str, Any]:
         if not isinstance(raw, dict):
-            return {"format_version": self.FORMAT_VERSION, "projects": []}
+            raise ProjectStoreLoadError(
+                "Projektdatei ist beschädigt: Top-Level muss ein JSON-Objekt sein."
+            )
         projects = raw.get("projects")
-        normalized_projects = projects if isinstance(projects, list) else []
+        if not isinstance(projects, list):
+            raise ProjectStoreLoadError(
+                "Projektdatei ist beschädigt: Feld 'projects' muss eine Liste sein."
+            )
         return {
             "format_version": self.FORMAT_VERSION,
-            "projects": normalized_projects,
+            "projects": projects,
         }
 
     def _ensure_json_serializable(self, states: Dict[str, Any]) -> Dict[str, Any]:

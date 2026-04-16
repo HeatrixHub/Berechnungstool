@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
+import logging
+import sqlite3
 from typing import Any
 
 from app.core.isolierungen_db.logic import get_family_by_id, list_families
@@ -34,6 +36,7 @@ from .isolierung_schichtaufbau_zuschnitt import (
 )
 
 STANDARD_REPORT_TITLE = "Stationäre Wärmedurchgangsrechnung durch Isolierung"
+LOGGER = logging.getLogger(__name__)
 
 
 def build_isolierung_report(
@@ -314,7 +317,7 @@ class _ClassificationTemperatureResolver:
         if isinstance(family_id, int):
             try:
                 family = get_family_by_id(family_id)
-            except Exception:
+            except (ValueError, sqlite3.DatabaseError):
                 family = None
             if isinstance(family, Mapping):
                 resolved = _to_number_or_none(family.get("classification_temp"))
@@ -338,7 +341,8 @@ class _ClassificationTemperatureResolver:
 
         try:
             families = list_families()
-        except Exception:
+        except sqlite3.DatabaseError:
+            LOGGER.exception("Materialfamilien konnten für den Bericht nicht geladen werden.")
             families = []
 
         mapping: dict[str, float | None] = {}

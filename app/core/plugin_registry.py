@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 import json
+import logging
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
 from app.core.runtime_paths import app_data_dir, resolve_bundled_path
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -61,8 +63,12 @@ def ensure_default_registry(path: Path | None = None) -> None:
         try:
             target.write_text(BUNDLED_REGISTRY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
             return
-        except Exception:
-            pass
+        except OSError as exc:
+            LOGGER.warning(
+                "Bundled Plugin-Registry konnte nicht nach %s kopiert werden: %s",
+                target,
+                exc,
+            )
     save_registry(list(DEFAULT_SPECS), path=target)
 
 
@@ -74,7 +80,11 @@ def load_registry(path: Path | None = None) -> List[PluginSpec]:
         ensure_default_registry(target)
     try:
         raw = json.loads(target.read_text(encoding="utf-8"))
-    except Exception as exc:  # pragma: no cover - Dateisystemfehler
+    except OSError as exc:  # pragma: no cover - Dateisystemfehler
+        raise RegistryError(f"Registry {target} kann nicht gelesen werden") from exc
+    except json.JSONDecodeError as exc:
+        raise RegistryError(f"Registry {target} enthält ungültiges JSON") from exc
+    except TypeError as exc:
         raise RegistryError(f"Registry {target} kann nicht gelesen werden") from exc
 
     plugins_data = raw.get("plugins") if isinstance(raw, dict) else raw
@@ -119,5 +129,7 @@ def save_registry(specs: Iterable[PluginSpec], path: Path | None = None) -> None
         target.write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-    except Exception as exc:  # pragma: no cover - Dateisystemfehler
+    except OSError as exc:  # pragma: no cover - Dateisystemfehler
+        raise RegistryError(f"Registry {target} kann nicht geschrieben werden") from exc
+    except TypeError as exc:
         raise RegistryError(f"Registry {target} kann nicht geschrieben werden") from exc
