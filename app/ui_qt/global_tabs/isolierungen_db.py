@@ -53,6 +53,15 @@ from app.ui_qt.global_tabs.insulation_exchange_import_dialog import InsulationEx
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
 
 
+_OUTCOME_LABELS = {
+    "created": "Neu angelegt",
+    "exact_match_confirmed": "Exact Match bestätigt (keine Änderung)",
+    "skipped": "Übersprungen",
+    "candidate_confirmed_noop": "Kandidat bestätigt (No-Op)",
+    "rolled_back": "Wegen Rollback nicht übernommen",
+}
+
+
 class DictTableModel(QAbstractTableModel):
     def __init__(self, columns: list[tuple[str, str]], parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -497,39 +506,87 @@ class IsolierungenDbTab:
         persistence_service = PreparedInsulationImportPersistenceService()
         result = persistence_service.persist(prepared_import, matching_analysis, decision_model)
         if not result.success:
-            details = "\n".join(f"- {error}" for error in result.errors) if result.errors else "- Unbekannter Fehler"
             QMessageBox.critical(
                 self.widget,
                 "Import fehlgeschlagen",
-                (
-                    "Die Persistierung wurde abgebrochen. Es wurden keine teilweisen Daten übernommen.\n\n"
-                    f"Fehler:\n{details}"
-                ),
+                self._build_import_failure_message(result, decision_model),
             )
             return
 
         self.refresh_table()
-
-        summary = result.summary
         QMessageBox.information(
             self.widget,
             "Import abgeschlossen",
-            (
-                f"Datei: {Path(result.source_path).name}\n"
-                f"Neu angelegt: {summary.get('created', 0)}\n"
-                f"Exact Match bestätigt (No-Op): {summary.get('exact_match_confirmed', 0)}\n"
-                f"Übersprungen: {summary.get('skipped', 0)}\n"
-                f"Kandidaten bestätigt (No-Op): {summary.get('candidate_confirmed_noop', 0)}\n"
-                f"Bearbeitete Familien: {summary.get('total', 0)}"
-            ),
+            self._build_import_success_message(result, decision_model),
         )
-
 
     def _run_import_decision_dialog(self, matching_analysis):
         dialog = InsulationExchangeImportDialog(matching_analysis, self.widget)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.decisions()
+
+    def _build_import_success_message(self, result, decision_model) -> str:
+        summary = result.summary
+        family_lines = self._build_family_outcome_lines(result, decision_model, include_pending_on_failure=False)
+        details_block = "\n".join(family_lines) if family_lines else "• Keine Familien verarbeitet."
+        return (
+            f"Datei: {Path(result.source_path).name}\n"
+            f"Neu angelegt: {summary.get('created', 0)}\n"
+            f"Exact Match bestätigt (No-Op): {summary.get('exact_match_confirmed', 0)}\n"
+            f"Übersprungen: {summary.get('skipped', 0)}\n"
+            f"Kandidaten bestätigt (No-Op): {summary.get('candidate_confirmed_noop', 0)}\n"
+            f"Bearbeitete Familien: {summary.get('total', 0)}\n\n"
+            "Ergebnis pro Importfamilie:\n"
+            f"{details_block}"
+        )
+
+    def _build_import_failure_message(self, result, decision_model) -> str:
+        error_lines = "\n".join(f"- {self._format_error_reason(error)}" for error in result.errors) if result.errors else "- Unbekannter Fehler"
+        family_lines = self._build_family_outcome_lines(result, decision_model, include_pending_on_failure=True)
+        family_block = "\n".join(family_lines) if family_lines else "• Keine Familien verarbeitet."
+        return (
+            "Die Persistierung wurde abgebrochen und der Importlauf wurde zurückgerollt.\n"
+            "Es wurden keine teilweisen Daten übernommen.\n\n"
+            f"Fehler:\n{error_lines}\n\n"
+            "Betroffene Importfamilien:\n"
+            f"{family_block}"
+        )
+
+    def _build_family_outcome_lines(self, result, decision_model, *, include_pending_on_failure: bool) -> list[str]:
+        decision_by_index = {
+            int(item.import_index): item.import_family_name
+            for item in decision_model.family_decisions
+        }
+        outcome_by_index = {int(item.import_index): item for item in result.outcomes}
+        lines: list[str] = []
+        for import_index in sorted(decision_by_index):
+            family_name = decision_by_index[import_index]
+            outcome = outcome_by_index.get(import_index)
+            if outcome is None:
+                if include_pending_on_failure:
+                    lines.append(f"• #{import_index} {family_name}: Wegen Rollback nicht übernommen.")
+                continue
+            lines.append(self._format_family_outcome_line(outcome))
+        return lines
+
+    def _format_family_outcome_line(self, outcome) -> str:
+        label = _OUTCOME_LABELS.get(outcome.status, f"Status '{outcome.status}'")
+        suffix = ""
+        if outcome.status == "created" and outcome.created_family_id is not None:
+            suffix = f" (ID #{outcome.created_family_id})"
+        elif outcome.status in {"exact_match_confirmed", "candidate_confirmed_noop"} and outcome.selected_candidate_id is not None:
+            suffix = f" (Lokale Familie #{outcome.selected_candidate_id})"
+
+        reason = ""
+        if outcome.status == "rolled_back":
+            reason_text = outcome.message or "Transaktion wegen Fehler zurückgerollt."
+            reason = f" – Grund: {self._format_error_reason(reason_text)}"
+
+        return f"• #{outcome.import_index} {outcome.import_family_name}: {label}{suffix}{reason}"
+
+    def _format_error_reason(self, text: str) -> str:
+        return " ".join(str(text).strip().split())
 
     def delete_family(self) -> None:
         if self._selected_family_id is None:
