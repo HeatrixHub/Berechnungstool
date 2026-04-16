@@ -5,3 +5,8 @@ projects.db
 heatrix_data.db
 *.sqlite3
 app/projects/projects.json
+app/core/projects/projects.json
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
