@@ -12,8 +12,8 @@ from typing import Any, Callable, Iterable
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.colors import to_hex, to_rgb
 from matplotlib.figure import Figure
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QRectF, QSignalBlocker, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QRectF, QSignalBlocker, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QWidget,
     QGraphicsScene,
-    QGraphicsView,
 )
 from openpyxl import Workbook
 
@@ -48,6 +47,23 @@ from app.ui_qt.ui_helpers import (
     make_root_vbox,
     make_vbox,
 )
+from app.ui_qt.plugins.isolierung_support import (
+    CutPlanView,
+    DictTableModel,
+    TableColumn,
+    coerce_optional_int,
+    coerce_str,
+    format_cost,
+    format_mm_one,
+    format_price,
+    format_rotation,
+    parse_float,
+    select_combo_value,
+    select_combo_value_by_data,
+    serialize_layers,
+    set_label_text,
+)
+
 from app.core.isolierungen_db.logic import (
     get_family_by_id,
     list_families,
@@ -81,121 +97,6 @@ class _BuildLayerWidgets:
     remove_button: QPushButton
 
 
-@dataclass(frozen=True)
-class _TableColumn:
-    key: str
-    label: str
-    alignment: Qt.AlignmentFlag = Qt.AlignCenter
-    formatter: Callable[[dict[str, Any], Any], str] | None = None
-
-
-class _DictTableModel(QAbstractTableModel):
-    def __init__(
-        self,
-        columns: list[_TableColumn],
-        rows: list[dict[str, Any]] | None = None,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self._columns = columns
-        self._rows = rows or []
-
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
-        if parent.isValid():
-            return 0
-        return len(self._rows)
-
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
-        if parent.isValid():
-            return 0
-        return len(self._columns)
-
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # noqa: N802 - Qt API
-        if not index.isValid():
-            return None
-        row = self._rows[index.row()]
-        column = self._columns[index.column()]
-        if role == Qt.DisplayRole:
-            value = row.get(column.key)
-            if column.formatter is not None:
-                return column.formatter(row, value)
-            if value is None:
-                return "–"
-            return str(value)
-        if role == Qt.TextAlignmentRole:
-            return column.alignment
-        if role == Qt.BackgroundRole and bool(row.get("is_manual_cut")):
-            return QBrush(QColor("#ffd7d7"))
-        if role == Qt.ForegroundRole and bool(row.get("is_manual_cut")):
-            return QBrush(QColor("#7f1d1d"))
-        return None
-
-    def headerData(  # noqa: N802 - Qt API
-        self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole
-    ) -> Any:
-        if role != Qt.DisplayRole:
-            return None
-        if orientation == Qt.Horizontal and 0 <= section < len(self._columns):
-            return self._columns[section].label
-        return None
-
-    def set_rows(self, rows: list[dict[str, Any]]) -> None:
-        self.beginResetModel()
-        self._rows = rows
-        self.endResetModel()
-
-    def rows(self) -> list[dict[str, Any]]:
-        return self._rows
-
-
-class _CutPlanView(QGraphicsView):
-    def __init__(self, on_resize: Callable[[], None], parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._on_resize = on_resize
-        self._zoom = 1.0
-        self._auto_fit_enabled = True
-        self.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-        self.setDragMode(QGraphicsView.ScrollHandDrag)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
-
-    def fit_scene(self) -> None:
-        scene = self.scene()
-        if scene is None:
-            return
-        bounds = scene.itemsBoundingRect()
-        if bounds.width() <= 0 or bounds.height() <= 0:
-            return
-        self.fitInView(bounds.adjusted(-16, -16, 16, 16), Qt.KeepAspectRatio)
-        self._zoom = 1.0
-        self._auto_fit_enabled = True
-
-    def zoom_in(self) -> None:
-        self._apply_zoom(1.2)
-
-    def zoom_out(self) -> None:
-        self._apply_zoom(1 / 1.2)
-
-    def reset_zoom(self) -> None:
-        self.resetTransform()
-        self._zoom = 1.0
-        self._auto_fit_enabled = False
-
-    def wheelEvent(self, event) -> None:  # noqa: N802 - Qt API
-        if event.angleDelta().y() > 0:
-            self._apply_zoom(1.15)
-        else:
-            self._apply_zoom(1 / 1.15)
-
-    def _apply_zoom(self, factor: float) -> None:
-        self.scale(factor, factor)
-        self._zoom *= factor
-        self._auto_fit_enabled = False
-
-    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt API
-        super().resizeEvent(event)
-        if self._on_resize is not None and self._auto_fit_enabled:
-            self._on_resize()
 
 
 class IsolierungQtPlugin(QtPlugin):
@@ -239,11 +140,11 @@ class IsolierungQtPlugin(QtPlugin):
         self._zuschnitt_kerf_input: QLineEdit | None = None
         self._zuschnitt_status_label: QLabel | None = None
         self._zuschnitt_overview_view: QTableView | None = None
-        self._zuschnitt_overview_model: _DictTableModel | None = None
+        self._zuschnitt_overview_model: DictTableModel | None = None
         self._zuschnitt_results_view: QTableView | None = None
-        self._zuschnitt_results_model: _DictTableModel | None = None
+        self._zuschnitt_results_model: DictTableModel | None = None
         self._zuschnitt_preview_scene: QGraphicsScene | None = None
-        self._zuschnitt_preview_view: _CutPlanView | None = None
+        self._zuschnitt_preview_view: CutPlanView | None = None
 
         self._restore_debug_enabled = os.getenv("ISOLIERUNG_RESTORE_DEBUG", "").lower() in {
             "1",
@@ -344,24 +245,24 @@ class IsolierungQtPlugin(QtPlugin):
 
     def export_state(self) -> dict[str, Any]:
         self._sync_internal_state_from_widgets()
-        calc_layers = self._serialize_calc_layers()
-        build_layers = self._serialize_build_layers()
+        calc_layers = serialize_layers(self._calc_inputs.get("layers", []))
+        build_layers = serialize_layers(self._build_inputs.get("layers", []))
         build_dimensions = self._build_inputs.get("dimensions", {})
         if not isinstance(build_dimensions, dict):
             build_dimensions = {}
         inputs = {
             "berechnung": {
-                "T_left": self._coerce_str(self._calc_inputs.get("T_left", "")),
-                "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
-                "h": self._coerce_str(self._calc_inputs.get("h", "")),
+                "T_left": coerce_str(self._calc_inputs.get("T_left", "")),
+                "T_inf": coerce_str(self._calc_inputs.get("T_inf", "")),
+                "h": coerce_str(self._calc_inputs.get("h", "")),
                 "layers": calc_layers,
             },
             "schichtaufbau": {
                 "measure_type": self._build_inputs.get("measure_type", "outer"),
                 "dimensions": {
-                    "L": self._coerce_str(build_dimensions.get("L", "")),
-                    "B": self._coerce_str(build_dimensions.get("B", "")),
-                    "H": self._coerce_str(build_dimensions.get("H", "")),
+                    "L": coerce_str(build_dimensions.get("L", "")),
+                    "B": coerce_str(build_dimensions.get("B", "")),
+                    "H": coerce_str(build_dimensions.get("H", "")),
                 },
                 "layers": build_layers,
             },
@@ -445,11 +346,11 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(inputs, dict):
             return
         self._log_restore_debug("_apply_calc_inputs", incoming=dict(inputs))
-        self._calc_inputs["T_left"] = self._coerce_str(inputs.get("T_left", ""))
-        self._calc_inputs["T_inf"] = self._coerce_str(
+        self._calc_inputs["T_left"] = coerce_str(inputs.get("T_left", ""))
+        self._calc_inputs["T_inf"] = coerce_str(
             inputs.get("T_inf", inputs.get("umgebungstemperatur", inputs.get("ambient_temperature", "")))
         )
-        self._calc_inputs["h"] = self._coerce_str(
+        self._calc_inputs["h"] = coerce_str(
             inputs.get("h", inputs.get("waermeuebergangskoeffizient", inputs.get("heat_transfer_coefficient", "")))
         )
         layers = inputs.get("layers", [])
@@ -460,11 +361,11 @@ class IsolierungQtPlugin(QtPlugin):
                     continue
                 normalized_layers.append(
                     {
-                        "thickness": self._coerce_str(layer.get("thickness", "")),
-                        "family": self._coerce_str(layer.get("family", "")),
-                        "family_id": self._coerce_optional_int(layer.get("family_id")),
-                        "variant": self._coerce_str(layer.get("variant", "")),
-                        "variant_id": self._coerce_optional_int(layer.get("variant_id")),
+                        "thickness": coerce_str(layer.get("thickness", "")),
+                        "family": coerce_str(layer.get("family", "")),
+                        "family_id": coerce_optional_int(layer.get("family_id")),
+                        "variant": coerce_str(layer.get("variant", "")),
+                        "variant_id": coerce_optional_int(layer.get("variant_id")),
                     }
                 )
             if normalized_layers:
@@ -474,16 +375,16 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(inputs, dict):
             return
         self._log_restore_debug("_apply_build_inputs", incoming=dict(inputs))
-        measure_type = self._coerce_str(inputs.get("measure_type", "outer"))
+        measure_type = coerce_str(inputs.get("measure_type", "outer"))
         if measure_type not in {"outer", "inner"}:
             measure_type = "outer"
         self._build_inputs["measure_type"] = measure_type
         dimensions = inputs.get("dimensions", {})
         if isinstance(dimensions, dict):
             self._build_inputs["dimensions"] = {
-                "L": self._coerce_str(dimensions.get("L", "")),
-                "B": self._coerce_str(dimensions.get("B", dimensions.get("Breite", dimensions.get("width", "")))),
-                "H": self._coerce_str(dimensions.get("H", dimensions.get("Höhe", dimensions.get("height", "")))),
+                "L": coerce_str(dimensions.get("L", "")),
+                "B": coerce_str(dimensions.get("B", dimensions.get("Breite", dimensions.get("width", "")))),
+                "H": coerce_str(dimensions.get("H", dimensions.get("Höhe", dimensions.get("height", "")))),
             }
         layers = inputs.get("layers", [])
         if isinstance(layers, list) and layers:
@@ -493,11 +394,11 @@ class IsolierungQtPlugin(QtPlugin):
                     continue
                 normalized_layers.append(
                     {
-                        "thickness": self._coerce_str(layer.get("thickness", "")),
-                        "family": self._coerce_str(layer.get("family", "")),
-                        "family_id": self._coerce_optional_int(layer.get("family_id")),
-                        "variant": self._coerce_str(layer.get("variant", "")),
-                        "variant_id": self._coerce_optional_int(layer.get("variant_id")),
+                        "thickness": coerce_str(layer.get("thickness", "")),
+                        "family": coerce_str(layer.get("family", "")),
+                        "family_id": coerce_optional_int(layer.get("family_id")),
+                        "variant": coerce_str(layer.get("variant", "")),
+                        "variant_id": coerce_optional_int(layer.get("variant_id")),
                     }
                 )
             if normalized_layers:
@@ -507,8 +408,8 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(results, dict):
             return
         self._calc_results = {
-            "status": self._coerce_str(results.get("status", "idle")),
-            "message": self._coerce_str(results.get("message", "")),
+            "status": coerce_str(results.get("status", "idle")),
+            "message": coerce_str(results.get("message", "")),
             "data": results.get("data", {}),
         }
 
@@ -516,8 +417,8 @@ class IsolierungQtPlugin(QtPlugin):
         if not isinstance(results, dict):
             return
         self._build_results = {
-            "status": self._coerce_str(results.get("status", "idle")),
-            "message": self._coerce_str(results.get("message", "")),
+            "status": coerce_str(results.get("status", "idle")),
+            "message": coerce_str(results.get("message", "")),
             "data": results.get("data", {}),
         }
 
@@ -548,7 +449,7 @@ class IsolierungQtPlugin(QtPlugin):
     def _apply_zuschnitt_inputs(self, inputs: dict[str, Any]) -> None:
         if not isinstance(inputs, dict):
             return
-        self._zuschnitt_inputs["kerf"] = self._coerce_str(inputs.get("kerf", ""))
+        self._zuschnitt_inputs["kerf"] = coerce_str(inputs.get("kerf", ""))
         cached = inputs.get("cached_plates", [])
         self._zuschnitt_inputs["cached_plates"] = cached if isinstance(cached, list) else []
 
@@ -559,8 +460,8 @@ class IsolierungQtPlugin(QtPlugin):
         summary = results.get("summary", [])
         manual_cut_candidates = results.get("manual_cut_candidates", [])
         self._zuschnitt_results = {
-            "status": self._coerce_str(results.get("status", "idle")) or "idle",
-            "message": self._coerce_str(results.get("message", "")),
+            "status": coerce_str(results.get("status", "idle")) or "idle",
+            "message": coerce_str(results.get("message", "")),
             "placements": placements if isinstance(placements, list) else [],
             "bins": results.get("bins", []) if isinstance(results.get("bins", []), list) else [],
             "summary": summary if isinstance(summary, list) else [],
@@ -591,7 +492,7 @@ class IsolierungQtPlugin(QtPlugin):
         ui_layers: list[dict[str, int]] = []
         for widgets in self._layer_widgets:
             family_id = widgets.family_combo.currentData(Qt.UserRole)
-            family_text = self._coerce_str(widgets.family_combo.currentText())
+            family_text = coerce_str(widgets.family_combo.currentText())
             if family_text == self._FAMILY_PLACEHOLDER or not isinstance(family_id, int):
                 family_text = ""
                 family_id = None
@@ -627,7 +528,7 @@ class IsolierungQtPlugin(QtPlugin):
         layers: list[dict[str, Any]] = []
         for widgets in self._build_layer_widgets:
             family_id = widgets.family_combo.currentData(Qt.UserRole)
-            family_text = self._coerce_str(widgets.family_combo.currentText())
+            family_text = coerce_str(widgets.family_combo.currentText())
             if family_text == self._FAMILY_PLACEHOLDER or not isinstance(family_id, int):
                 family_text = ""
                 family_id = None
@@ -681,9 +582,9 @@ class IsolierungQtPlugin(QtPlugin):
         family_names, family_list_fresh = self._get_available_family_names()
         missing_families: list[str] = []
         for layer, widgets in zip(layers, self._layer_widgets, strict=False):
-            thickness = self._coerce_str(layer.get("thickness", ""))
-            family_id = self._coerce_optional_int(layer.get("family_id"))
-            family = self._resolve_family_selection(family_id, self._coerce_str(layer.get("family", "")))
+            thickness = coerce_str(layer.get("thickness", ""))
+            family_id = coerce_optional_int(layer.get("family_id"))
+            family = self._resolve_family_selection(family_id, coerce_str(layer.get("family", "")))
             layer["variant"] = ""
             layer["variant_id"] = None
             if family and family_list_fresh and family not in family_names:
@@ -697,14 +598,13 @@ class IsolierungQtPlugin(QtPlugin):
             with QSignalBlocker(widgets.thickness_input):
                 widgets.thickness_input.setText(thickness)
             with QSignalBlocker(widgets.family_combo):
-                family_found = self._select_combo_value_by_data(
+                family_found = select_combo_value_by_data(
                     widgets.family_combo,
                     family_id,
-                    self._FAMILY_PLACEHOLDER,
                     Qt.UserRole,
                 )
                 if not family_found:
-                    self._select_combo_value(widgets.family_combo, family, self._FAMILY_PLACEHOLDER)
+                    select_combo_value(widgets.family_combo, family)
 
         if missing_families:
             unique_missing = sorted(set(missing_families))
@@ -717,7 +617,7 @@ class IsolierungQtPlugin(QtPlugin):
             self._missing_materials_warning = None
 
         result_text = self._format_result_text()
-        self._set_label_text(self._result_label, result_text)
+        set_label_text(self._result_label, result_text)
         self._refresh_calculation_plot()
 
         if self._layer_count_input is not None:
@@ -744,9 +644,9 @@ class IsolierungQtPlugin(QtPlugin):
         dimensions = self._build_inputs.get("dimensions", {})
         if not isinstance(dimensions, dict):
             dimensions = {}
-        self._set_input_text(self._build_L_input, self._coerce_str(dimensions.get("L", "")))
-        self._set_input_text(self._build_B_input, self._coerce_str(dimensions.get("B", "")))
-        self._set_input_text(self._build_H_input, self._coerce_str(dimensions.get("H", "")))
+        self._set_input_text(self._build_L_input, coerce_str(dimensions.get("L", "")))
+        self._set_input_text(self._build_B_input, coerce_str(dimensions.get("B", "")))
+        self._set_input_text(self._build_H_input, coerce_str(dimensions.get("H", "")))
 
         layers = self._build_inputs.get("layers", [])
         if not isinstance(layers, list) or not layers:
@@ -758,9 +658,9 @@ class IsolierungQtPlugin(QtPlugin):
         family_names, family_list_fresh = self._get_available_family_names()
         missing_families: list[str] = []
         for index, (layer, widgets) in enumerate(zip(layers, self._build_layer_widgets, strict=False)):
-            thickness = self._coerce_str(layer.get("thickness", ""))
-            family_id = self._coerce_optional_int(layer.get("family_id"))
-            family = self._resolve_family_selection(family_id, self._coerce_str(layer.get("family", "")))
+            thickness = coerce_str(layer.get("thickness", ""))
+            family_id = coerce_optional_int(layer.get("family_id"))
+            family = self._resolve_family_selection(family_id, coerce_str(layer.get("family", "")))
             if family and family_list_fresh and family not in family_names:
                 missing_families.append(family)
                 family = ""
@@ -770,14 +670,13 @@ class IsolierungQtPlugin(QtPlugin):
             with QSignalBlocker(widgets.thickness_input):
                 widgets.thickness_input.setText(thickness)
             with QSignalBlocker(widgets.family_combo):
-                family_found = self._select_combo_value_by_data(
+                family_found = select_combo_value_by_data(
                     widgets.family_combo,
                     family_id,
-                    self._FAMILY_PLACEHOLDER,
                     Qt.UserRole,
                 )
                 if not family_found:
-                    self._select_combo_value(widgets.family_combo, family, self._FAMILY_PLACEHOLDER)
+                    select_combo_value(widgets.family_combo, family)
             self._update_build_layer_variant(index)
 
         if missing_families:
@@ -793,7 +692,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._refresh_build_results_view()
 
     def _sync_zuschnitt_view(self) -> None:
-        self._set_input_text(self._zuschnitt_kerf_input, self._coerce_str(self._zuschnitt_inputs.get("kerf", "")))
+        self._set_input_text(self._zuschnitt_kerf_input, coerce_str(self._zuschnitt_inputs.get("kerf", "")))
         self._refresh_zuschnitt_results_view()
 
     def _build_calculation_tab(self) -> QWidget:
@@ -916,7 +815,7 @@ class IsolierungQtPlugin(QtPlugin):
         for layer in layers:
             if not isinstance(layer, dict):
                 return None
-            parsed = self._parse_float(layer.get("thickness", ""))
+            parsed = parse_float(layer.get("thickness", ""))
             if parsed is None or parsed <= 0:
                 return None
             thicknesses.append(float(parsed))
@@ -1195,12 +1094,12 @@ class IsolierungQtPlugin(QtPlugin):
         overview_group = QGroupBox("Rohlingübersicht")
         overview_layout = make_vbox()
         overview_columns = [
-            _TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
-            _TableColumn("count", "Rohlinge (min)", alignment=Qt.AlignCenter),
-            _TableColumn("price", "Preis/Stk [€]", alignment=Qt.AlignCenter, formatter=self._format_price),
-            _TableColumn("cost", "Kosten [€]", alignment=Qt.AlignCenter, formatter=self._format_cost),
+            TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            TableColumn("count", "Rohlinge (min)", alignment=Qt.AlignCenter),
+            TableColumn("price", "Preis/Stk [€]", alignment=Qt.AlignCenter, formatter=format_price),
+            TableColumn("cost", "Kosten [€]", alignment=Qt.AlignCenter, formatter=format_cost),
         ]
-        self._zuschnitt_overview_model = _DictTableModel(overview_columns, parent=tab)
+        self._zuschnitt_overview_model = DictTableModel(overview_columns, parent=tab)
         self._zuschnitt_overview_view = QTableView()
         self._zuschnitt_overview_view.setModel(self._zuschnitt_overview_model)
         self._zuschnitt_overview_view.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1221,17 +1120,17 @@ class IsolierungQtPlugin(QtPlugin):
         results_group = QGroupBox("Platzierungen")
         results_layout = make_vbox()
         placements_columns = [
-            _TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
-            _TableColumn("bin", "Rohling", alignment=Qt.AlignCenter),
-            _TableColumn("teil", "Teil", alignment=Qt.AlignLeft | Qt.AlignVCenter),
-            _TableColumn("breite", "Eff. Breite [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
-            _TableColumn("hoehe", "Eff. Höhe [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
-            _TableColumn("x", "X [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
-            _TableColumn("y", "Y [mm]", alignment=Qt.AlignCenter, formatter=self._format_mm_one),
-            _TableColumn("rotation", "Drehung", alignment=Qt.AlignCenter, formatter=self._format_rotation),
-            _TableColumn("status", "Status", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            TableColumn("material", "Material", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            TableColumn("bin", "Rohling", alignment=Qt.AlignCenter),
+            TableColumn("teil", "Teil", alignment=Qt.AlignLeft | Qt.AlignVCenter),
+            TableColumn("breite", "Eff. Breite [mm]", alignment=Qt.AlignCenter, formatter=format_mm_one),
+            TableColumn("hoehe", "Eff. Höhe [mm]", alignment=Qt.AlignCenter, formatter=format_mm_one),
+            TableColumn("x", "X [mm]", alignment=Qt.AlignCenter, formatter=format_mm_one),
+            TableColumn("y", "Y [mm]", alignment=Qt.AlignCenter, formatter=format_mm_one),
+            TableColumn("rotation", "Drehung", alignment=Qt.AlignCenter, formatter=format_rotation),
+            TableColumn("status", "Status", alignment=Qt.AlignLeft | Qt.AlignVCenter),
         ]
-        self._zuschnitt_results_model = _DictTableModel(placements_columns, parent=tab)
+        self._zuschnitt_results_model = DictTableModel(placements_columns, parent=tab)
         self._zuschnitt_results_view = QTableView()
         self._zuschnitt_results_view.setModel(self._zuschnitt_results_model)
         self._zuschnitt_results_view.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1272,7 +1171,7 @@ class IsolierungQtPlugin(QtPlugin):
         preview_layout.addLayout(controls)
 
         self._zuschnitt_preview_scene = QGraphicsScene()
-        self._zuschnitt_preview_view = _CutPlanView(self._refresh_zuschnitt_preview)
+        self._zuschnitt_preview_view = CutPlanView(self._refresh_zuschnitt_preview)
         self._zuschnitt_preview_view.setScene(self._zuschnitt_preview_scene)
         self._zuschnitt_preview_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._zuschnitt_preview_view.setMinimumHeight(420)
@@ -1313,7 +1212,7 @@ class IsolierungQtPlugin(QtPlugin):
     def _on_zuschnitt_calculate(self) -> None:
         self._sync_internal_state_from_widgets()
         try:
-            kerf_value = self._parse_float(self._zuschnitt_inputs.get("kerf", "")) or 0.0
+            kerf_value = parse_float(self._zuschnitt_inputs.get("kerf", "")) or 0.0
             if kerf_value < 0:
                 raise ValueError("Schnittfuge muss >= 0 sein.")
             plates = self._zuschnitt_inputs.get("cached_plates", [])
@@ -1434,9 +1333,9 @@ class IsolierungQtPlugin(QtPlugin):
             lines.append(
                 "- "
                 f"{row.get('teil', 'Teil')} [{row.get('material', 'Material')}] "
-                f"{self._format_mm_one(row, row.get('breite'))} x {self._format_mm_one(row, row.get('hoehe'))} mm "
-                f"(Rohling {self._format_mm_one(row, row.get('bin_width'))} x "
-                f"{self._format_mm_one(row, row.get('bin_height'))} mm)"
+                f"{format_mm_one(row, row.get('breite'))} x {format_mm_one(row, row.get('hoehe'))} mm "
+                f"(Rohling {format_mm_one(row, row.get('bin_width'))} x "
+                f"{format_mm_one(row, row.get('bin_height'))} mm)"
             )
         return "\n".join(lines)
 
@@ -1487,7 +1386,7 @@ class IsolierungQtPlugin(QtPlugin):
                 bin_id = int(placement.get("bin", 0) or 0)
             except (TypeError, ValueError):
                 bin_id = 0
-            material = self._coerce_str(placement.get("material", ""))
+            material = coerce_str(placement.get("material", ""))
             if bin_id <= 0 or not material:
                 continue
             key = (material, bin_id)
@@ -1506,7 +1405,7 @@ class IsolierungQtPlugin(QtPlugin):
         if self._zuschnitt_status_label is None:
             return
         status = self._zuschnitt_results.get("status", "idle")
-        message = self._coerce_str(self._zuschnitt_results.get("message", ""))
+        message = coerce_str(self._zuschnitt_results.get("message", ""))
         lines = []
         if status == "ok":
             lines.append("Status: Berechnung abgeschlossen")
@@ -1576,7 +1475,7 @@ class IsolierungQtPlugin(QtPlugin):
             if not isinstance(bin_entry, dict):
                 continue
 
-            material = self._coerce_str(bin_entry.get("material", ""))
+            material = coerce_str(bin_entry.get("material", ""))
             try:
                 bin_idx = int(bin_entry.get("bin", 0) or 0)
             except (TypeError, ValueError):
@@ -1641,7 +1540,7 @@ class IsolierungQtPlugin(QtPlugin):
         cell_h = max_bin_h + gap_y
 
         for idx, bin_data in enumerate(normalized_bins):
-            material = self._coerce_str(bin_data.get("material", "")) or "Material"
+            material = coerce_str(bin_data.get("material", "")) or "Material"
             bin_idx = int(bin_data.get("bin", 0) or 0)
             entries = bin_data.get("parts", [])
             bin_w = float(bin_data.get("bin_width", 0) or 0)
@@ -1905,7 +1804,7 @@ class IsolierungQtPlugin(QtPlugin):
         self._family_name_to_id = {}
         self._material_names = []
         for family in self._materials:
-            family_name = self._coerce_str(family.get("name", "")).strip()
+            family_name = coerce_str(family.get("name", "")).strip()
             family_id_raw = family.get("id")
             if not family_name or not isinstance(family_id_raw, int):
                 continue
@@ -1927,7 +1826,7 @@ class IsolierungQtPlugin(QtPlugin):
         names: set[str] = set()
         name_to_id: dict[str, int] = {}
         for family in families:
-            family_name = self._coerce_str(family.get("name", "")).strip()
+            family_name = coerce_str(family.get("name", "")).strip()
             family_id = family.get("id")
             if not family_name:
                 continue
@@ -1967,10 +1866,9 @@ class IsolierungQtPlugin(QtPlugin):
             self._populate_family_combo(widgets.family_combo)
 
             with QSignalBlocker(widgets.family_combo):
-                family_found = self._select_combo_value_by_data(
+                family_found = select_combo_value_by_data(
                     widgets.family_combo,
                     current_family,
-                    self._FAMILY_PLACEHOLDER,
                     Qt.UserRole,
                 )
 
@@ -1986,10 +1884,9 @@ class IsolierungQtPlugin(QtPlugin):
             current_family = self._resolve_family_selection(previous_family_id, previous_family_name)
             self._populate_build_family_combo(widgets.family_combo)
             with QSignalBlocker(widgets.family_combo):
-                family_found = self._select_combo_value_by_data(
+                family_found = select_combo_value_by_data(
                     widgets.family_combo,
                     current_family,
-                    self._FAMILY_PLACEHOLDER,
                     Qt.UserRole,
                 )
             if isinstance(build_layers, list) and index < len(build_layers):
@@ -2120,9 +2017,9 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _parse_calculation_inputs(self) -> dict[str, Any]:
         self._log_restore_debug("_parse_calculation_inputs", calc_inputs=dict(self._calc_inputs))
-        T_left = self._parse_float(self._calc_inputs.get("T_left", ""))
-        T_inf = self._parse_float(self._calc_inputs.get("T_inf", ""))
-        h = self._parse_float(self._calc_inputs.get("h", ""))
+        T_left = parse_float(self._calc_inputs.get("T_left", ""))
+        T_inf = parse_float(self._calc_inputs.get("T_inf", ""))
+        h = parse_float(self._calc_inputs.get("h", ""))
         if T_left is None or T_inf is None or h is None:
             raise ValueError("Bitte gültige Zahlen für T_left, T_inf und h eingeben.")
 
@@ -2130,11 +2027,11 @@ class IsolierungQtPlugin(QtPlugin):
         thicknesses = []
         isolierungen = []
         for layer in layers:
-            thickness_value = self._parse_float(layer.get("thickness", ""))
+            thickness_value = parse_float(layer.get("thickness", ""))
             if thickness_value is None:
                 raise ValueError("Bitte gültige Schichtdicken (mm) eingeben.")
             thicknesses.append(thickness_value)
-            family = self._coerce_str(layer.get("family", ""))
+            family = coerce_str(layer.get("family", ""))
             if not family:
                 raise ValueError("Bitte für jede Schicht eine Materialfamilie auswählen.")
             isolierungen.append(family)
@@ -2174,8 +2071,8 @@ class IsolierungQtPlugin(QtPlugin):
                     if isinstance(variants, list):
                         for variant in variants:
                             variant_id = variant.get("id")
-                            variant_name = self._coerce_str(variant.get("name", ""))
-                            thickness = self._parse_float(variant.get("thickness"))
+                            variant_name = coerce_str(variant.get("name", ""))
+                            thickness = parse_float(variant.get("thickness"))
                             if not variant_name or thickness is None or not isinstance(variant_id, int):
                                 continue
                             display = f"{variant_name} ({thickness} mm)"
@@ -2183,10 +2080,9 @@ class IsolierungQtPlugin(QtPlugin):
                             variant_lookup[display] = (variant_name, thickness, variant_id)
 
             if isinstance(selected_variant_id, int):
-                found = self._select_combo_value_by_data(
+                found = select_combo_value_by_data(
                     widgets.variant_combo,
                     selected_variant_id,
-                    self._VARIANT_PLACEHOLDER,
                     Qt.UserRole,
                 )
 
@@ -2200,7 +2096,7 @@ class IsolierungQtPlugin(QtPlugin):
 
             if found and isinstance(selected_variant_id, int):
                 display_value = widgets.variant_combo.currentText()
-            self._select_combo_value(widgets.variant_combo, display_value, self._VARIANT_PLACEHOLDER)
+            select_combo_value(widgets.variant_combo, display_value)
         widgets.variant_lookup = variant_lookup
         if not selected_variant:
             return True
@@ -2222,8 +2118,8 @@ class IsolierungQtPlugin(QtPlugin):
         selectable: list[tuple[str, float, int]] = []
         for variant in variants:
             variant_id = variant.get("id")
-            variant_name = self._coerce_str(variant.get("name", ""))
-            variant_thickness = self._parse_float(variant.get("thickness"))
+            variant_name = coerce_str(variant.get("name", ""))
+            variant_thickness = parse_float(variant.get("thickness"))
             if not variant_name or variant_thickness is None or not isinstance(variant_id, int):
                 continue
             selectable.append((variant_name, float(variant_thickness), variant_id))
@@ -2231,7 +2127,7 @@ class IsolierungQtPlugin(QtPlugin):
         if not selectable:
             return "", None
 
-        required_thickness = self._parse_float(thickness_text)
+        required_thickness = parse_float(thickness_text)
         if required_thickness is None:
             variant_name, _variant_thickness, variant_id = selectable[0]
             return variant_name, variant_id
@@ -2246,11 +2142,11 @@ class IsolierungQtPlugin(QtPlugin):
 
         layer = layers[index]
         widgets = self._build_layer_widgets[index]
-        family = self._coerce_str(layer.get("family", ""))
-        thickness = self._coerce_str(layer.get("thickness", ""))
+        family = coerce_str(layer.get("family", ""))
+        thickness = coerce_str(layer.get("thickness", ""))
 
-        selected_variant = self._coerce_str(layer.get("variant", ""))
-        selected_variant_id = self._coerce_optional_int(layer.get("variant_id"))
+        selected_variant = coerce_str(layer.get("variant", ""))
+        selected_variant_id = coerce_optional_int(layer.get("variant_id"))
         if force_auto or (not selected_variant and selected_variant_id is None):
             selected_variant, selected_variant_id = self._resolve_best_variant_for_family(family, thickness)
 
@@ -2411,9 +2307,9 @@ class IsolierungQtPlugin(QtPlugin):
         for layer in layers:
             imported.append(
                 {
-                    "thickness": self._coerce_str(layer.get("thickness", "")),
-                    "family": self._coerce_str(layer.get("family", "")),
-                    "family_id": self._coerce_optional_int(layer.get("family_id")),
+                    "thickness": coerce_str(layer.get("thickness", "")),
+                    "family": coerce_str(layer.get("family", "")),
+                    "family_id": coerce_optional_int(layer.get("family_id")),
                     "variant": "",
                     "variant_id": None,
                 }
@@ -2465,15 +2361,15 @@ class IsolierungQtPlugin(QtPlugin):
         self.refresh_view()
 
     def _parse_build_inputs(self) -> dict[str, Any]:
-        measure_type = self._coerce_str(self._build_inputs.get("measure_type", "outer"))
+        measure_type = coerce_str(self._build_inputs.get("measure_type", "outer"))
         if measure_type not in {"outer", "inner"}:
             raise ValueError("Bitte eine gültige Maßvorgabe wählen.")
         dimensions = self._build_inputs.get("dimensions", {})
         if not isinstance(dimensions, dict):
             dimensions = {}
-        L = self._parse_float(dimensions.get("L"))
-        B = self._parse_float(dimensions.get("B"))
-        H = self._parse_float(dimensions.get("H"))
+        L = parse_float(dimensions.get("L"))
+        B = parse_float(dimensions.get("B"))
+        H = parse_float(dimensions.get("H"))
         if L is None or B is None or H is None:
             raise ValueError("Bitte gültige Maße (L, B, H) angeben.")
 
@@ -2483,14 +2379,14 @@ class IsolierungQtPlugin(QtPlugin):
         thicknesses: list[float] = []
         materials: list[str] = []
         for layer in layers:
-            thickness_text = self._coerce_str(layer.get("thickness", "")).strip()
+            thickness_text = coerce_str(layer.get("thickness", "")).strip()
             if not thickness_text:
                 continue
-            thickness_value = self._parse_float(thickness_text)
+            thickness_value = parse_float(thickness_text)
             if thickness_value is None:
                 raise ValueError("Bitte gültige Schichtdicken (mm) eingeben.")
             thicknesses.append(thickness_value)
-            materials.append(self._coerce_str(layer.get("family", "")))
+            materials.append(coerce_str(layer.get("family", "")))
         if not thicknesses:
             raise ValueError("Bitte mindestens eine Schichtdicke angeben.")
         return {
@@ -2532,7 +2428,7 @@ class IsolierungQtPlugin(QtPlugin):
         if self._build_status_label is None:
             return
         status = self._build_results.get("status", "idle")
-        message = self._coerce_str(self._build_results.get("message", ""))
+        message = coerce_str(self._build_results.get("message", ""))
         lines = []
         if status == "ok":
             lines.append("Status: Berechnung abgeschlossen")
@@ -2649,7 +2545,7 @@ class IsolierungQtPlugin(QtPlugin):
     def _format_result_text(self) -> str:
         status = self._calc_results.get("status")
         if status != "ok":
-            message = self._coerce_str(self._calc_results.get("message", ""))
+            message = coerce_str(self._calc_results.get("message", ""))
             base = f"Status: Fehler\n{message}" if message else "Status: Bereit"
             if self._missing_materials_warning:
                 return f"{base}\n{self._missing_materials_warning}"
@@ -2683,113 +2579,6 @@ class IsolierungQtPlugin(QtPlugin):
             lines.append(self._missing_materials_warning)
         return "\n".join(lines)
 
-    @staticmethod
-    def _format_number(value: float) -> str:
-        return f"{value:.2f}".rstrip("0").rstrip(".")
-
-    @staticmethod
-    def _format_mm_one(row: dict[str, Any], value: Any) -> str:
-        try:
-            return f"{float(value):.1f}"
-        except (TypeError, ValueError):
-            return "–"
-
-    @staticmethod
-    def _format_rotation(row: dict[str, Any], value: Any) -> str:
-        if value is None:
-            return "–"
-        rotation_value = 90 if bool(value) else 0
-        return f"{rotation_value}°"
-
-    @staticmethod
-    def _format_price(row: dict[str, Any], value: Any) -> str:
-        if value is None:
-            return "–"
-        try:
-            return f"{float(value):.2f}"
-        except (TypeError, ValueError):
-            return "–"
-
-    @staticmethod
-    def _format_cost(row: dict[str, Any], value: Any) -> str:
-        override = row.get("cost_display")
-        if isinstance(override, str) and override:
-            return override
-        if value is None:
-            return "–"
-        try:
-            return f"{float(value):.2f}"
-        except (TypeError, ValueError):
-            return "–"
-
-    @staticmethod
-    def _parse_float(value: str | float | int | None) -> float | None:
-        if value is None:
-            return None
-        if isinstance(value, (float, int)):
-            return float(value)
-        text = str(value).strip().replace(",", ".")
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            return None
-
-    @staticmethod
-    def _float_or_zero(value: str | float | int | None) -> float:
-        parsed = IsolierungQtPlugin._parse_float(value)
-        return parsed if parsed is not None else 0.0
-
-    @staticmethod
-    def _coerce_str(value: object, default: str = "") -> str:
-        if value is None:
-            return default
-        if isinstance(value, str):
-            return value
-        return str(value)
-
-    @staticmethod
-    def _coerce_optional_int(value: object) -> int | None:
-        return value if isinstance(value, int) else None
-
-    def _serialize_calc_layers(self) -> list[dict[str, Any]]:
-        layers = self._calc_inputs.get("layers", [])
-        if not isinstance(layers, list):
-            return []
-        serialized: list[dict[str, Any]] = []
-        for layer in layers:
-            if not isinstance(layer, dict):
-                continue
-            serialized.append(
-                {
-                    "thickness": self._coerce_str(layer.get("thickness", "")),
-                    "family": self._coerce_str(layer.get("family", "")),
-                    "family_id": self._coerce_optional_int(layer.get("family_id")),
-                    "variant": self._coerce_str(layer.get("variant", "")),
-                    "variant_id": self._coerce_optional_int(layer.get("variant_id")),
-                }
-            )
-        return serialized
-
-    def _serialize_build_layers(self) -> list[dict[str, Any]]:
-        layers = self._build_inputs.get("layers", [])
-        if not isinstance(layers, list):
-            return []
-        serialized: list[dict[str, Any]] = []
-        for layer in layers:
-            if not isinstance(layer, dict):
-                continue
-            serialized.append(
-                {
-                    "thickness": self._coerce_str(layer.get("thickness", "")),
-                    "family": self._coerce_str(layer.get("family", "")),
-                    "family_id": self._coerce_optional_int(layer.get("family_id")),
-                    "variant": self._coerce_str(layer.get("variant", "")),
-                    "variant_id": self._coerce_optional_int(layer.get("variant_id")),
-                }
-            )
-        return serialized
 
     def _set_input_text(self, widget: QLineEdit | None, value: str) -> None:
         if widget is None:
@@ -2813,10 +2602,10 @@ class IsolierungQtPlugin(QtPlugin):
         build = inputs.get("schichtaufbau", {}) if isinstance(inputs, dict) else {}
         dimensions = build.get("dimensions", {}) if isinstance(build, dict) else {}
         return {
-            "T_inf": self._coerce_str(calc.get("T_inf", "")),
-            "h": self._coerce_str(calc.get("h", "")),
-            "B": self._coerce_str(dimensions.get("B", "")),
-            "H": self._coerce_str(dimensions.get("H", "")),
+            "T_inf": coerce_str(calc.get("T_inf", "")),
+            "h": coerce_str(calc.get("h", "")),
+            "B": coerce_str(dimensions.get("B", "")),
+            "H": coerce_str(dimensions.get("H", "")),
         }
 
     def _collect_restore_target_snapshot(self) -> dict[str, Any]:
@@ -2825,12 +2614,12 @@ class IsolierungQtPlugin(QtPlugin):
             dimensions = {}
         return {
             "calc_inputs": {
-                "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
-                "h": self._coerce_str(self._calc_inputs.get("h", "")),
+                "T_inf": coerce_str(self._calc_inputs.get("T_inf", "")),
+                "h": coerce_str(self._calc_inputs.get("h", "")),
             },
             "build_inputs": {
-                "B": self._coerce_str(dimensions.get("B", "")),
-                "H": self._coerce_str(dimensions.get("H", "")),
+                "B": coerce_str(dimensions.get("B", "")),
+                "H": coerce_str(dimensions.get("H", "")),
             },
             "widgets": {
                 "T_inf": self._describe_widget(self._T_inf_input),
@@ -2855,40 +2644,6 @@ class IsolierungQtPlugin(QtPlugin):
             return
         self._logger.warning("[restore-debug] %s | %s", event, payload)
 
-    @staticmethod
-    def _set_label_text(widget: QLabel | None, value: str) -> None:
-        if widget is None:
-            return
-        widget.setText(value)
-
-    @staticmethod
-    def _select_combo_value(combo: QComboBox, value: str, placeholder: str) -> None:
-        if not value:
-            combo.setCurrentIndex(0)
-            return
-        index = combo.findText(value)
-        if index == -1:
-            combo.setCurrentIndex(0)
-        else:
-            combo.setCurrentIndex(index)
-
-    @staticmethod
-    def _select_combo_value_by_data(
-        combo: QComboBox,
-        value: object,
-        placeholder: str,
-        role: int = Qt.UserRole,
-    ) -> bool:
-        if value in (None, "", placeholder):
-            combo.setCurrentIndex(0)
-            return False
-        index = combo.findData(value, role)
-        if index == -1:
-            combo.setCurrentIndex(0)
-            return False
-        combo.setCurrentIndex(index)
-        return True
-
     def _get_active_tab_index(self) -> int:
         if self._tab_widget is None:
             return 0
@@ -2900,8 +2655,8 @@ class IsolierungQtPlugin(QtPlugin):
 
     def _on_text_input_changed(self, text: str) -> None:
         previous = {
-            "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
-            "h": self._coerce_str(self._calc_inputs.get("h", "")),
+            "T_inf": coerce_str(self._calc_inputs.get("T_inf", "")),
+            "h": coerce_str(self._calc_inputs.get("h", "")),
         }
         if self._T_left_input is not None:
             self._calc_inputs["T_left"] = self._T_left_input.text()
@@ -2910,8 +2665,8 @@ class IsolierungQtPlugin(QtPlugin):
         if self._h_input is not None:
             self._calc_inputs["h"] = self._h_input.text()
         current = {
-            "T_inf": self._coerce_str(self._calc_inputs.get("T_inf", "")),
-            "h": self._coerce_str(self._calc_inputs.get("h", "")),
+            "T_inf": coerce_str(self._calc_inputs.get("T_inf", "")),
+            "h": coerce_str(self._calc_inputs.get("h", "")),
         }
         if any(previous[key] and not current[key] for key in ("T_inf", "h")):
             self._log_restore_debug(
