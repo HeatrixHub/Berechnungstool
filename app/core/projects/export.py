@@ -1,11 +1,11 @@
 """Exportlogik für das externe Projekt-Austauschformat."""
 from __future__ import annotations
 
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
 
+from app.core.time_utils import normalize_timestamp, utc_now_iso_z
 from .isolierung_embedding import (
     build_embedded_isolierungen_from_plugin_states,
     normalize_resolution_entry,
@@ -68,8 +68,8 @@ def build_project_export_payload(
                 "author": effective_author,
                 "description": effective_description,
                 "metadata": _ensure_json_serializable(project.metadata),
-                "created_at": project.created_at,
-                "updated_at": project.updated_at,
+                "created_at": normalize_timestamp(project.created_at, default=str(project.created_at).strip()) or "",
+                "updated_at": normalize_timestamp(project.updated_at, default=str(project.updated_at).strip()) or "",
             },
             "plugin_states": effective_plugin_states,
             "ui_state": effective_ui_state,
@@ -102,7 +102,7 @@ def export_project_to_file(payload: dict[str, Any], destination: Path) -> Path:
 
 
 def _utc_now_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_iso_z()
 
 
 def _ensure_json_serializable(value: Any) -> Any:

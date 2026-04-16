@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from app.core.time_utils import normalize_timestamp
 from .export_service import EXPORT_FORMAT_NAME, EXPORT_FORMAT_VERSION
 from .normalization import normalize_import_family_for_prepare
 
@@ -79,7 +80,7 @@ class InsulationExchangeImportService:
         issues: list[ImportIssue] = []
         families = self._prepare_families(isolierungen, issues)
 
-        exported_at = _as_optional_str(payload.get("exported_at"))
+        exported_at = normalize_timestamp(payload.get("exported_at"))
         app_version = _as_optional_str(payload.get("app_version"))
 
         return PreparedInsulationImport(

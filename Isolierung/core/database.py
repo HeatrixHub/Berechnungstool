@@ -70,8 +70,8 @@ def _migration_1(conn: sqlite3.Connection) -> None:
             T_inf REAL NOT NULL,
             h REAL NOT NULL,
             created_by TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now'))
         );
 
         CREATE TABLE IF NOT EXISTS materials (
@@ -82,8 +82,8 @@ def _migration_1(conn: sqlite3.Connection) -> None:
             length REAL,
             width REAL,
             price REAL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now'))
         );
 
         CREATE TABLE IF NOT EXISTS material_measurements (
@@ -112,7 +112,7 @@ def _migration_1(conn: sqlite3.Connection) -> None:
             project_id INTEGER NOT NULL,
             version_label TEXT NOT NULL DEFAULT 'latest',
             data TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
             FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
             UNIQUE(project_id, version_label)
         );
@@ -183,8 +183,8 @@ def _migration_4(conn: sqlite3.Connection) -> None:
             length REAL,
             width REAL,
             price REAL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
             FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE,
             UNIQUE(material_id, name)
         );
@@ -229,8 +229,8 @@ def _migration_5(conn: sqlite3.Connection) -> None:
             length REAL,
             width REAL,
             price REAL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
             FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE,
             UNIQUE(material_id, name)
         );
@@ -429,7 +429,7 @@ def _persist_project(
             T_inf = excluded.T_inf,
             h = excluded.h,
             created_by = COALESCE(excluded.created_by, projects.created_by),
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
         """,
         (name, float(T_left), float(T_inf), float(h), created_by),
     )
@@ -465,7 +465,7 @@ def _persist_project(
             VALUES (?, ?, ?)
             ON CONFLICT(project_id, version_label) DO UPDATE SET
                 data = excluded.data,
-                created_at = CURRENT_TIMESTAMP
+                created_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
             """,
             (project_id, version_label, json.dumps(result)),
         )
@@ -490,7 +490,7 @@ def _persist_material(
         ON CONFLICT(name) DO UPDATE SET
             classification_temp = excluded.classification_temp,
             density = excluded.density,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
         """,
         (name, classification_temp, density),
     )
@@ -809,7 +809,7 @@ def save_material_variant(
                     length=excluded.length,
                     width=excluded.width,
                     price=excluded.price,
-                    updated_at=CURRENT_TIMESTAMP
+                    updated_at=STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
                 """,
                 (
                     row["id"],
@@ -882,7 +882,7 @@ def rename_material(old_name: str, new_name: str) -> bool:
             cursor = conn.execute(
                 """
                 UPDATE materials
-                SET name = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, updated_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
                 WHERE id = ?
                 """,
                 (new_name, existing["id"]),
@@ -927,7 +927,7 @@ def rename_material_variant(
             cursor = conn.execute(
                 """
                 UPDATE material_variants
-                SET name = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, updated_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
                 WHERE id = ?
                 """,
                 (new_variant_name, existing["id"]),

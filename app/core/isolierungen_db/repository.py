@@ -197,8 +197,8 @@ class IsolierungRepository:
                 classification_temp REAL NOT NULL,
                 max_temp REAL,
                 density REAL NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now'))
             );
 
             CREATE TABLE isolierung_variants (
@@ -209,8 +209,8 @@ class IsolierungRepository:
                 length REAL,
                 width REAL,
                 price REAL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')),
                 UNIQUE(family_id, name),
                 FOREIGN KEY(family_id) REFERENCES isolierung_families(id) ON DELETE CASCADE
             );
@@ -398,7 +398,7 @@ class IsolierungRepository:
             conn.execute(
                 """
                 UPDATE isolierung_families
-                SET name = ?, classification_temp = ?, max_temp = ?, density = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, classification_temp = ?, max_temp = ?, density = ?, updated_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
                 WHERE id = ?
                 """,
                 (name, classification_temp, max_temp, density, family_id),
@@ -481,7 +481,7 @@ class IsolierungRepository:
             conn.execute(
                 """
                 UPDATE isolierung_variants
-                SET name = ?, thickness = ?, length = ?, width = ?, price = ?, updated_at = CURRENT_TIMESTAMP
+                SET name = ?, thickness = ?, length = ?, width = ?, price = ?, updated_at = STRFTIME('%Y-%m-%dT%H:%M:%SZ', 'now')
                 WHERE id = ?
                 """,
                 (name, thickness, length, width, price, variant_id),

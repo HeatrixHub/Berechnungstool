@@ -1,12 +1,12 @@
 """Services für Export von Isolierungen in ein portables Austauschformat."""
 from __future__ import annotations
 
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
 
 from app.core.isolierungen_db.logic import get_family_by_id
+from app.core.time_utils import utc_now_iso_z
 
 from .normalization import normalize_family_for_exchange
 
@@ -92,4 +92,4 @@ def _with_insulation_suffix(destination: Path) -> Path:
 
 
 def _utc_now_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return utc_now_iso_z()

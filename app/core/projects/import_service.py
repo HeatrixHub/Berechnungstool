@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
 
+from app.core.time_utils import normalize_timestamp, utc_now_iso_z
 from .export import EXPORT_FORMAT_NAME, EXPORT_FORMAT_VERSION
 from app.core.isolierungen_db.logic import create_family, create_variant, list_families
 from .insulation_matching import InsulationImportMatchingService
@@ -482,12 +482,7 @@ class ProjectImportService:
         raise ProjectImportError("Ungültige Importdatei: project.master_data.metadata muss ein Objekt sein.")
 
     def _as_optional_iso_timestamp(self, value: Any) -> str | None:
-        if value is None:
-            return None
-        text = str(value).strip()
-        if not text:
-            return None
-        return text
+        return normalize_timestamp(value)
 
     def _require_dict(self, value: Any, error_message: str) -> dict[str, Any]:
         if not isinstance(value, dict):
@@ -502,7 +497,7 @@ class ProjectImportService:
         return json.loads(serialized)
 
     def _utc_now_iso(self) -> str:
-        return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        return utc_now_iso_z()
 
     def _as_required_float(self, value: Any, error: str) -> float:
         parsed = self._as_optional_float(value)
