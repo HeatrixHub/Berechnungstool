@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.core.runtime_paths import app_data_dir
+from app.core.time_utils import normalize_timestamp, parse_timestamp_to_utc, utc_now_iso_z
 
 from .isolierung_embedding import (
     build_embedded_isolierungen_from_plugin_states,
@@ -61,7 +62,14 @@ class ProjectStore:
         """Liefert alle Projekte, sortiert nach Aktualisierungsdatum."""
 
         projects = [self._to_record(item) for item in self._data.get("projects", [])]
-        projects.sort(key=lambda record: record.updated_at, reverse=True)
+        projects.sort(
+            key=lambda record: (
+                parse_timestamp_to_utc(record.updated_at)
+                or parse_timestamp_to_utc(record.created_at)
+                or datetime.min.replace(tzinfo=timezone.utc)
+            ),
+            reverse=True,
+        )
         return projects
 
     def load_project(self, project_id: str) -> Optional[ProjectRecord]:
@@ -101,9 +109,9 @@ class ProjectStore:
         sanitized_resolution = self._normalize_insulation_resolution(
             self._ensure_json_serializable(selected_resolution)
         )
-        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
-        effective_created_at = created_at_override or now
-        effective_updated_at = updated_at_override or now
+        now = utc_now_iso_z()
+        effective_created_at = normalize_timestamp(created_at_override, default=now)
+        effective_updated_at = normalize_timestamp(updated_at_override, default=now)
 
         if project_id:
             record = self._update_project(
@@ -195,8 +203,8 @@ class ProjectStore:
             author=str(data.get("author", "")),
             description=str(data.get("description", "")),
             metadata=metadata,
-            created_at=str(data.get("created_at", "")),
-            updated_at=str(data.get("updated_at", "")),
+            created_at=normalize_timestamp(data.get("created_at"), default="") or "",
+            updated_at=normalize_timestamp(data.get("updated_at"), default="") or "",
             plugin_states=plugin_states,
             ui_state=ui_state,
             embedded_isolierungen=embedded_isolierungen,
