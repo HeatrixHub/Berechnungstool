@@ -65,7 +65,7 @@ def _build_layer_construction_section(state: Mapping[str, Any]) -> ReportSection
             columns=[
                 TableColumn("layer", "Schicht", value_type="integer"),
                 TableColumn("material", "Material"),
-                TableColumn("plate", "Plattenbereich"),
+                TableColumn("plate", "Platte"),
                 TableColumn("length", "Länge", unit="mm", value_type="number"),
                 TableColumn("width", "Breite", unit="mm", value_type="number"),
                 TableColumn("height", "Höhe", unit="mm", value_type="number"),

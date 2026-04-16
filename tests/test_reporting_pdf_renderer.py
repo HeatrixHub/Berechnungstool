@@ -7,8 +7,13 @@ from app.core.reporting.builders import (
     ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG,
     build_isolierung_report_by_type,
 )
-from app.core.reporting.renderers.pdf import _column_header_markup, _compact_dimension_rows, _format_datetime
-from app.core.reporting.report_document import MetricItem, TableColumn
+from app.core.reporting.renderers.pdf import (
+    _column_header_markup,
+    _compact_dimension_rows,
+    _detect_summary_row_index,
+    _format_datetime,
+)
+from app.core.reporting.report_document import MetricItem, TableBlock, TableColumn, TableRow
 from app.core.reporting.renderers import render_report_pdf
 
 
@@ -122,4 +127,20 @@ def test_column_header_markup_renders_label_and_optional_unit() -> None:
     without_unit = TableColumn(key="material", label="Material", unit=None, value_type="text")
 
     assert _column_header_markup(with_unit, include_unit=True) == "<b>Wärmestrom</b><br/>W/m²"
-    assert _column_header_markup(without_unit, include_unit=True) == "<b>Material</b>"
+    assert _column_header_markup(without_unit, include_unit=True) == "<b>Material</b><br/>"
+
+
+def test_detect_summary_row_index_finds_sum_rows() -> None:
+    table = TableBlock(
+        title="Rohlingsübersicht",
+        columns=[
+            TableColumn(key="material", label="Material"),
+            TableColumn(key="count", label="Rohlinge", value_type="integer"),
+        ],
+        rows=[
+            TableRow(cells={"material": "Steinwolle (40 mm)", "count": 2}),
+            TableRow(cells={"material": "Summe", "count": 2}),
+        ],
+    )
+
+    assert _detect_summary_row_index(table) == 2

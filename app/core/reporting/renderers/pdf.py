@@ -27,12 +27,13 @@ def render_report_pdf(document: ReportDocument, output_path: str | Path) -> Path
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
+    from reportlab.lib.enums import TA_CENTER
     from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    styles = _build_styles(ParagraphStyle, getSampleStyleSheet, colors)
+    styles = _build_styles(ParagraphStyle, getSampleStyleSheet, colors, TA_CENTER)
     doc = SimpleDocTemplate(
         str(target),
         pagesize=A4,
@@ -341,6 +342,7 @@ def _append_zuschnitt_section(
             colors,
             mm,
             include_unit_in_header=True,
+            emphasize_summary_row=True,
         )
     )
 
@@ -505,7 +507,7 @@ def _format_integer(value: object) -> str:
     return str(value)
 
 
-def _build_styles(ParagraphStyle: Any, getSampleStyleSheet: Any, colors: Any) -> dict[str, Any]:
+def _build_styles(ParagraphStyle: Any, getSampleStyleSheet: Any, colors: Any, TA_CENTER: Any) -> dict[str, Any]:
     sample = getSampleStyleSheet()
     return {
         "title": ParagraphStyle(
@@ -528,6 +530,14 @@ def _build_styles(ParagraphStyle: Any, getSampleStyleSheet: Any, colors: Any) ->
         ),
         "label": ParagraphStyle("Label", parent=sample["BodyText"], fontName="Helvetica", fontSize=9, leading=11),
         "value": ParagraphStyle("Value", parent=sample["BodyText"], fontName="Helvetica", fontSize=9, leading=11),
+        "table_header": ParagraphStyle(
+            "TableHeader",
+            parent=sample["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=8.5,
+            leading=9.5,
+            alignment=TA_CENTER,
+        ),
         "body": ParagraphStyle("Body", parent=sample["BodyText"], fontName="Helvetica", fontSize=9, leading=11),
         "hint": ParagraphStyle("Hint", parent=sample["BodyText"], fontName="Helvetica-Oblique", fontSize=8, textColor=colors.grey),
     }
@@ -543,23 +553,32 @@ def _build_report_table(
     mm: Any,
     *,
     include_unit_in_header: bool,
+    emphasize_summary_row: bool = False,
 ) -> Any:
     header = [
-        Paragraph(_column_header_markup(column, include_unit=include_unit_in_header), styles["value"])
+        Paragraph(_column_header_markup(column, include_unit=include_unit_in_header), styles["table_header"])
         for column in table_block.columns
     ]
     rows: list[list[Any]] = [header]
     for row in table_block.rows:
         rows.append([_format_table_cell(row, column) for column in table_block.columns])
 
+    summary_row_index = _detect_summary_row_index(table_block) if emphasize_summary_row else None
     table = Table(
         rows,
-        colWidths=_table_col_widths(table_block.columns, mm),
+        colWidths=_table_col_widths(table_block.columns, table_block.rows, mm),
         hAlign="LEFT",
         repeatRows=1,
         splitByRow=1,
     )
-    table.setStyle(_report_table_style(TableStyle, colors, header_rows=1))
+    table.setStyle(
+        _report_table_style(
+            TableStyle,
+            colors,
+            header_rows=1,
+            summary_row_index=summary_row_index,
+        )
+    )
     return table
 
 
@@ -569,7 +588,7 @@ def _column_header_markup(column: TableColumn, *, include_unit: bool) -> str:
         return f"<b>{label}</b>"
     unit = (column.unit or "").strip()
     if not unit:
-        return f"<b>{label}</b>"
+        return f"<b>{label}</b><br/>"
     return f"<b>{label}</b><br/>{unit}"
 
 
@@ -587,25 +606,38 @@ def _metrics_table_style(TableStyle: Any, colors: Any) -> Any:
     )
 
 
-def _report_table_style(TableStyle: Any, colors: Any, *, header_rows: int = 1) -> Any:
+def _report_table_style(
+    TableStyle: Any,
+    colors: Any,
+    *,
+    header_rows: int = 1,
+    summary_row_index: int | None = None,
+) -> Any:
     body_start_row = max(header_rows, 1)
-    return TableStyle(
-        [
-            ("BACKGROUND", (0, 0), (-1, header_rows - 1), colors.HexColor("#E5E7EB")),
-            ("TEXTCOLOR", (0, 0), (-1, header_rows - 1), colors.black),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTNAME", (0, 1), (-1, header_rows - 1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, header_rows - 1), 8.5),
-            ("FONTSIZE", (0, body_start_row), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ROWBACKGROUNDS", (0, body_start_row), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ]
-    )
+    commands: list[tuple[Any, ...]] = [
+        ("BACKGROUND", (0, 0), (-1, header_rows - 1), colors.HexColor("#E5E7EB")),
+        ("TEXTCOLOR", (0, 0), (-1, header_rows - 1), colors.black),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, header_rows - 1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, header_rows - 1), 8.5),
+        ("FONTSIZE", (0, body_start_row), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, body_start_row), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]
+    if isinstance(summary_row_index, int) and summary_row_index >= body_start_row:
+        commands.extend(
+            [
+                ("FONTNAME", (0, summary_row_index), (-1, summary_row_index), "Helvetica-Bold"),
+                ("BACKGROUND", (0, summary_row_index), (-1, summary_row_index), colors.HexColor("#EEF2FF")),
+                ("LINEABOVE", (0, summary_row_index), (-1, summary_row_index), 0.9, colors.HexColor("#94A3B8")),
+            ]
+        )
+    return TableStyle(commands)
 
 
 def _safe_text(value: str | None, fallback: str) -> str:
@@ -665,18 +697,71 @@ def _format_number_german(value: float, *, decimal_places: int) -> str:
     return text.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
-def _table_col_widths(columns: list[TableColumn], mm: Any) -> list[float]:
+def _table_col_widths(columns: list[TableColumn], rows: list[TableRow], mm: Any) -> list[float]:
     count = len(columns)
     if count == 0:
         return []
-    if count == 3:
-        return [92 * mm, 35 * mm, 43 * mm]
-    if count == 6:
-        return [16 * mm, 46 * mm, 36 * mm, 24 * mm, 24 * mm, 24 * mm]
-    if count == 5:
-        return [34 * mm, 44 * mm, 31 * mm, 31 * mm, 30 * mm]
-    col_width = 170 * mm / count
-    return [col_width] * count
+    total_width = 170 * mm
+    min_width = 14.0 * mm
+    reserved_min = min_width * count
+    if reserved_min >= total_width:
+        return [total_width / count] * count
+
+    column_weights = [_column_width_weight(column, rows) for column in columns]
+    weight_sum = sum(column_weights)
+    if weight_sum <= 0:
+        return [total_width / count] * count
+
+    distributable = total_width - reserved_min
+    widths = [min_width + distributable * (weight / weight_sum) for weight in column_weights]
+    return _cap_column_widths(widths, total_width)
+
+
+def _column_width_weight(column: TableColumn, rows: list[TableRow]) -> float:
+    label = _safe_text(column.label, column.key)
+    unit = (column.unit or "").strip()
+    header_len = max(len(label), len(unit))
+    content_lengths = [len(_format_table_cell(row, column)) for row in rows[:200]]
+    if content_lengths:
+        content_lengths.sort()
+        typical_content_len = content_lengths[int((len(content_lengths) - 1) * 0.75)]
+    else:
+        typical_content_len = 0
+    return max(6.0, max(header_len * 1.4, typical_content_len * 1.15))
+
+
+def _cap_column_widths(widths: list[float], total_width: float) -> list[float]:
+    if not widths:
+        return []
+    max_ratio = 0.45 if len(widths) <= 3 else 0.38
+    max_width = total_width * max_ratio
+    capped = widths[:]
+    overflow = 0.0
+    under_cap_indexes: list[int] = []
+    for index, width in enumerate(capped):
+        if width > max_width:
+            overflow += width - max_width
+            capped[index] = max_width
+        else:
+            under_cap_indexes.append(index)
+    if overflow > 0 and under_cap_indexes:
+        free_sum = sum(capped[index] for index in under_cap_indexes)
+        if free_sum > 0:
+            for index in under_cap_indexes:
+                capped[index] += overflow * (capped[index] / free_sum)
+    return capped
+
+
+def _detect_summary_row_index(table_block: TableBlock) -> int | None:
+    if not table_block.rows:
+        return None
+    first_column = table_block.columns[0]
+    for row_index, row in enumerate(table_block.rows, start=1):
+        value = row.cells.get(first_column.key)
+        text = str(value).strip().lower() if value is not None else ""
+        if any(marker in text for marker in ("summe", "gesamt", "total")):
+            return row_index
+    return None
 
 
 def _is_schichtaufbau_zuschnitt_report(document: ReportDocument) -> bool:
