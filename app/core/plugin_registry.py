@@ -54,6 +54,7 @@ def ensure_default_registry(path: Path | None = None) -> None:
     """Lege eine Registry-Datei mit Defaults an, falls sie fehlt."""
 
     target = path or REGISTRY_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         return
     if BUNDLED_REGISTRY_PATH.exists():
@@ -112,6 +113,7 @@ def save_registry(specs: Iterable[PluginSpec], path: Path | None = None) -> None
     """Speichere alle Spezifikationen in der Registry-Datei."""
 
     target = path or REGISTRY_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
     data = {"plugins": [asdict(spec) for spec in specs]}
     try:
         target.write_text(

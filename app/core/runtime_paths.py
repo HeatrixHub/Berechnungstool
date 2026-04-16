@@ -36,3 +36,21 @@ def app_data_dir(app_name: str = APP_NAME) -> Path:
     target = base / app_name
     target.mkdir(parents=True, exist_ok=True)
     return target
+
+
+def app_data_path(*parts: str, app_name: str = APP_NAME) -> Path:
+    """Löst einen Dateipfad innerhalb des User-Data-Verzeichnisses auf."""
+
+    target = app_data_dir(app_name).joinpath(*parts)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def legacy_runtime_path_candidates(filename: str) -> tuple[Path, ...]:
+    """Mögliche Altpfade, in denen frühere Versionen Laufzeitdaten abgelegt haben."""
+
+    candidates: list[Path] = [Path.cwd() / filename]
+    executable_dir = Path(getattr(sys, "executable", "")).resolve().parent if is_frozen() else None
+    if executable_dir:
+        candidates.append(executable_dir / filename)
+    return tuple(dict.fromkeys(candidates))
