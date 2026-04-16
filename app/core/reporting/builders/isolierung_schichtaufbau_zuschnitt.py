@@ -59,28 +59,28 @@ def _build_layer_construction_section(state: Mapping[str, Any]) -> ReportSection
     plate_rows = _layer_plate_rows(build_data)
 
     blocks: list[MetricsBlock | TableBlock | TextBlock] = [
-        MetricsBlock(title="Gegebene und berechnete Maße", metrics=dimension_metrics),
+        MetricsBlock(title="Maßübersicht", metrics=dimension_metrics),
         _table(
             title="Schichtaufbau-Platten",
             columns=[
                 TableColumn("layer", "Schicht", value_type="integer"),
                 TableColumn("material", "Material"),
-                TableColumn("plate", "Platte"),
-                TableColumn("length", "L", unit="mm", value_type="number"),
-                TableColumn("width", "B", unit="mm", value_type="number"),
-                TableColumn("height", "H", unit="mm", value_type="number"),
+                TableColumn("plate", "Plattenbereich"),
+                TableColumn("length", "Länge", unit="mm", value_type="number"),
+                TableColumn("width", "Breite", unit="mm", value_type="number"),
+                TableColumn("height", "Höhe", unit="mm", value_type="number"),
             ],
             rows=plate_rows,
         ),
     ]
 
     if not plate_rows:
-        blocks.append(TextBlock(text="Für den Schichtaufbau liegen aktuell keine Plattenzeilen vor."))
+        blocks.append(TextBlock(text="Für den Schichtaufbau liegen derzeit keine Plattenpositionen vor."))
 
     return ReportSection(
         id="schichtaufbau-ergebnisse",
         title="Schichtaufbau",
-        description="Übernahme der Maße und Schichtdaten aus dem Tab „Schichtaufbau“.",
+        description="Maß- und Schichtübersicht basierend auf den Daten aus dem Bereich Schichtaufbau.",
         blocks=blocks,
     )
 
@@ -107,8 +107,8 @@ def _build_cutting_section(state: Mapping[str, Any]) -> ReportSection:
                 title="Rohlingsübersicht",
                 columns=[
                     TableColumn("material", "Material"),
-                    TableColumn("count", "Anzahl Rohlinge", value_type="integer"),
-                    TableColumn("cost", "Kosten", unit="€", value_type="number"),
+                    TableColumn("count", "Rohlinge", value_type="integer"),
+                    TableColumn("cost", "Gesamtkosten", unit="€", value_type="number"),
                 ],
                 rows=summary_rows,
             )
@@ -117,20 +117,16 @@ def _build_cutting_section(state: Mapping[str, Any]) -> ReportSection:
         blocks.append(
             TextBlock(
                 text=(
-                    "Für den Zuschnitt sind noch keine Ergebnisse verfügbar. "
-                    "Sobald berechnet wurde, erscheint hier die Rohlingsübersicht."
+                    "Für den Zuschnitt liegen derzeit keine berechneten Rohlinge vor. "
+                    "Die Rohlingsübersicht wird nach erfolgter Berechnung automatisch ergänzt."
                 )
             )
         )
 
-    message = _as_text(cut_results.get("message"), "")
-    if message and not summary_rows:
-        blocks.append(TextBlock(heading="Hinweis", text=message))
-
     return ReportSection(
         id="zuschnitt-ergebnisse",
         title="Zuschnitt",
-        description="Zuschnittbezogene Ergebnisübersicht aus dem Tab „Zuschnitt“.",
+        description="Zusammenfassung der berechneten Rohlinge und Kosten für den Zuschnitt.",
         blocks=blocks,
     )
 
