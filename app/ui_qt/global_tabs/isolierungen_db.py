@@ -48,6 +48,7 @@ from app.core.isolierungen_exchange.export_service import (
 )
 from app.core.isolierungen_exchange.import_service import prepare_insulation_exchange_import_from_file
 from app.core.isolierungen_exchange.matching_service import analyze_prepared_insulation_import_matching
+from app.core.isolierungen_exchange.persistence_service import PreparedInsulationImportPersistenceService
 from app.ui_qt.global_tabs.insulation_exchange_import_dialog import InsulationExchangeImportDialog
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
 
@@ -493,26 +494,33 @@ class IsolierungenDbTab:
             )
             return
 
-        action_counts: dict[str, int] = {}
-        for decision in decision_model.family_decisions:
-            action_counts[decision.action] = action_counts.get(decision.action, 0) + 1
+        persistence_service = PreparedInsulationImportPersistenceService()
+        result = persistence_service.persist(prepared_import, matching_analysis, decision_model)
+        if not result.success:
+            details = "\n".join(f"- {error}" for error in result.errors) if result.errors else "- Unbekannter Fehler"
+            QMessageBox.critical(
+                self.widget,
+                "Import fehlgeschlagen",
+                (
+                    "Die Persistierung wurde abgebrochen. Es wurden keine teilweisen Daten übernommen.\n\n"
+                    f"Fehler:\n{details}"
+                ),
+            )
+            return
 
-        action_lines = [f"- {action}: {count}" for action, count in sorted(action_counts.items())]
-        if not action_lines:
-            action_lines = ["- keine"]
+        self.refresh_table()
 
+        summary = result.summary
         QMessageBox.information(
             self.widget,
-            "Importentscheidungen vorbereitet",
+            "Import abgeschlossen",
             (
-                f"Datei erfolgreich analysiert: {decision_model.source_path.name}\n"
-                f"Familien im Dialog: {len(decision_model.family_decisions)}\n"
-                f"Exact Match: {decision_model.summary.get('exact_match', 0)}\n"
-                f"Kandidaten-Konflikte: {decision_model.summary.get('candidate_conflict', 0)}\n"
-                f"Kein Match: {decision_model.summary.get('no_match', 0)}\n\n"
-                "Entscheidungen (noch ohne DB-Schreiben):\n"
-                + "\n".join(action_lines)
-                + "\n\nHinweis: In diesem Schritt wurde nichts in die lokale DB geschrieben."
+                f"Datei: {Path(result.source_path).name}\n"
+                f"Neu angelegt: {summary.get('created', 0)}\n"
+                f"Exact Match bestätigt (No-Op): {summary.get('exact_match_confirmed', 0)}\n"
+                f"Übersprungen: {summary.get('skipped', 0)}\n"
+                f"Kandidaten bestätigt (No-Op): {summary.get('candidate_confirmed_noop', 0)}\n"
+                f"Bearbeitete Familien: {summary.get('total', 0)}"
             ),
         )
 
