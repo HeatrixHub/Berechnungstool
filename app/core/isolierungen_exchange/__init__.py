@@ -32,6 +32,11 @@ from .decision_service import (
     PreparedInsulationImportDecisionService,
     PreparedInsulationImportDecisions,
 )
+from .persistence_service import (
+    FamilyPersistenceOutcome,
+    PreparedInsulationImportPersistenceResult,
+    PreparedInsulationImportPersistenceService,
+)
 
 from .normalization import (
     normalize_family_for_exchange,
@@ -67,6 +72,9 @@ __all__ = [
     "InsulationFamilyDecision",
     "PreparedInsulationImportDecisionService",
     "PreparedInsulationImportDecisions",
+    "FamilyPersistenceOutcome",
+    "PreparedInsulationImportPersistenceResult",
+    "PreparedInsulationImportPersistenceService",
     "normalize_family_for_exchange",
     "normalize_family_portable_for_compare",
     "normalize_import_family_for_prepare",
