@@ -21,7 +21,7 @@ from app.core.reporting.report_document import (
 
 
 def render_report_pdf(document: ReportDocument, output_path: str | Path) -> Path:
-    """Render the standard report to a PDF file."""
+    """Render the report to a PDF file."""
 
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -47,9 +47,45 @@ def render_report_pdf(document: ReportDocument, output_path: str | Path) -> Path
     story: list[Any] = []
     _append_title(story, document, styles, Paragraph, Spacer, Image, Table, TableStyle, mm)
     _append_project_metadata(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
-    _append_general_metrics(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
-    _append_layer_table(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
-    _append_temperature_profile(story, document, styles, Paragraph, Spacer, Image, mm)
+
+    if _is_schichtaufbau_zuschnitt_report(document):
+        _append_schichtaufbau_dimensions(
+            story,
+            document,
+            styles,
+            Paragraph,
+            Spacer,
+            Table,
+            TableStyle,
+            colors,
+            mm,
+        )
+        _append_schichtaufbau_table(
+            story,
+            document,
+            styles,
+            Paragraph,
+            Spacer,
+            Table,
+            TableStyle,
+            colors,
+            mm,
+        )
+        _append_zuschnitt_section(
+            story,
+            document,
+            styles,
+            Paragraph,
+            Spacer,
+            Table,
+            TableStyle,
+            colors,
+            mm,
+        )
+    else:
+        _append_general_metrics(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
+        _append_layer_table(story, document, styles, Paragraph, Spacer, Table, TableStyle, colors, mm)
+        _append_temperature_profile(story, document, styles, Paragraph, Spacer, Image, mm)
 
     doc.build(story)
     return target
@@ -161,19 +197,7 @@ def _append_general_metrics(
         ])
 
     metrics_table = Table(metric_rows, colWidths=[95 * mm, 75 * mm], hAlign="LEFT")
-    metrics_table.setStyle(
-        TableStyle(
-            [
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.gainsboro),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]
-        )
-    )
+    metrics_table.setStyle(_metrics_table_style(TableStyle, colors))
     story.append(metrics_table)
 
     note = _find_general_text(document)
@@ -182,6 +206,38 @@ def _append_general_metrics(
         story.append(Paragraph(note, styles["hint"]))
 
     story.append(Spacer(1, 6 * mm))
+
+
+def _append_schichtaufbau_dimensions(
+    story: list[Any],
+    document: ReportDocument,
+    styles: dict[str, Any],
+    Paragraph: Any,
+    Spacer: Any,
+    Table: Any,
+    TableStyle: Any,
+    colors: Any,
+    mm: Any,
+) -> None:
+    story.append(Paragraph("Schichtaufbau", styles["heading"]))
+    metrics_block = _find_section_metrics(document, "schichtaufbau-ergebnisse")
+    if metrics_block is None or not metrics_block.metrics:
+        story.append(Paragraph("Keine Maßdaten verfügbar.", styles["body"]))
+        story.append(Spacer(1, 4 * mm))
+        return
+
+    rows: list[list[Any]] = []
+    for metric in metrics_block.metrics:
+        label = metric.label or metric.key
+        rows.append([
+            Paragraph(_safe_text(label, metric.key), styles["label"]),
+            Paragraph(_format_metric_value(metric), styles["value"]),
+        ])
+
+    table = Table(rows, colWidths=[115 * mm, 55 * mm], hAlign="LEFT")
+    table.setStyle(_metrics_table_style(TableStyle, colors))
+    story.append(table)
+    story.append(Spacer(1, 4 * mm))
 
 
 def _append_layer_table(
@@ -202,36 +258,83 @@ def _append_layer_table(
         story.append(Spacer(1, 5 * mm))
         return
 
-    header = [Paragraph(_column_label(column).replace("\n", "<br/>"), styles["value"]) for column in table_block.columns]
-    rows = [header]
-
-    if table_block.rows:
-        for row in table_block.rows:
-            rows.append([_format_table_cell(row, column) for column in table_block.columns])
-    else:
-        rows.append(["Keine Tabellenzeilen verfügbar."] + [""] * (len(table_block.columns) - 1))
-
-    col_widths = _layer_table_col_widths(table_block.columns, mm)
-    grid = Table(rows, colWidths=col_widths, hAlign="LEFT", repeatRows=1)
-    grid.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 8.5),
-                ("FONTSIZE", (0, 1), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
+    story.append(
+        _build_report_table(
+            table_block,
+            styles,
+            Paragraph,
+            Table,
+            TableStyle,
+            colors,
+            mm,
+            include_unit_in_header=True,
         )
     )
-    story.append(grid)
     story.append(Spacer(1, 6 * mm))
+
+
+def _append_schichtaufbau_table(
+    story: list[Any],
+    document: ReportDocument,
+    styles: dict[str, Any],
+    Paragraph: Any,
+    Spacer: Any,
+    Table: Any,
+    TableStyle: Any,
+    colors: Any,
+    mm: Any,
+) -> None:
+    table_block = _find_section_table(document, "schichtaufbau-ergebnisse", "Schichtaufbau-Platten")
+    if table_block is None or not table_block.columns:
+        story.append(Paragraph("Keine Schichtdaten verfügbar.", styles["body"]))
+        story.append(Spacer(1, 6 * mm))
+        return
+
+    story.append(
+        _build_report_table(
+            table_block,
+            styles,
+            Paragraph,
+            Table,
+            TableStyle,
+            colors,
+            mm,
+            include_unit_in_header=False,
+        )
+    )
+    story.append(Spacer(1, 6 * mm))
+
+
+def _append_zuschnitt_section(
+    story: list[Any],
+    document: ReportDocument,
+    styles: dict[str, Any],
+    Paragraph: Any,
+    Spacer: Any,
+    Table: Any,
+    TableStyle: Any,
+    colors: Any,
+    mm: Any,
+) -> None:
+    table_block = _find_section_table(document, "zuschnitt-ergebnisse", "Rohlingsübersicht")
+    if table_block is None or not table_block.columns or not table_block.rows:
+        story.append(Paragraph("Zuschnitt", styles["heading"]))
+        story.append(Paragraph("Keine Zuschnittergebnisse verfügbar.", styles["body"]))
+        return
+
+    story.append(Paragraph("Zuschnitt", styles["heading"]))
+    story.append(
+        _build_report_table(
+            table_block,
+            styles,
+            Paragraph,
+            Table,
+            TableStyle,
+            colors,
+            mm,
+            include_unit_in_header=False,
+        )
+    )
 
 
 def _append_temperature_profile(
@@ -269,6 +372,16 @@ def _find_metrics_block(document: ReportDocument) -> MetricsBlock | None:
     return None
 
 
+def _find_section_metrics(document: ReportDocument, section_id: str) -> MetricsBlock | None:
+    for section in document.sections:
+        if section.id != section_id:
+            continue
+        for block in section.blocks:
+            if isinstance(block, MetricsBlock):
+                return block
+    return None
+
+
 def _find_general_text(document: ReportDocument) -> str | None:
     for section in document.sections:
         if section.id != "allgemeine-daten":
@@ -280,11 +393,17 @@ def _find_general_text(document: ReportDocument) -> str | None:
 
 
 def _find_layer_table_block(document: ReportDocument) -> TableBlock | None:
+    return _find_section_table(document, "schichttabelle")
+
+
+def _find_section_table(document: ReportDocument, section_id: str, title: str | None = None) -> TableBlock | None:
     for section in document.sections:
-        if section.id != "schichttabelle":
+        if section.id != section_id:
             continue
         for block in section.blocks:
-            if isinstance(block, TableBlock):
+            if not isinstance(block, TableBlock):
+                continue
+            if title is None or block.title == title:
                 return block
     return None
 
@@ -299,7 +418,9 @@ def _find_temperature_caption(document: ReportDocument) -> str | None:
     return None
 
 
-def _column_label(column: TableColumn) -> str:
+def _column_label(column: TableColumn, *, include_unit: bool) -> str:
+    if not include_unit:
+        return column.label
     return f"{column.label}\n{column.unit or '–'}"
 
 
@@ -348,6 +469,8 @@ def _format_number(value: object, *, unit: str | None) -> str:
     if isinstance(value, float):
         if unit == "°C":
             return _format_number_german(value, decimal_places=1)
+        if unit == "€":
+            return _format_number_german(value, decimal_places=2)
         return _format_number_german(value, decimal_places=3)
     return str(value)
 
@@ -408,6 +531,68 @@ def _build_styles(ParagraphStyle: Any, getSampleStyleSheet: Any, colors: Any) ->
     }
 
 
+def _build_report_table(
+    table_block: TableBlock,
+    styles: dict[str, Any],
+    Paragraph: Any,
+    Table: Any,
+    TableStyle: Any,
+    colors: Any,
+    mm: Any,
+    *,
+    include_unit_in_header: bool,
+) -> Any:
+    header = [
+        Paragraph(_column_label(column, include_unit=include_unit_in_header).replace("\n", "<br/>"), styles["value"])
+        for column in table_block.columns
+    ]
+    rows: list[list[Any]] = [header]
+    for row in table_block.rows:
+        rows.append([_format_table_cell(row, column) for column in table_block.columns])
+
+    table = Table(
+        rows,
+        colWidths=_table_col_widths(table_block.columns, mm),
+        hAlign="LEFT",
+        repeatRows=1,
+        splitByRow=1,
+    )
+    table.setStyle(_report_table_style(TableStyle, colors))
+    return table
+
+
+def _metrics_table_style(TableStyle: Any, colors: Any) -> Any:
+    return TableStyle(
+        [
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.gainsboro),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]
+    )
+
+
+def _report_table_style(TableStyle: Any, colors: Any) -> Any:
+    return TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8.5),
+            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]
+    )
+
+
 def _safe_text(value: str | None, fallback: str) -> str:
     if value is None:
         return fallback
@@ -428,10 +613,20 @@ def _format_number_german(value: float, *, decimal_places: int) -> str:
     return text.replace(",", "§").replace(".", ",").replace("§", ".")
 
 
-def _layer_table_col_widths(columns: list[TableColumn], mm: Any) -> list[float]:
-    if not columns:
+def _table_col_widths(columns: list[TableColumn], mm: Any) -> list[float]:
+    count = len(columns)
+    if count == 0:
         return []
-    if len(columns) == 6:
-        return [37 * mm, 18 * mm, 30 * mm, 30 * mm, 27 * mm, 28 * mm]
-    col_width = 170 * mm / len(columns)
-    return [col_width] * len(columns)
+    if count == 3:
+        return [80 * mm, 45 * mm, 45 * mm]
+    if count == 6:
+        return [22 * mm, 44 * mm, 34 * mm, 24 * mm, 23 * mm, 23 * mm]
+    if count == 5:
+        return [34 * mm, 44 * mm, 31 * mm, 31 * mm, 30 * mm]
+    col_width = 170 * mm / count
+    return [col_width] * count
+
+
+def _is_schichtaufbau_zuschnitt_report(document: ReportDocument) -> bool:
+    section_ids = {section.id for section in document.sections}
+    return "schichtaufbau-ergebnisse" in section_ids and "zuschnitt-ergebnisse" in section_ids
