@@ -10,6 +10,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from app.core.runtime_paths import app_data_path, legacy_runtime_path_candidates
+
 from .models import (
     Material,
     MaterialMeasurement,
@@ -19,13 +21,13 @@ from .models import (
     ProjectResult,
 )
 
-DB_PATH = "heatrix.db"
+DB_PATH = app_data_path("heatrix.db")
 LEGACY_PROJECT_DB = "projects.db"
 LEGACY_MATERIAL_DB = "heatrix_data.db"
 
 
 def _get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -289,7 +291,7 @@ def _migrate_legacy_data() -> None:
 
 
 def _migrate_legacy_projects(conn: sqlite3.Connection) -> None:
-    legacy_path = Path(LEGACY_PROJECT_DB)
+    legacy_path = _resolve_legacy_db_path(LEGACY_PROJECT_DB)
     if not legacy_path.exists():
         return
     existing = conn.execute("SELECT COUNT(1) FROM projects").fetchone()[0]
@@ -339,7 +341,7 @@ def _migrate_legacy_projects(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_legacy_materials(conn: sqlite3.Connection) -> None:
-    legacy_path = Path(LEGACY_MATERIAL_DB)
+    legacy_path = _resolve_legacy_db_path(LEGACY_MATERIAL_DB)
     if not legacy_path.exists():
         return
     existing = conn.execute("SELECT COUNT(1) FROM materials").fetchone()[0]
@@ -375,6 +377,13 @@ def _safe_load_json(payload: str) -> List[float]:
     except json.JSONDecodeError:
         pass
     return []
+
+
+def _resolve_legacy_db_path(filename: str) -> Path:
+    for candidate in legacy_runtime_path_candidates(filename):
+        if candidate.exists():
+            return candidate
+    return Path(filename)
 
 
 def _normalize_material_name(name: str, fallback_index: int | None = None) -> str:

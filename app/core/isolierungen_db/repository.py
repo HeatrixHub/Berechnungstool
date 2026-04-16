@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Iterator
 
-from Isolierung.core.database import DB_PATH
+from app.core.runtime_paths import app_data_path
 
 SCHEMA_VERSION = 2
 
@@ -15,8 +15,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 class IsolierungRepository:
-    def __init__(self, db_path: str = DB_PATH) -> None:
-        self._db_path = db_path
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self._db_path = str(db_path or app_data_path("heatrix.db"))
         self._ensure_schema()
 
     @contextmanager
