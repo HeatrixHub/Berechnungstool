@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
+from app.core.runtime_paths import app_data_dir, resolve_bundled_path
+
 
 @dataclass(slots=True)
 class PluginSpec:
@@ -19,7 +21,8 @@ class PluginSpec:
     enabled: bool = True
 
 
-REGISTRY_PATH = Path(__file__).with_name("plugins.json")
+REGISTRY_PATH = app_data_dir() / "plugins.json"
+BUNDLED_REGISTRY_PATH = resolve_bundled_path("app", "core", "plugins.json")
 
 DEFAULT_SPECS: Sequence[PluginSpec] = (
     PluginSpec(
@@ -53,6 +56,12 @@ def ensure_default_registry(path: Path | None = None) -> None:
     target = path or REGISTRY_PATH
     if target.exists():
         return
+    if BUNDLED_REGISTRY_PATH.exists():
+        try:
+            target.write_text(BUNDLED_REGISTRY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+            return
+        except Exception:
+            pass
     save_registry(list(DEFAULT_SPECS), path=target)
 
 

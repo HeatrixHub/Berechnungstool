@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.reporting.assets import build_temperature_profile_chart
+from app.core.runtime_paths import resolve_bundled_path
 from app.core.reporting.report_document import (
     ImageBlock,
     MetricFormatHint,
@@ -480,7 +481,7 @@ def _format_number(value: object, *, unit: str | None) -> str:
 
 
 def _build_header_logo(Image: Any, mm: Any) -> Any | None:
-    logo_path = Path(__file__).resolve().parents[4] / "heatrix_logo_v3.png"
+    logo_path = resolve_bundled_path("heatrix_logo_v3.png")
     if not logo_path.exists():
         return None
     logo = Image(str(logo_path))

@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.core.runtime_paths import app_data_dir
+
 from .isolierung_embedding import (
     build_embedded_isolierungen_from_plugin_states,
     normalize_resolution_entry,
@@ -37,7 +39,7 @@ class ProjectStore:
     FORMAT_VERSION = 1
 
     def __init__(self, path: Path | None = None) -> None:
-        self.path = path or Path(__file__).with_name("projects.json")
+        self.path = path or app_data_dir() / "projects.json"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._data: Dict[str, Any] = {
             "format_version": self.FORMAT_VERSION,
