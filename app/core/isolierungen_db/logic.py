@@ -11,6 +11,7 @@ Create/Update semantics in this module:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Callable
 
 import numpy as np
@@ -19,6 +20,7 @@ import sqlite3
 from .repository import IsolierungRepository
 
 repo = IsolierungRepository()
+LOGGER = logging.getLogger(__name__)
 
 _material_change_listeners: set[Callable[[], None]] = set()
 
@@ -35,10 +37,8 @@ def _notify_material_change_listeners() -> None:
     for listener in list(_material_change_listeners):
         try:
             listener()
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
+        except Exception:  # pragma: no cover - Schutz gegen Drittcode-Callbacks
+            LOGGER.exception("Material-Change-Listener %r hat einen Fehler ausgelöst.", listener)
 
 
 def list_families() -> list[dict]:

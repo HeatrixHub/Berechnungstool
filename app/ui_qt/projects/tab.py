@@ -33,7 +33,7 @@ from app.core.projects.export import (
     export_project_to_file,
 )
 from app.core.projects.import_service import ProjectImportError, ProjectImportService
-from app.core.projects.store import ProjectRecord, ProjectStore
+from app.core.projects.store import ProjectRecord, ProjectStore, ProjectStoreLoadError
 from app.core.projects.insulation_runtime_resolution import (
     InsulationRuntimeResolver,
     RuntimeResolvedInsulation,
@@ -69,7 +69,18 @@ class ProjectsTab:
     ) -> None:
         self._tab_widget = tab_widget
         self._plugin_manager = plugin_manager
-        self._store = store or ProjectStore()
+        try:
+            self._store = store or ProjectStore()
+        except ProjectStoreLoadError as exc:
+            logger.exception("Projekt-Store konnte nicht geladen werden.")
+            QMessageBox.critical(
+                None,
+                "Projektdatei beschädigt",
+                "Die Projektdatei konnte nicht geladen werden.\n\n"
+                f"{exc}\n\n"
+                "Bitte sichern oder reparieren Sie die Datei und starten Sie die Anwendung neu.",
+            )
+            raise
         self._author = author or getpass.getuser()
         self._plugin_specs = plugin_specs or get_plugins()
         self._spec_lookup = {spec.identifier: spec.name for spec in self._plugin_specs}
