@@ -226,13 +226,21 @@ def _append_schichtaufbau_dimensions(
         story.append(Spacer(1, 4 * mm))
         return
 
+    compact_rows = _compact_dimension_rows(metrics_block.metrics)
     rows: list[list[Any]] = []
-    for metric in metrics_block.metrics:
-        label = metric.label or metric.key
-        rows.append([
-            Paragraph(_safe_text(label, metric.key), styles["label"]),
-            Paragraph(_format_metric_value(metric), styles["value"]),
-        ])
+    if compact_rows:
+        for label, value in compact_rows:
+            rows.append([
+                Paragraph(_safe_text(label, "Maß"), styles["label"]),
+                Paragraph(_safe_text(value, "–"), styles["value"]),
+            ])
+    else:
+        for metric in metrics_block.metrics:
+            label = metric.label or metric.key
+            rows.append([
+                Paragraph(_safe_text(label, metric.key), styles["label"]),
+                Paragraph(_format_metric_value(metric), styles["value"]),
+            ])
 
     table = Table(rows, colWidths=[92 * mm, 78 * mm], hAlign="LEFT")
     table.setStyle(_metrics_table_style(TableStyle, colors))
@@ -542,11 +550,16 @@ def _build_report_table(
     *,
     include_unit_in_header: bool,
 ) -> Any:
-    header = [
-        Paragraph(_column_label(column, include_unit=include_unit_in_header).replace("\n", "<br/>"), styles["value"])
-        for column in table_block.columns
-    ]
-    rows: list[list[Any]] = [header]
+    if include_unit_in_header:
+        header_labels = [Paragraph(_safe_text(column.label, column.key), styles["value"]) for column in table_block.columns]
+        header_units = [Paragraph(_safe_text(column.unit, ""), styles["value"]) for column in table_block.columns]
+        rows: list[list[Any]] = [header_labels, header_units]
+    else:
+        header = [
+            Paragraph(_column_label(column, include_unit=include_unit_in_header).replace("\n", "<br/>"), styles["value"])
+            for column in table_block.columns
+        ]
+        rows = [header]
     for row in table_block.rows:
         rows.append([_format_table_cell(row, column) for column in table_block.columns])
 
@@ -554,10 +567,10 @@ def _build_report_table(
         rows,
         colWidths=_table_col_widths(table_block.columns, mm),
         hAlign="LEFT",
-        repeatRows=1,
+        repeatRows=2 if include_unit_in_header else 1,
         splitByRow=1,
     )
-    table.setStyle(_report_table_style(TableStyle, colors))
+    table.setStyle(_report_table_style(TableStyle, colors, header_rows=2 if include_unit_in_header else 1))
     return table
 
 
@@ -575,17 +588,19 @@ def _metrics_table_style(TableStyle: Any, colors: Any) -> Any:
     )
 
 
-def _report_table_style(TableStyle: Any, colors: Any) -> Any:
+def _report_table_style(TableStyle: Any, colors: Any, *, header_rows: int = 1) -> Any:
+    body_start_row = max(header_rows, 1)
     return TableStyle(
         [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E5E7EB")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+            ("BACKGROUND", (0, 0), (-1, header_rows - 1), colors.HexColor("#E5E7EB")),
+            ("TEXTCOLOR", (0, 0), (-1, header_rows - 1), colors.black),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, 0), 8.5),
-            ("FONTSIZE", (0, 1), (-1, -1), 8),
+            ("FONTNAME", (0, 1), (-1, header_rows - 1), "Helvetica"),
+            ("FONTSIZE", (0, 0), (-1, header_rows - 1), 8.5),
+            ("FONTSIZE", (0, body_start_row), (-1, -1), 8),
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+            ("ROWBACKGROUNDS", (0, body_start_row), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -603,8 +618,45 @@ def _safe_text(value: str | None, fallback: str) -> str:
 
 def _format_datetime(value: datetime | object) -> str:
     if isinstance(value, datetime):
-        return value.astimezone().strftime("%d.%m.%Y %H:%M")
+        return value.astimezone().strftime("%d.%m.%Y")
     return "Unbekannt"
+
+
+def _compact_dimension_rows(metrics: list[MetricItem]) -> list[tuple[str, str]]:
+    grouped: dict[str, dict[str, MetricItem]] = {}
+    for metric in metrics:
+        key = metric.key.strip().lower()
+        if key.startswith("given_outer_"):
+            grouped.setdefault("Gegebenes Außenmaß", {})[key.rsplit("_", 1)[-1]] = metric
+        elif key.startswith("given_inner_"):
+            grouped.setdefault("Gegebenes Innenmaß", {})[key.rsplit("_", 1)[-1]] = metric
+        elif key.startswith("calculated_inner_"):
+            grouped.setdefault("Berechnetes Innenmaß", {})[key.rsplit("_", 1)[-1]] = metric
+        elif key.startswith("calculated_outer_"):
+            grouped.setdefault("Berechnetes Außenmaß", {})[key.rsplit("_", 1)[-1]] = metric
+
+    rows: list[tuple[str, str]] = []
+    for label in (
+        "Gegebenes Außenmaß",
+        "Gegebenes Innenmaß",
+        "Berechnetes Innenmaß",
+        "Berechnetes Außenmaß",
+    ):
+        axis_metrics = grouped.get(label, {})
+        if not axis_metrics:
+            continue
+        values = [_format_dimension_axis_value(axis_metrics.get(axis)) for axis in ("l", "b", "h")]
+        rows.append((f"{label} (L×B×H)", f"{values[0]} × {values[1]} × {values[2]} mm"))
+    return rows
+
+
+def _format_dimension_axis_value(metric: MetricItem | None) -> str:
+    if metric is None or metric.value is None:
+        return "–"
+    value = metric.value
+    if isinstance(value, (int, float)):
+        return _format_number(value, unit="mm")
+    return str(value)
 
 
 def _format_number_german(value: float, *, decimal_places: int) -> str:
