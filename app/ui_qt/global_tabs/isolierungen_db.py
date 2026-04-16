@@ -1,6 +1,7 @@
 """Qt UI tab for robust management of insulation families and variants."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -9,6 +10,8 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFileDialog,
+    QDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -38,7 +41,25 @@ from app.core.isolierungen_db.logic import (
     update_variant,
 )
 from app.core.isolierungen_db.services import parse_optional_float, parse_required_float
+from app.core.isolierungen_exchange.export_service import (
+    EXPORT_FILE_SUFFIX,
+    build_insulation_exchange_payload,
+    export_insulations_to_file,
+)
+from app.core.isolierungen_exchange.import_service import prepare_insulation_exchange_import_from_file
+from app.core.isolierungen_exchange.matching_service import analyze_prepared_insulation_import_matching
+from app.core.isolierungen_exchange.persistence_service import PreparedInsulationImportPersistenceService
+from app.ui_qt.global_tabs.insulation_exchange_import_dialog import InsulationExchangeImportDialog
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
+
+
+_OUTCOME_LABELS = {
+    "created": "Neu angelegt",
+    "exact_match_confirmed": "Exact Match bestätigt (keine Änderung)",
+    "skipped": "Übersprungen",
+    "candidate_confirmed_noop": "Kandidat bestätigt (No-Op)",
+    "rolled_back": "Wegen Rollback nicht übernommen",
+}
 
 
 class DictTableModel(QAbstractTableModel):
@@ -133,8 +154,12 @@ class IsolierungenDbTab:
         button_row = QHBoxLayout()
         self._new_family_button = QPushButton("Neu")
         self._delete_family_button = QPushButton("Familie löschen")
+        self._export_family_button = QPushButton("Familie exportieren")
+        self._import_family_button = QPushButton("Familie importieren")
         button_row.addWidget(self._new_family_button)
         button_row.addWidget(self._delete_family_button)
+        button_row.addWidget(self._export_family_button)
+        button_row.addWidget(self._import_family_button)
         button_row.addStretch(1)
 
         self._family_model = DictTableModel(
@@ -172,6 +197,8 @@ class IsolierungenDbTab:
         self._family_table.selectionModel().selectionChanged.connect(self.on_family_select)
         self._new_family_button.clicked.connect(self.new_family)
         self._delete_family_button.clicked.connect(self.delete_family)
+        self._export_family_button.clicked.connect(self.export_selected_family)
+        self._import_family_button.clicked.connect(self.import_family_prepare)
         return section
 
     def _build_variant_section(self) -> QGroupBox:
@@ -415,6 +442,152 @@ class IsolierungenDbTab:
         except Exception as exc:
             QMessageBox.critical(self.widget, "Fehler", str(exc))
 
+    def export_selected_family(self) -> None:
+        family_id = self._get_selected_family_id()
+        if family_id is None:
+            QMessageBox.warning(self.widget, "Export nicht möglich", "Bitte zuerst eine Familie auswählen.")
+            return
+
+        default_name = self._family_name_input.text().strip() or f"family-{family_id}"
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self.widget,
+            "Isolierung exportieren",
+            f"{default_name}{EXPORT_FILE_SUFFIX}",
+            f"Heatrix Isolierungs-Export (*{EXPORT_FILE_SUFFIX});;JSON (*.json)",
+        )
+        if not selected_path:
+            return
+
+        try:
+            payload = build_insulation_exchange_payload(
+                family_ids=[family_id],
+                app_version=self._resolve_app_version(),
+            )
+            target_path = export_insulations_to_file(payload, Path(selected_path))
+        except ValueError as exc:
+            QMessageBox.critical(self.widget, "Export fehlgeschlagen", str(exc))
+            return
+        except OSError as exc:
+            QMessageBox.critical(self.widget, "Export fehlgeschlagen", f"Datei konnte nicht geschrieben werden: {exc}")
+            return
+
+        QMessageBox.information(
+            self.widget,
+            "Export erfolgreich",
+            f"Isolierungsfamilie wurde exportiert:\n{target_path}",
+        )
+
+    def import_family_prepare(self) -> None:
+        selected_path, _ = QFileDialog.getOpenFileName(
+            self.widget,
+            "Isolierung importieren",
+            "",
+            f"Heatrix Isolierungs-Export (*{EXPORT_FILE_SUFFIX});;JSON (*.json)",
+        )
+        if not selected_path:
+            return
+
+        try:
+            prepared_import = prepare_insulation_exchange_import_from_file(Path(selected_path))
+        except ValueError as exc:
+            QMessageBox.critical(self.widget, "Import fehlgeschlagen", str(exc))
+            return
+
+        matching_analysis = analyze_prepared_insulation_import_matching(prepared_import)
+        decision_model = self._run_import_decision_dialog(matching_analysis)
+        if decision_model is None:
+            QMessageBox.information(
+                self.widget,
+                "Import abgebrochen",
+                "Der Importdialog wurde abgebrochen. Es wurden keine Entscheidungen übernommen und nichts persistiert.",
+            )
+            return
+
+        persistence_service = PreparedInsulationImportPersistenceService()
+        result = persistence_service.persist(prepared_import, matching_analysis, decision_model)
+        if not result.success:
+            QMessageBox.critical(
+                self.widget,
+                "Import fehlgeschlagen",
+                self._build_import_failure_message(result, decision_model),
+            )
+            return
+
+        self.refresh_table()
+        QMessageBox.information(
+            self.widget,
+            "Import abgeschlossen",
+            self._build_import_success_message(result, decision_model),
+        )
+
+    def _run_import_decision_dialog(self, matching_analysis):
+        dialog = InsulationExchangeImportDialog(matching_analysis, self.widget)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.decisions()
+
+    def _build_import_success_message(self, result, decision_model) -> str:
+        summary = result.summary
+        family_lines = self._build_family_outcome_lines(result, decision_model, include_pending_on_failure=False)
+        details_block = "\n".join(family_lines) if family_lines else "• Keine Familien verarbeitet."
+        return (
+            f"Datei: {Path(result.source_path).name}\n"
+            f"Neu angelegt: {summary.get('created', 0)}\n"
+            f"Exact Match bestätigt (No-Op): {summary.get('exact_match_confirmed', 0)}\n"
+            f"Übersprungen: {summary.get('skipped', 0)}\n"
+            f"Kandidaten bestätigt (No-Op): {summary.get('candidate_confirmed_noop', 0)}\n"
+            f"Bearbeitete Familien: {summary.get('total', 0)}\n\n"
+            "Ergebnis pro Importfamilie:\n"
+            f"{details_block}"
+        )
+
+    def _build_import_failure_message(self, result, decision_model) -> str:
+        error_lines = "\n".join(f"- {self._format_error_reason(error)}" for error in result.errors) if result.errors else "- Unbekannter Fehler"
+        family_lines = self._build_family_outcome_lines(result, decision_model, include_pending_on_failure=True)
+        family_block = "\n".join(family_lines) if family_lines else "• Keine Familien verarbeitet."
+        return (
+            "Die Persistierung wurde abgebrochen und der Importlauf wurde zurückgerollt.\n"
+            "Es wurden keine teilweisen Daten übernommen.\n\n"
+            f"Fehler:\n{error_lines}\n\n"
+            "Betroffene Importfamilien:\n"
+            f"{family_block}"
+        )
+
+    def _build_family_outcome_lines(self, result, decision_model, *, include_pending_on_failure: bool) -> list[str]:
+        decision_by_index = {
+            int(item.import_index): item.import_family_name
+            for item in decision_model.family_decisions
+        }
+        outcome_by_index = {int(item.import_index): item for item in result.outcomes}
+        lines: list[str] = []
+        for import_index in sorted(decision_by_index):
+            family_name = decision_by_index[import_index]
+            outcome = outcome_by_index.get(import_index)
+            if outcome is None:
+                if include_pending_on_failure:
+                    lines.append(f"• #{import_index} {family_name}: Wegen Rollback nicht übernommen.")
+                continue
+            lines.append(self._format_family_outcome_line(outcome))
+        return lines
+
+    def _format_family_outcome_line(self, outcome) -> str:
+        label = _OUTCOME_LABELS.get(outcome.status, f"Status '{outcome.status}'")
+        suffix = ""
+        if outcome.status == "created" and outcome.created_family_id is not None:
+            suffix = f" (ID #{outcome.created_family_id})"
+        elif outcome.status in {"exact_match_confirmed", "candidate_confirmed_noop"} and outcome.selected_candidate_id is not None:
+            suffix = f" (Lokale Familie #{outcome.selected_candidate_id})"
+
+        reason = ""
+        if outcome.status == "rolled_back":
+            reason_text = outcome.message or "Transaktion wegen Fehler zurückgerollt."
+            reason = f" – Grund: {self._format_error_reason(reason_text)}"
+
+        return f"• #{outcome.import_index} {outcome.import_family_name}: {label}{suffix}{reason}"
+
+    def _format_error_reason(self, text: str) -> str:
+        return " ".join(str(text).strip().split())
+
     def delete_family(self) -> None:
         if self._selected_family_id is None:
             return
@@ -489,6 +662,14 @@ class IsolierungenDbTab:
         self._variant_length_input.clear()
         self._variant_width_input.clear()
         self._variant_price_input.clear()
+
+    def _resolve_app_version(self) -> str | None:
+        try:
+            from app import __version__ as app_version  # type: ignore[attr-defined]
+        except Exception:
+            return None
+        app_version_text = str(app_version).strip()
+        return app_version_text or None
 
     @staticmethod
     def _parse_float_list(value: str) -> list[float]:

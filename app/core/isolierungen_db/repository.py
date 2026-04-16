@@ -29,6 +29,18 @@ class IsolierungRepository:
         finally:
             conn.close()
 
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        """Provide a single DB transaction scope with automatic rollback."""
+        with self._connect() as conn:
+            conn.execute("BEGIN")
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -275,6 +287,59 @@ class IsolierungRepository:
             ).fetchone()
         return self.get_family(int(row["id"])) if row else None
 
+    def get_family_by_name_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        name: str,
+    ) -> dict[str, Any] | None:
+        row = conn.execute(
+            "SELECT id FROM isolierung_families WHERE name = ?",
+            (name,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self.get_family_in_connection(conn, int(row["id"]))
+
+    def get_family_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        family_id: int,
+    ) -> dict[str, Any] | None:
+        family = conn.execute(
+            "SELECT * FROM isolierung_families WHERE id = ?",
+            (family_id,),
+        ).fetchone()
+        if family is None:
+            return None
+        measurements = conn.execute(
+            """
+            SELECT temperature, conductivity
+            FROM isolierung_measurements
+            WHERE family_id = ?
+            ORDER BY position ASC
+            """,
+            (family_id,),
+        ).fetchall()
+        variants = conn.execute(
+            """
+            SELECT id, name, thickness, length, width, price
+            FROM isolierung_variants
+            WHERE family_id = ?
+            ORDER BY name COLLATE NOCASE ASC
+            """,
+            (family_id,),
+        ).fetchall()
+        return {
+            "id": family["id"],
+            "name": family["name"],
+            "classification_temp": family["classification_temp"],
+            "max_temp": family["max_temp"],
+            "density": family["density"],
+            "temps": [row["temperature"] for row in measurements],
+            "ks": [row["conductivity"] for row in measurements],
+            "variants": [dict(row) for row in variants],
+        }
+
     def create_family(
         self,
         name: str,
@@ -285,17 +350,39 @@ class IsolierungRepository:
         ks: list[float],
     ) -> int:
         with self._connect() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO isolierung_families (name, classification_temp, max_temp, density)
-                VALUES (?, ?, ?, ?)
-                """,
-                (name, classification_temp, max_temp, density),
+            family_id = self.create_family_in_connection(
+                conn,
+                name=name,
+                classification_temp=classification_temp,
+                max_temp=max_temp,
+                density=density,
+                temps=temps,
+                ks=ks,
             )
-            family_id = int(cursor.lastrowid)
-            self._replace_measurements(conn, family_id, temps, ks)
             conn.commit()
             return family_id
+
+    def create_family_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        name: str,
+        classification_temp: float,
+        max_temp: float | None,
+        density: float,
+        temps: list[float],
+        ks: list[float],
+    ) -> int:
+        cursor = conn.execute(
+            """
+            INSERT INTO isolierung_families (name, classification_temp, max_temp, density)
+            VALUES (?, ?, ?, ?)
+            """,
+            (name, classification_temp, max_temp, density),
+        )
+        family_id = int(cursor.lastrowid)
+        self._replace_measurements(conn, family_id, temps, ks)
+        return family_id
 
     def update_family(
         self,
@@ -349,15 +436,37 @@ class IsolierungRepository:
         price: float | None,
     ) -> int:
         with self._connect() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO isolierung_variants (family_id, name, thickness, length, width, price)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (family_id, name, thickness, length, width, price),
+            variant_id = self.create_variant_in_connection(
+                conn,
+                family_id=family_id,
+                name=name,
+                thickness=thickness,
+                length=length,
+                width=width,
+                price=price,
             )
             conn.commit()
-            return int(cursor.lastrowid)
+            return variant_id
+
+    def create_variant_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        family_id: int,
+        name: str,
+        thickness: float,
+        length: float | None,
+        width: float | None,
+        price: float | None,
+    ) -> int:
+        cursor = conn.execute(
+            """
+            INSERT INTO isolierung_variants (family_id, name, thickness, length, width, price)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (family_id, name, thickness, length, width, price),
+        )
+        return int(cursor.lastrowid)
 
     def update_variant(
         self,
