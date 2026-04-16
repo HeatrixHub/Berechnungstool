@@ -22,6 +22,17 @@ from .matching_service import (
     VariantPerspective,
     analyze_prepared_insulation_import_matching,
 )
+from .decision_service import (
+    ACTION_CREATE_NEW,
+    ACTION_SELECT_CANDIDATE,
+    ACTION_SKIP_IMPORT,
+    ACTION_USE_EXACT_MATCH,
+    FamilyDecisionInput,
+    InsulationFamilyDecision,
+    PreparedInsulationImportDecisionService,
+    PreparedInsulationImportDecisions,
+)
+
 from .normalization import (
     normalize_family_for_exchange,
     normalize_family_portable_for_compare,
@@ -48,6 +59,14 @@ __all__ = [
     "PreparedInsulationImportMatchingService",
     "VariantPerspective",
     "analyze_prepared_insulation_import_matching",
+    "ACTION_CREATE_NEW",
+    "ACTION_SELECT_CANDIDATE",
+    "ACTION_SKIP_IMPORT",
+    "ACTION_USE_EXACT_MATCH",
+    "FamilyDecisionInput",
+    "InsulationFamilyDecision",
+    "PreparedInsulationImportDecisionService",
+    "PreparedInsulationImportDecisions",
     "normalize_family_for_exchange",
     "normalize_family_portable_for_compare",
     "normalize_import_family_for_prepare",
