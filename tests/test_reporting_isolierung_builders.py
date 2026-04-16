@@ -78,7 +78,7 @@ def test_build_schichtaufbau_zuschnitt_report_contains_sections_and_tables() -> 
     assert [column.label for column in schicht_table.columns] == [
         "Schicht",
         "Material",
-        "Plattenbereich",
+        "Platte",
         "Länge",
         "Breite",
         "Höhe",
