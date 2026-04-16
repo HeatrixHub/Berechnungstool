@@ -14,6 +14,14 @@ from .import_service import (
     PreparedInsulationImport,
     prepare_insulation_exchange_import_from_file,
 )
+from .matching_service import (
+    FamilyMatchingResult,
+    MatchingCandidate,
+    PreparedInsulationImportMatchingAnalysis,
+    PreparedInsulationImportMatchingService,
+    VariantPerspective,
+    analyze_prepared_insulation_import_matching,
+)
 from .normalization import (
     normalize_family_for_exchange,
     normalize_family_portable_for_compare,
@@ -34,6 +42,12 @@ __all__ = [
     "PreparedInsulationFamilyImport",
     "PreparedInsulationImport",
     "prepare_insulation_exchange_import_from_file",
+    "FamilyMatchingResult",
+    "MatchingCandidate",
+    "PreparedInsulationImportMatchingAnalysis",
+    "PreparedInsulationImportMatchingService",
+    "VariantPerspective",
+    "analyze_prepared_insulation_import_matching",
     "normalize_family_for_exchange",
     "normalize_family_portable_for_compare",
     "normalize_import_family_for_prepare",

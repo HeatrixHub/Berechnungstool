@@ -46,6 +46,7 @@ from app.core.isolierungen_exchange.export_service import (
     export_insulations_to_file,
 )
 from app.core.isolierungen_exchange.import_service import prepare_insulation_exchange_import_from_file
+from app.core.isolierungen_exchange.matching_service import analyze_prepared_insulation_import_matching
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
 
 
@@ -480,6 +481,7 @@ class IsolierungenDbTab:
             QMessageBox.critical(self.widget, "Import fehlgeschlagen", str(exc))
             return
 
+        matching_analysis = analyze_prepared_insulation_import_matching(prepared_import)
         warning_count = sum(1 for issue in prepared_import.issues if issue.level == "warning")
         issue_lines = [
             f"- {issue.message}"
@@ -493,8 +495,11 @@ class IsolierungenDbTab:
             (
                 f"Datei erfolgreich validiert.\n"
                 f"Familien: {len(prepared_import.families)}\n"
-                f"Warnungen: {warning_count}\n\n"
-                "Hinweis: In diesem Schritt wurden noch keine Daten in die lokale DB geschrieben.\n\n"
+                f"Warnungen: {warning_count}\n"
+                f"Exact Match: {matching_analysis.summary.get('exact_match', 0)}\n"
+                f"Kandidaten-Konflikte: {matching_analysis.summary.get('candidate_conflict', 0)}\n"
+                f"Kein Match: {matching_analysis.summary.get('no_match', 0)}\n\n"
+                "Hinweis: In diesem Schritt wurden nur Analyse-Ergebnisse erzeugt; es gab keine Schreibzugriffe auf die lokale DB.\n\n"
                 f"{warning_text}"
             ),
         )
