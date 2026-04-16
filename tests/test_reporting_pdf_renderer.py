@@ -7,8 +7,8 @@ from app.core.reporting.builders import (
     ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG,
     build_isolierung_report_by_type,
 )
-from app.core.reporting.renderers.pdf import _compact_dimension_rows, _format_datetime
-from app.core.reporting.report_document import MetricItem
+from app.core.reporting.renderers.pdf import _column_header_markup, _compact_dimension_rows, _format_datetime
+from app.core.reporting.report_document import MetricItem, TableColumn
 from app.core.reporting.renderers import render_report_pdf
 
 
@@ -115,3 +115,11 @@ def test_format_datetime_returns_date_without_time() -> None:
     created = datetime(2026, 4, 16, 14, 30, tzinfo=timezone.utc)
 
     assert _format_datetime(created) == "16.04.2026"
+
+
+def test_column_header_markup_renders_label_and_optional_unit() -> None:
+    with_unit = TableColumn(key="q", label="Wärmestrom", unit="W/m²", value_type="number")
+    without_unit = TableColumn(key="material", label="Material", unit=None, value_type="text")
+
+    assert _column_header_markup(with_unit, include_unit=True) == "<b>Wärmestrom</b><br/>W/m²"
+    assert _column_header_markup(without_unit, include_unit=True) == "<b>Material</b>"

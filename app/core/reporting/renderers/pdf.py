@@ -137,8 +137,8 @@ def _append_project_metadata(
     created_at = _format_datetime(document.metadata.created_at)
     metadata_rows = [
         [Paragraph("<b>Projekt</b>", styles["label"]), Paragraph(_safe_text(document.metadata.project_name, "Unbenanntes Projekt"), styles["value"])],
-        [Paragraph("<b>Autor</b>", styles["label"]), Paragraph(_safe_text(document.metadata.author, "Unbekannt"), styles["value"])],
-        [Paragraph("<b>Erstellt</b>", styles["label"]), Paragraph(created_at, styles["value"])],
+        [Paragraph("<b>Erstellt von</b>", styles["label"]), Paragraph(_safe_text(document.metadata.author, "Unbekannt"), styles["value"])],
+        [Paragraph("<b>Erstellt am</b>", styles["label"]), Paragraph(created_at, styles["value"])],
     ]
 
     for key, value in sorted(document.metadata.additional_info.items()):
@@ -426,12 +426,6 @@ def _find_temperature_caption(document: ReportDocument) -> str | None:
     return None
 
 
-def _column_label(column: TableColumn, *, include_unit: bool) -> str:
-    if not include_unit:
-        return column.label
-    return f"{column.label}\n{column.unit or '–'}"
-
-
 def _format_metric_value(metric: MetricItem) -> str:
     value = metric.value
     if value is None:
@@ -550,16 +544,11 @@ def _build_report_table(
     *,
     include_unit_in_header: bool,
 ) -> Any:
-    if include_unit_in_header:
-        header_labels = [Paragraph(_safe_text(column.label, column.key), styles["value"]) for column in table_block.columns]
-        header_units = [Paragraph(_safe_text(column.unit, ""), styles["value"]) for column in table_block.columns]
-        rows: list[list[Any]] = [header_labels, header_units]
-    else:
-        header = [
-            Paragraph(_column_label(column, include_unit=include_unit_in_header).replace("\n", "<br/>"), styles["value"])
-            for column in table_block.columns
-        ]
-        rows = [header]
+    header = [
+        Paragraph(_column_header_markup(column, include_unit=include_unit_in_header), styles["value"])
+        for column in table_block.columns
+    ]
+    rows: list[list[Any]] = [header]
     for row in table_block.rows:
         rows.append([_format_table_cell(row, column) for column in table_block.columns])
 
@@ -567,11 +556,21 @@ def _build_report_table(
         rows,
         colWidths=_table_col_widths(table_block.columns, mm),
         hAlign="LEFT",
-        repeatRows=2 if include_unit_in_header else 1,
+        repeatRows=1,
         splitByRow=1,
     )
-    table.setStyle(_report_table_style(TableStyle, colors, header_rows=2 if include_unit_in_header else 1))
+    table.setStyle(_report_table_style(TableStyle, colors, header_rows=1))
     return table
+
+
+def _column_header_markup(column: TableColumn, *, include_unit: bool) -> str:
+    label = _safe_text(column.label, column.key)
+    if not include_unit:
+        return f"<b>{label}</b>"
+    unit = (column.unit or "").strip()
+    if not unit:
+        return f"<b>{label}</b>"
+    return f"<b>{label}</b><br/>{unit}"
 
 
 def _metrics_table_style(TableStyle: Any, colors: Any) -> Any:
