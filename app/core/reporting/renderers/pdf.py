@@ -234,7 +234,7 @@ def _append_schichtaufbau_dimensions(
             Paragraph(_format_metric_value(metric), styles["value"]),
         ])
 
-    table = Table(rows, colWidths=[115 * mm, 55 * mm], hAlign="LEFT")
+    table = Table(rows, colWidths=[92 * mm, 78 * mm], hAlign="LEFT")
     table.setStyle(_metrics_table_style(TableStyle, colors))
     story.append(table)
     story.append(Spacer(1, 4 * mm))
@@ -299,7 +299,7 @@ def _append_schichtaufbau_table(
             TableStyle,
             colors,
             mm,
-            include_unit_in_header=False,
+            include_unit_in_header=True,
         )
     )
     story.append(Spacer(1, 6 * mm))
@@ -332,7 +332,7 @@ def _append_zuschnitt_section(
             TableStyle,
             colors,
             mm,
-            include_unit_in_header=False,
+            include_unit_in_header=True,
         )
     )
 
@@ -585,6 +585,7 @@ def _report_table_style(TableStyle: Any, colors: Any) -> Any:
             ("FONTSIZE", (0, 1), (-1, -1), 8),
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -618,9 +619,9 @@ def _table_col_widths(columns: list[TableColumn], mm: Any) -> list[float]:
     if count == 0:
         return []
     if count == 3:
-        return [80 * mm, 45 * mm, 45 * mm]
+        return [92 * mm, 35 * mm, 43 * mm]
     if count == 6:
-        return [22 * mm, 44 * mm, 34 * mm, 24 * mm, 23 * mm, 23 * mm]
+        return [16 * mm, 46 * mm, 36 * mm, 24 * mm, 24 * mm, 24 * mm]
     if count == 5:
         return [34 * mm, 44 * mm, 31 * mm, 31 * mm, 30 * mm]
     col_width = 170 * mm / count

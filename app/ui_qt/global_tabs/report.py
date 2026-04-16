@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtPdf import QPdfDocument
@@ -54,6 +55,7 @@ class ReportTab:
         self._preview_pdf_path: Path | None = None
         self._stale_preview_pdf_paths: list[Path] = []
         self._status_label: QLabel | None = None
+        self._last_preview_document: ReportDocument | None = None
 
         self._build_ui()
         self._insert_tab(title)
@@ -135,12 +137,13 @@ class ReportTab:
             return
 
         self._preview_pdf_path = preview_path
+        self._last_preview_document = report_document
         self._queue_stale_preview_path(previous_preview_path)
         self._cleanup_stale_preview_paths()
         self._set_status("Status: Vorschau erfolgreich aktualisiert.")
 
     def export_pdf(self) -> None:
-        report_document = self._build_report_document()
+        report_document = self._resolve_export_document()
         if report_document is None:
             return
 
@@ -165,6 +168,11 @@ class ReportTab:
             return
 
         self._set_status(f"Status: PDF erfolgreich exportiert nach: {saved_path}")
+
+    def _resolve_export_document(self) -> ReportDocument | None:
+        if self._last_preview_document is not None:
+            return replace(self._last_preview_document)
+        return self._build_report_document()
 
     def _build_report_document(self) -> ReportDocument | None:
         try:
