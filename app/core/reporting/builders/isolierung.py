@@ -22,6 +22,16 @@ from app.core.reporting.report_document import (
     TableRow,
     TextBlock,
 )
+from .isolierung_report_types import (
+    ISOLIERUNG_REPORT_TYPE_SCHICHTAUFBAU_ZUSCHNITT,
+    ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG,
+    IsolierungReportType,
+    normalize_isolierung_report_type,
+)
+from .isolierung_schichtaufbau_zuschnitt import (
+    SCHICHTAUFBAU_ZUSCHNITT_REPORT_TITLE,
+    build_isolierung_schichtaufbau_zuschnitt_report,
+)
 
 STANDARD_REPORT_TITLE = "Stationäre Wärmedurchgangsrechnung durch Isolierung"
 
@@ -60,13 +70,53 @@ def build_isolierung_report(
 build_isolierung_report_document = build_isolierung_report
 
 
-def resolve_isolierung_report_metadata(plugin_state: Mapping[str, Any] | None) -> dict[str, Any]:
+def build_isolierung_report_by_type(
+    plugin_state: Mapping[str, Any] | None,
+    *,
+    report_type: IsolierungReportType | str = ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG,
+    title: str | None = None,
+    project_name: str = "Unbenanntes Projekt",
+    author: str = "Unbekannt",
+    additional_info: Mapping[str, str] | None = None,
+) -> ReportDocument:
+    """Baue je nach Berichtstyp den passenden Isolierungsbericht."""
+
+    normalized_type = normalize_isolierung_report_type(report_type)
+    if normalized_type == ISOLIERUNG_REPORT_TYPE_SCHICHTAUFBAU_ZUSCHNITT:
+        return build_isolierung_schichtaufbau_zuschnitt_report(
+            plugin_state,
+            title=_first_non_empty(title, SCHICHTAUFBAU_ZUSCHNITT_REPORT_TITLE),
+            project_name=project_name,
+            author=author,
+            additional_info=additional_info,
+        )
+
+    return build_isolierung_report(
+        plugin_state,
+        title=_first_non_empty(title, STANDARD_REPORT_TITLE),
+        project_name=project_name,
+        author=author,
+        additional_info=additional_info,
+    )
+
+
+def resolve_isolierung_report_metadata(
+    plugin_state: Mapping[str, Any] | None,
+    *,
+    report_type: IsolierungReportType | str = ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG,
+) -> dict[str, Any]:
     """Leite robuste Berichtsmetadaten aus dem exportierten Isolierung-State ab."""
 
     state = _as_mapping(plugin_state)
     ui_state = _nested(state, "ui")
+    normalized_type = normalize_isolierung_report_type(report_type)
+    default_title = (
+        SCHICHTAUFBAU_ZUSCHNITT_REPORT_TITLE
+        if normalized_type == ISOLIERUNG_REPORT_TYPE_SCHICHTAUFBAU_ZUSCHNITT
+        else STANDARD_REPORT_TITLE
+    )
     return {
-        "title": _first_non_empty(ui_state.get("report_title"), STANDARD_REPORT_TITLE),
+        "title": _first_non_empty(ui_state.get("report_title"), default_title),
         "project_name": _first_non_empty(ui_state.get("project_name"), "Unbenanntes Projekt"),
         "author": _first_non_empty(ui_state.get("author"), "Unbekannt"),
         "additional_info": {},

@@ -7,10 +7,26 @@ from pathlib import Path
 
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
-from PySide6.QtWidgets import QFileDialog, QFormLayout, QLineEdit, QLabel, QPushButton, QTabWidget, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTabWidget,
+    QWidget,
+)
 
 from app.core.reporting import ReportDocument
-from app.core.reporting.builders import build_isolierung_report, resolve_isolierung_report_metadata
+from app.core.reporting.builders import (
+    ISOLIERUNG_REPORT_TYPE_OPTIONS,
+    ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG,
+    build_isolierung_report_by_type,
+    normalize_isolierung_report_type,
+    report_type_label,
+    resolve_isolierung_report_metadata,
+)
 from app.core.reporting.renderers import render_report_pdf
 from app.ui_qt.plugins.manager import QtPluginManager
 from app.ui_qt.ui_helpers import create_button_row, create_page_layout
@@ -32,6 +48,7 @@ class ReportTab:
         self.widget = QWidget()
         self._project_name_input: QLineEdit | None = None
         self._author_input: QLineEdit | None = None
+        self._report_type_combo: QComboBox | None = None
         self._preview_pdf_view: QPdfView | None = None
         self._preview_pdf_document: QPdfDocument | None = None
         self._preview_pdf_path: Path | None = None
@@ -53,7 +70,7 @@ class ReportTab:
         description = QLabel(
             "PDF-Vorschau und PDF-Export aus derselben ReportDocument-Quelle. "
             "Datenfluss: Plugin-States → Metadaten-Auflösung (inkl. Eingaben) "
-            "→ Isolierung-Builder → ReportDocument → PDF-Renderer."
+            "→ Berichtstyp-Auflösung → Isolierung-Builder → ReportDocument → PDF-Renderer."
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -63,8 +80,12 @@ class ReportTab:
         self._project_name_input.setPlaceholderText("Projektname für den Bericht")
         self._author_input = QLineEdit()
         self._author_input.setPlaceholderText("Autor für den Bericht")
+        self._report_type_combo = QComboBox()
+        for report_type, label in ISOLIERUNG_REPORT_TYPE_OPTIONS:
+            self._report_type_combo.addItem(label, report_type)
         metadata_form.addRow("Projektname", self._project_name_input)
         metadata_form.addRow("Autor", self._author_input)
+        metadata_form.addRow("Berichtstyp", self._report_type_combo)
         layout.addLayout(metadata_form)
 
         refresh_button = QPushButton("Vorschau aktualisieren")
@@ -166,15 +187,22 @@ class ReportTab:
             return None
 
         metadata = self._resolve_report_metadata(isolierung_state)
+        report_type = self._selected_report_type()
 
         try:
-            return build_isolierung_report(
+            report_document = build_isolierung_report_by_type(
                 isolierung_state,
+                report_type=report_type,
                 title=metadata["title"],
                 project_name=metadata["project_name"],
                 author=metadata["author"],
                 additional_info=metadata["additional_info"],
             )
+            self._set_status(
+                "Status: Berichtsdokument erstellt "
+                f"({report_type_label(report_type)})."
+            )
+            return report_document
         except Exception as exc:
             self._set_status(f"Status: Fehler beim Aufbau des Berichtsdokuments ({exc}).")
             return None
@@ -184,7 +212,10 @@ class ReportTab:
             self._status_label.setText(text)
 
     def _resolve_report_metadata(self, plugin_state: Mapping[str, object]) -> dict[str, object]:
-        resolved_metadata = resolve_isolierung_report_metadata(plugin_state)
+        resolved_metadata = resolve_isolierung_report_metadata(
+            plugin_state,
+            report_type=self._selected_report_type(),
+        )
         manual_project_name = self._manual_input_value(self._project_name_input)
         manual_author = self._manual_input_value(self._author_input)
 
@@ -194,6 +225,12 @@ class ReportTab:
             "author": manual_author or resolved_metadata.get("author"),
             "additional_info": resolved_metadata.get("additional_info", {}),
         }
+
+    def _selected_report_type(self) -> str:
+        if self._report_type_combo is None:
+            return ISOLIERUNG_REPORT_TYPE_WAERMEDURCHGANG
+        selected = self._report_type_combo.currentData()
+        return normalize_isolierung_report_type(selected)
 
     def _render_preview_pdf(self, report_document: ReportDocument) -> Path:
         with tempfile.NamedTemporaryFile(prefix="heatrix_report_preview_", suffix=".pdf", delete=False) as handle:
