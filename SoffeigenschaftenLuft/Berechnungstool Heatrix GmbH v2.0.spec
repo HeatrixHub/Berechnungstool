@@ -2,15 +2,13 @@
 
 from PyInstaller.utils.hooks import collect_submodules
 
+from app.core.bundled_assets import BUNDLED_DATA_FILES
+
 block_cipher = None
 
 hiddenimports = collect_submodules("app.ui_qt.plugins")
 
-datas = [
-    ("app/core/plugins.json", "app/core"),
-    ("app/ui_qt/style/assets/3dots.svg", "app/ui_qt/style/assets"),
-    ("heatrix_logo_v3.png", "."),
-]
+datas = list(BUNDLED_DATA_FILES)
 
 a = Analysis(
     ["app/main_qt.py"],
