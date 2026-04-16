@@ -11,6 +11,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSignalBlocker, QSo
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
+    QDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -47,6 +48,7 @@ from app.core.isolierungen_exchange.export_service import (
 )
 from app.core.isolierungen_exchange.import_service import prepare_insulation_exchange_import_from_file
 from app.core.isolierungen_exchange.matching_service import analyze_prepared_insulation_import_matching
+from app.ui_qt.global_tabs.insulation_exchange_import_dialog import InsulationExchangeImportDialog
 from app.ui_qt.ui_helpers import apply_form_layout_defaults, create_page_header, make_grid, make_hbox, make_root_vbox, make_vbox
 
 
@@ -482,27 +484,44 @@ class IsolierungenDbTab:
             return
 
         matching_analysis = analyze_prepared_insulation_import_matching(prepared_import)
-        warning_count = sum(1 for issue in prepared_import.issues if issue.level == "warning")
-        issue_lines = [
-            f"- {issue.message}"
-            for issue in prepared_import.issues
-            if issue.level == "warning"
-        ]
-        warning_text = "\n".join(issue_lines) if issue_lines else "Keine Warnungen."
+        decision_model = self._run_import_decision_dialog(matching_analysis)
+        if decision_model is None:
+            QMessageBox.information(
+                self.widget,
+                "Import abgebrochen",
+                "Der Importdialog wurde abgebrochen. Es wurden keine Entscheidungen übernommen und nichts persistiert.",
+            )
+            return
+
+        action_counts: dict[str, int] = {}
+        for decision in decision_model.family_decisions:
+            action_counts[decision.action] = action_counts.get(decision.action, 0) + 1
+
+        action_lines = [f"- {action}: {count}" for action, count in sorted(action_counts.items())]
+        if not action_lines:
+            action_lines = ["- keine"]
+
         QMessageBox.information(
             self.widget,
-            "Import vorbereitet",
+            "Importentscheidungen vorbereitet",
             (
-                f"Datei erfolgreich validiert.\n"
-                f"Familien: {len(prepared_import.families)}\n"
-                f"Warnungen: {warning_count}\n"
-                f"Exact Match: {matching_analysis.summary.get('exact_match', 0)}\n"
-                f"Kandidaten-Konflikte: {matching_analysis.summary.get('candidate_conflict', 0)}\n"
-                f"Kein Match: {matching_analysis.summary.get('no_match', 0)}\n\n"
-                "Hinweis: In diesem Schritt wurden nur Analyse-Ergebnisse erzeugt; es gab keine Schreibzugriffe auf die lokale DB.\n\n"
-                f"{warning_text}"
+                f"Datei erfolgreich analysiert: {decision_model.source_path.name}\n"
+                f"Familien im Dialog: {len(decision_model.family_decisions)}\n"
+                f"Exact Match: {decision_model.summary.get('exact_match', 0)}\n"
+                f"Kandidaten-Konflikte: {decision_model.summary.get('candidate_conflict', 0)}\n"
+                f"Kein Match: {decision_model.summary.get('no_match', 0)}\n\n"
+                "Entscheidungen (noch ohne DB-Schreiben):\n"
+                + "\n".join(action_lines)
+                + "\n\nHinweis: In diesem Schritt wurde nichts in die lokale DB geschrieben."
             ),
         )
+
+
+    def _run_import_decision_dialog(self, matching_analysis):
+        dialog = InsulationExchangeImportDialog(matching_analysis, self.widget)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return dialog.decisions()
 
     def delete_family(self) -> None:
         if self._selected_family_id is None:
